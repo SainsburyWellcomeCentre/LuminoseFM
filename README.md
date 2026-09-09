@@ -20,10 +20,10 @@ These are controlled by [port interface boards](https://sanworks.github.io/Bpod_
     - Port 5 - House light (connected to a LED driver that switches on/ off the white inside the rig; this is useful for pre- or post-behaviour sleep)
 
 - Digital OUT 
-The dedicated digital output ports will be used for controling and delivering the optogenetic stimuli. We will use transgenic mice expressing channelrhodopsin in olfactory sensory neurons (OSN-ChR). The optogenetic stimulus will be a spatiotemporal pattern of 100 um light spots delivered on the olfactory bulb of these mice, via a custom-made fiber bundle (see ./docs/fiber_bundle_design). We have two versions of this bundle 1. a 2-to-19 with ch1 and ch2 controlling 10 spots and 9 spots patterns, and 2. a 4-to-19 with ch1 and ch2 controlling any two of the 5 spots, 5 spots, 5 spots, and 4 spots patterns (Note that only two channels can be connected to the commutator, so the two patterns in the 4-to-19 version has to be physically plugged in when a change from the operation two channels, is desired). These channles are connected to a Doric blue LED with two LED channels, which can be driven separately using BNC cables. These are in turn connected to BNC1 and BNC2 of BPOD. So a optical pattern stimulus will be a spatiotemporal pattern of ON/OFF states of BNC1/BNC2 channels for the stimulus delivery period. 
+The dedicated digital output ports will be used for controling and delivering the optogenetic stimuli. We will use transgenic mice expressing channelrhodopsin in olfactory sensory neurons (OSN-ChR). The optogenetic stimulus will be a spatiotemporal pattern of 100 um light spots delivered on the olfactory bulb of these mice, via a custom-made fiber bundle (see ./docs/fiber_bundle_design). We have two versions of this bundle 1. a 2-to-19 with ch1 and ch2 controlling 10 spots and 9 spots patterns, and 2. a 4-to-19 with ch1 and ch2 controlling any two of the 5 spots, 5 spots, 5 spots, and 4 spots patterns (Note that only two channels can be connected to the commutator, so the two patterns in the 4-to-19 version has to be physically plugged in when a change from the operation two channels, is desired). These channles are connected to a Doric blue LED with two LED channels, which can be driven separately using BNC cables. These are in turn connected to output1 and output2 of a pulsepal. The Input1 and Input2 of this pulsepal is driven by BNC1 and BNC2 of BPOD. So a optical pattern stimulus will be a spatiotemporal pattern of ON/OFF states of BNC1/BNC2 channels for the stimulus delivery period. 
 
-    - BNC1 - connected to optical pattern 1 
-    - BNC2 - connected to optical pattern 2
+    - BNC1 -> connected to pulsepal IN1 -> pulsepal OUT1 connected to LED1 -> optical pattern 1 
+    - BNC2 -> connected to pulsepal IN2 -> pulsepal OUT2 connected to LED2 -> optical pattern 2
 
 - Flex I/O 
 Bpod Finite State Machine r2+ builds on r2.5 with additional onboard I/O: - 4 Flex I/O Channels can each be configured as: - Digital Output (5V TTL) - Digital Input (5V tolerant) - Analog Input (12-bit, 0-5V range, 1kHz sampling) - Analog Output (12-bit, 0-5V range).
@@ -60,6 +60,7 @@ The GUI could be set up such that separate tabs with
 - Cue (with options to choose light, sound, air in combinations or alone, ability to set parameters independantly)
 - Stimulus - total duration, frequency (e.g. 20 hz needed for ChR or constant on) - pattern 1 and pattern 2
     - LED/ sound/ opto pattern/ air
+    - pulsepal params
     - If pattern, 
         - A vs B, 
         - mixture of A and B (spatiotemporal patterns with/ without overlap; with or without duration(A + B) <= duration(A) + duration(B))
