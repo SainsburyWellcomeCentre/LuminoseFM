@@ -1,0 +1,11 @@
+# MATLAB artifacts
+*.asv
+*.mex*
+slprj/
+
+# Session data / local outputs
+Data/
+*.mat.bak
+
+# Local tool settings
+.claude/settings.local.json
