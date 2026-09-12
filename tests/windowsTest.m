@@ -96,19 +96,60 @@ verifySubstring(testCase, plots.summaryText(), 'Trial 150');
 delete(cleanup);
 end
 
-function testTheStimulusAndChoicesAreTheTopRow(testCase)
-% Now and next at top left, the outcomes beside it, performance below, and no centre
-% hold panel.
+function testThePanelsAreInThreeRows(testCase)
+% Top: now and next, then the outcomes. Middle: performance, psychometric, evidence.
+% Bottom: by side, side bias, reaction time. No centre hold panel.
 [S, stimulusSet] = sessionFixture(testCase, 'pure', 2, false);
 plots = lum.OnlinePlots(S, stimulusSet, 'Visible', 'off');
 cleanup = onCleanup(@() plots.close());
-upcoming = axesTitled(plots.Figure, 'Now and next');
-outcomes = axesTitled(plots.Figure, 'Outcomes');
-performance = axesTitled(plots.Figure, 'Performance');
-verifyLessThan(testCase, upcoming.Position(1), outcomes.Position(1), 'Now and next must be left of the outcomes');
-verifyEqual(testCase, upcoming.Position(2), outcomes.Position(2), 'AbsTol', 0.02, 'Both on the top row');
-verifyGreaterThan(testCase, upcoming.Position(2), performance.Position(2), 'Performance comes below');
+rows = {{'Now and next', 'Outcomes'}, ...
+        {'Performance', 'Psychometric', 'Evidence'}, ...
+        {'By side', 'Side bias', 'Reaction time'}};
+heights = zeros(1, 3);
+for r = 1:3
+    panels = cellfun(@(title) axesTitled(plots.Figure, title), rows{r}, 'UniformOutput', false);
+    for k = 1:numel(panels)
+        verifyNotEmpty(testCase, panels{k}, sprintf('No panel titled "%s"', rows{r}{k}));
+    end
+    y = cellfun(@(ax) ax.Position(2), panels);
+    x = cellfun(@(ax) ax.Position(1), panels);
+    verifyEqual(testCase, y, repmat(y(1), size(y)), 'AbsTol', 0.02, sprintf('Row %d shares a row', r));
+    verifyTrue(testCase, issorted(x) && numel(unique(x)) == numel(x), ...
+               sprintf('Row %d reads left to right', r));
+    heights(r) = y(1);
+end
+verifyTrue(testCase, heights(1) > heights(2) && heights(2) > heights(3), 'Rows from the top down');
 verifyEmpty(testCase, axesTitled(plots.Figure, 'Centre hold'), 'The centre hold panel is gone');
+verifyEmpty(testCase, axesTitled(plots.Figure, 'By side and light'), 'Light on and off are not compared');
+delete(cleanup);
+end
+
+function testEveryChoiceLandsAtTheLightItsTrialDelivered(testCase)
+[S, stimulusSet] = sessionFixture(testCase, 'pure', 2, false);
+plots = lum.OnlinePlots(S, stimulusSet, 'Visible', 'off', 'RefreshEvery', 1);
+cleanup = onCleanup(@() plots.close());
+feed(plots, S, stimulusSet, 40);
+
+plane = axesTitled(plots.Figure, 'Evidence');
+markers = findobj(plane, 'Type', 'line', 'LineStyle', 'none');
+verifyNumElements(testCase, markers, 4, 'Correct and incorrect, each by side chosen');
+x = [markers.XData];
+y = [markers.YData];
+shown = ~isnan(x);
+verifyEqual(testCase, nnz(shown), 20, 'Every choice, and only choices');
+verifyTrue(testCase, all(x(shown) >= -0.05 & x(shown) <= 1.05 & y(shown) >= -0.05 & y(shown) <= 1.05));
+verifyTrue(testCase, all(min(abs([x(shown); y(shown)]), [], 1) <= 0.03), ...
+           'A pure-channel pattern lights one channel only, so every choice sits on an axis');
+
+bias = axesTitled(plots.Figure, 'Side bias');
+chose = findobj(bias, 'Type', 'line', 'LineWidth', 2);
+values = chose.YData(~isnan(chose.YData));
+verifyNotEmpty(testCase, values);
+verifyTrue(testCase, all(values >= 0 & values <= 1));
+verifyGreaterThanOrEqual(testCase, bias.XLim(2), 40);
+
+bars = axesTitled(plots.Figure, 'By side');
+verifyEqual(testCase, cellstr(bars.XTickLabel)', {'left-rewarded', 'right-rewarded'});
 delete(cleanup);
 end
 
@@ -160,14 +201,49 @@ onsets = NaN(1, 200);
 widths = NaN(1, 200);
 onsets(1:n) = 5 + (0:n - 1);
 widths(1:n) = 0.05;
-plots.update(onsets, widths, n, 100);
+plots.update(struct('Onset', onsets, 'Width', widths, 'n', n), [], 100, 100);
 pulses = findobj(axesTitled(plots.Figure, 'Pulses sent'), 'Type', 'line');
 verifyEqual(testCase, sum(~isnan(pulses.YData)), n);
 verifyEqual(testCase, max(pulses.XData), (n - 1) / 60, 'AbsTol', 1e-9);
-trace = findobj(axesTitled(plots.Figure, 'Sync line'), 'Type', 'line');
+trace = findobj(axesTitled(plots.Figure, 'Lines'), 'Type', 'line');
 verifyEqual(testCase, max(trace.YData), 1, 'The trace must show the line high');
 verifyGreaterThanOrEqual(testCase, min(trace.XData), -30);
 verifySubstring(testCase, plots.summaryText(n, 100), '100 pulse(s)');
+verifyEmpty(testCase, axesTitled(plots.Figure, 'Test-pulse schedule'), 'No test pulses, no schedule');
+delete(cleanup);
+end
+
+function testSleepPlotsShowTheTestPulsesSent(testCase)
+S = testCase.TestData.S;
+S.Sleep.TestPulses.Enabled = true;
+S.Sleep.TestPulses.PlasticityTrains = true;
+S.Sleep.TestPulses.Schedule = struct('Kind', {'Probe', 'Theta burst', 'Probe'}, ...
+                                     'Channels', {'A and B', 'A', 'B'}, 'Minutes', {1, 0, 1});
+plan = lum.sleep.testPulsePlan(S.Sleep.TestPulses);
+plots = lum.sleep.Plots(S, 'Visible', 'off', 'Plan', plan);
+cleanup = onCleanup(@() plots.close());
+
+% Everything up to the end of the theta burst, sent on time.
+cycle = plan.CyclePeriod;
+upTo = plan.Steps(3).Start;
+syncPulses = lum.sleep.syncPulseTimes(S.Sleep.Sync, plan.Duration);
+sync = struct('Onset', syncPulses(:, 1)' * cycle, 'Width', syncPulses(:, 2)' * cycle, ...
+              'n', find(syncPulses(:, 1) * cycle < upTo, 1, 'last'));
+light = struct('Onset', plan.Segments(:, 1)' * cycle, ...
+               'n', find(plan.Segments(:, 1) * cycle < upTo, 1, 'last'));
+plots.update(sync, light, upTo, upTo);
+
+sent = findobj(axesTitled(plots.Figure, 'Epochs sent'), 'Type', 'bar', 'BarWidth', 0.4);
+verifyEqual(testCase, sent.YData, [30 5 0], 'Thirty probes, then five trains');
+epoch = axesTitled(plots.Figure, 'Latest epoch');
+verifySubstring(testCase, epoch.Title.String, 'Theta burst');
+pulses = findobj(epoch, 'Type', 'patch', 'FaceColor', 'flat', 'FaceAlpha', 1);
+vertices = pulses.Vertices;
+verifyEqual(testCase, nnz(vertices(2:4:end, 1) > vertices(1:4:end, 1)), 40, ...
+            'Ten bursts of four pulses');
+lines = findobj(axesTitled(plots.Figure, 'Lines'), 'Type', 'line', 'Color', lum.gui.theme().ChannelA);
+verifyEqual(testCase, max(lines.YData), 2.1, 'AbsTol', 1e-9, 'Channel A drawn high in its lane');
+verifySubstring(testCase, plots.summaryText(sync.n, upTo), '35 of 65 epoch(s)');
 delete(cleanup);
 end
 
@@ -324,6 +400,21 @@ end
 verifyEqual(testCase, candidate.Sync.Barcode, S.Sync.Barcode);
 verifySubstring(testCase, app.status(), 'Ready to start');
 
+% With test pulses the recording lasts as long as their schedule, and the recording's
+% own length comes back when they are switched off.
+app.controls.TestPulsesEnabled.Value = true;
+app.refresh();
+verifyEqual(testCase, app.controls.Duration.Value, 240);
+verifyEqual(testCase, app.controls.Duration.Enable, matlab.lang.OnOffSwitchState('off'));
+verifySubstring(testCase, app.status(), 'Test pulses: 7200 epoch(s)');
+verifySubstring(testCase, app.controls.TestPulseSummary.Text, 'paired 10 ms pulses');
+candidate = app.collect();
+verifyTrue(testCase, candidate.Sleep.TestPulses.Enabled);
+verifyEqual(testCase, candidate.Sleep.DurationMinutes, S.Sleep.DurationMinutes);
+app.controls.TestPulsesEnabled.Value = false;
+app.refresh();
+verifyEqual(testCase, app.controls.Duration.Value, S.Sleep.DurationMinutes);
+
 app.controls.Interval.Value = 0.05;   % Shorter than the longest jittered pulse
 app.refresh();
 verifySubstring(testCase, app.status(), 'at least 1 ms');
@@ -355,6 +446,40 @@ verifyEqual(testCase, app.collect().Task.GroupPLeft, linspace(1, 0, 5), 'AbsTol'
 [ok, applied] = app.apply();
 verifyTrue(testCase, ok);
 verifyEqual(testCase, applied.Stimulus.Generator.Family, 'occupancy');
+delete(cleanup);
+end
+
+
+function testTheTestPulseDesignerKeepsTheDesignItWasGiven(testCase)
+assumeUIFigures(testCase);
+S = testCase.TestData.S;
+[~, ~, app] = lum.gui.TestPulseDesigner(S, testCase.TestData.rig, 'Wait', false, 'Visible', 'off');
+cleanup = onCleanup(@() closeIfOpen(app.Figure));
+verifyEqual(testCase, app.collect().Sleep.TestPulses, S.Sleep.TestPulses);
+verifySubstring(testCase, app.status(), 'Ready');
+verifyEqual(testCase, app.controls.StepTable.Data{1, 5}, 7200, 'Epochs are counted per step');
+
+app.preset('Probe, theta burst, probe');
+design = app.collect().Sleep.TestPulses;
+verifyTrue(testCase, design.PlasticityTrains, 'A preset with a train switches trains on');
+verifyEqual(testCase, {design.Schedule.Kind}, {'Probe', 'Theta burst', 'Probe'});
+verifySubstring(testCase, app.status(), 'Ready');
+
+app.controls.TrainsEnabled.Value = false;
+app.refresh();
+verifySubstring(testCase, app.status(), 'plasticity trains are switched off');
+verifyEqual(testCase, app.controls.Apply.Enable, matlab.lang.OnOffSwitchState('off'));
+app.controls.TrainsEnabled.Value = true;
+
+app.selectStep(2);
+app.addStep();
+verifyNumElements(testCase, app.collect().Sleep.TestPulses.Schedule, 4);
+[ok, applied] = app.apply();
+verifyTrue(testCase, ok);
+verifyFalse(testCase, applied.Sleep.TestPulses.Enabled, ...
+            'Switching test pulses on belongs to the sleep setup dialog');
+verifyEqual(testCase, applied.Sleep.TestPulses.Schedule(2).Minutes, 100 / 60, 'AbsTol', 1e-9, ...
+            'A train step carries the minutes its trains last');
 delete(cleanup);
 end
 

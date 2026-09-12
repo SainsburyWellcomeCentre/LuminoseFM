@@ -4,7 +4,7 @@ function notes = validate(S, rig)
 % The sleep counterpart of lum.validateSettings: the sleep setup dialog runs it on
 % every edit and its Start button runs it, and lum.sleep.run runs it again before
 % opening any device, so a headless session cannot start on settings the dialog
-% would have refused.
+% would have refused. Test pulses are checked by lum.sleep.validateTestPulses.
 %
 % Arguments:
 %   S    Settings struct; reads S.Sleep, S.Sync.Barcode, S.Session.UseSync, S.Meta
@@ -15,14 +15,10 @@ function notes = validate(S, rig)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.gui.SleepSetupDialog, lum.sleep.run, lum.validateSettings
+% See also: lum.gui.SleepSetupDialog, lum.sleep.run, lum.validateSettings,
+%           lum.sleep.validateTestPulses
 
 notes = {};
-
-duration = S.Sleep.DurationMinutes;
-if ~(isscalar(duration) && duration > 0 && duration <= 24 * 60)
-    fail('badDuration', 'The sleep recording must last more than 0 and at most 1440 minutes.');
-end
 
 sync = S.Sleep.Sync;
 switch sync.Mode
@@ -51,9 +47,22 @@ if ~(shortestInterval - longestPulse >= 1e-3)
           'longest pulse (%g s). Lengthen the interval or shorten the pulses.'], ...
          shortestInterval, longestPulse);
 end
+
+% With test pulses the recording lasts as long as their schedule; without, as set.
+if S.Sleep.TestPulses.Enabled
+    [plan, testPulseNotes] = lum.sleep.validateTestPulses(S, rig);
+    durationMinutes = plan.Duration / 60;
+    notes = [notes testPulseNotes];
+else
+    durationMinutes = S.Sleep.DurationMinutes;
+    if ~(isscalar(durationMinutes) && durationMinutes > 0 && durationMinutes <= 24 * 60)
+        fail('badDuration', 'The sleep recording must last more than 0 and at most 1440 minutes.');
+    end
+end
+
 % The pulse record is preallocated and rewritten at every save, so a session is capped
 % at a size one file handles comfortably (a pulse a second for 24 h is 86,400).
-expectedPulses = 60 * duration / shortestInterval;
+expectedPulses = 60 * durationMinutes / shortestInterval;
 if expectedPulses > 5e5
     fail('tooManyPulses', ...
          ['This session would send about %d pulses; at most 500000 fit one session. '...

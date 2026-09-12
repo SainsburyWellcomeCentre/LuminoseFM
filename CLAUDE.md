@@ -92,6 +92,9 @@ the r2+. Design around this:
 - A timer triggered in the *first* state is activated without emitting a start event.
 - `RunStateMachine` zeroes `HardwareState.InputState` at the end of every trial, so a port
   held high from the console is forgotten between trials.
+- The emulator runs states from a MATLAB loop and keeps **no millisecond time**: a state never
+  ends before its timer, but may end tens of ms after. Test emulated intervals from below only;
+  exact timing is a property of the plan (pure tests) and of the rig.
 - Emulated sessions still write a complete data file, flagged as emulated
   (`Data.Info.EmulatorMode = 1`) so it can never be mistaken for real behaviour.
 
@@ -115,7 +118,10 @@ stops the session part way through as though the End button had been pressed.
 - Settings file: `.../LuminoseFM/Session Settings/<name>.mat`, per subject, chosen in the
   launch manager. `lum.mergeSettings` converts old files (renames, reshapes, retirements).
 - `Data.Session.Type` is `'Behaviour'` or `'Sleep'`. Sleep sessions store `Data.SyncPulses`
-  (`Onset`, `Width`, `Block`) instead of trial series; each pulse block is one Bpod trial.
+  (`Onset`, `Width`, `Block`) instead of trial series; each block is one Bpod trial. With test
+  pulses they also store `Data.LightSegments` (`Onset`, `Duration`, `Channel`, `Step`, `Epoch`,
+  `Block`, one per gate of light sent) and the compiled steps once in `Data.Session.TestPulses`
+  (with `Completed` and `StoppedReason`) — never per-pulse carrier copies.
 - Flex analog stream: Bpod writes `..._ANLG.dat` beside the session file; merged at teardown
   with `AddFlexIOAnalogData` through `lum.dev.Flex.mergeAnalogData`, which then re-anchors it with
   `lum.dev.Flex.alignAnalog`: the stream starts with the barcode's run, which Bpod counts as a
@@ -174,6 +180,12 @@ doc that does not:
 | session type | `'Behaviour'` or `'Sleep'` (`S.Session.Type`, `Data.Session.Type`) | protocol, mode |
 | carrier | PulsePal per-channel frequency, pulse width, voltage | waveform |
 | centre | British spelling in identifiers too (`CentreHold`) | `Center` |
+| test pulses | light in a sleep session: probes and plasticity trains on a schedule (`S.Sleep.TestPulses`) | opto stimulation, stim |
+| epoch | one probe (single pulse or pair) or one train; never split across state machines | trial, sweep |
+| inter-pulse / inter-epoch interval | onset to onset: within a pair; between epochs | gap, ISI (unqualified) |
+| plasticity train | named bursts-of-pulses definition (theta burst, high frequency, custom) | protocol, stimulation |
+| schedule step | one row of `S.Sleep.TestPulses.Schedule`: probe, rest or a train name | block (a block is a state machine run) |
+| light segment | one gate on A or B; a probe pulse, or a burst PulsePal fills (`LightSegments`) | pulse, when it is a burst |
 
 Version 0.2 renamed states, data fields and settings accordingly; the full table is in
 `README.md` §5 and `docs/architecture.md` D8. **Rename by migration**: add the old → new
@@ -188,9 +200,21 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
 - **Two session types, one protocol (D11).** `LuminoseFM` opens `lum.gui.SessionTypeDialog`
   first; *Sleep* hands the whole session to `lum.sleep.run`, which must release every `lum.*`
   object before returning. Headless runs (`setappdata(0, 'LuminoseFM_Headless', true)`) take the
-  type from `S.Session.Type`. Sleep sessions run pulse blocks with blocking `RunStateMachine`
+  type from `S.Session.Type`. Sleep sessions run blocks with blocking `RunStateMachine`
   on the rig too — they have nothing to prepare, so `SessionRunner` does not apply. Both setup
   dialogs build `S.Meta` through `lum.gui.ExperimentForm`; add an experiment field there once.
+- **Sleep test pulses (D13).** Light in a sleep session goes the behaviour way: Bpod gates
+  BNC1/BNC2, PulsePal fills each gate (constant light for a probe, the train's pulses for a
+  burst). `lum.sleep.testPulsePlan` compiles the schedule into gates and epochs in integer
+  100 µs cycles before the session; `lum.sleep.syncPulseTimes` lays out the sync pulses;
+  `lum.sleep.nextBlock` cuts both into ~10 s state machines **only where every line is low,
+  never inside an epoch, and before the first epoch of a new step**; `lum.sleep.blockStateMachine`
+  makes one `LevelNNN` state per span between edges. No global timers. PulsePal is programmed
+  only between blocks, after `checkConnection`, and checked again at every save; a failure ends
+  the session with `StoppedReason`. Open devices through `lum.sleep.deviceSettings`, so a
+  session with test pulses is refused without PulsePal. `lum.sleep.validateTestPulses` is the
+  one check the designer, the sleep dialog and the session share. With test pulses on, the
+  recording lasts as long as the schedule; `S.Sleep.DurationMinutes` is kept but unused.
 - **Namespacing**: put reusable code in a MATLAB package (`+lum/...`) or clearly named
   helper folders; the protocol file stays a thin session script. `hardware/` holds rig
   utilities usable outside a session (e.g. `TestHiFiSound.m`).
@@ -278,7 +302,7 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   straight into `WaitForResponse`, or the side ports are live with the animal's nose still in
   the centre port and its withdrawal beam break is scored as a choice.
   - **States, not timers, for what happens outside the stimulus** — the cue before stimulus
-    onset, the latency, and the barcode. Global timers are for what happens inside the hold, where leaving the port
+    onset, the latency, the barcode, and a sleep session's sync and test pulses (D13). Global timers are for what happens inside the hold, where leaving the port
     must end it at any instant: light segments (D1), the grace hold clock (D6), stimulus
     components switched on late or off early (D9), and cue components switched off part way
     through the stimulus (D12).
@@ -323,7 +347,7 @@ where it can be tested with no hardware.
 | `+lum/punishmentFor.m` | Which mistakes are punished, and how |
 | `+lum/SyncMode.m` | How trials drive the sync TTL; codes are part of the data format |
 | `+lum/SessionRunner.m` | TrialManager on the rig, blocking in the emulator (D3) |
-| `+lum/OnlinePlots.m` | The single live figure |
+| `+lum/OnlinePlots.m` | The behaviour session's live figure: now and next, outcomes; performance, psychometric, evidence (u_A vs u_B: fraction of the window each channel is lit); by side, side bias, reaction time |
 | `+lum/loadSounds.m` | The session's sounds, loaded once |
 | `+lum/fiberBundles.m`, `experimentChoices.m` | Bundle cables and spot counts; the Experiment tab's lists |
 | `+lum/mergeActions.m`, `timerMaskAction.m` | Output-action assembly; see the gotchas below |
@@ -331,10 +355,10 @@ where it can be tested with no hardware.
 | `+lum/+pattern/` | `generate` (families, groups, order) → `stimulusSet` (segments, contingency, checks) → `patternAt`; `fromStates`, `canonicalise`, `check`, `validate`, `describe`; `families`, `withGeneratorDefaults`, `defaultPLeft`, `newSeed`, `prepareSeed` |
 | `+lum/+stim/` | Components: `OptoPattern`, `TimedOutput` → `PortLight`, `Air`; `Sound`; `CueTone`; `build`; `isTimed`, `timerCost` |
 | `+lum/+sync/` | Session barcode: `barcode` (kinds), `sleepMarkerWidth`, `barcodeValue`, `barcodeTime`, `decodeBarcode`, `barcodeStateMachine` |
-| `+lum/+sleep/` | Sleep sessions: `run`, `pulseSchedule`, `pulsesPerBlock`, `blockStateMachine`, `validate`, `Plots` |
-| `+lum/+dev/` | Device shims, real and null; `open.m` selects them. `Flex` also sends the barcode, opens the analog viewer and realigns the analog stream (`alignAnalog`) |
-| `+lum/+gui/` | `SessionTypeDialog`, `SetupDialog`, `SleepSetupDialog`, `ExperimentForm`, `Form`, `StimulusDesigner`, `RuntimeWindow`, `PatternBrowser`, `drawTrialFlow`, `runtimeFields`, `relabelParameterGUI`, `parseNumbers`, `theme`, `logo` |
-| `tests/` | `runLuminoseTests` runs everything; see below |
+| `+lum/+sleep/` | Sleep sessions: `run`; sync pulses `pulseSchedule`, `syncPulseTimes`; test pulses `testPulsePlan`, `stepChoices`, `epochShape`, `describeTestPulses`, `describeTrain`; blocks `nextBlock`, `blockStateMachine`; `validate`, `validateTestPulses`, `deviceSettings`; `Plots` |
+| `+lum/+dev/` | Device shims, real and null; `open.m` selects them. `openPulsePal` refuses a light session without PulsePal, stops its outputs on connecting and requires a handshake (`PulsePal.checkConnection`). `Flex` also sends the barcode, opens the analog viewer and realigns the analog stream (`alignAnalog`) |
+| `+lum/+gui/` | `SessionTypeDialog`, `SetupDialog`, `SleepSetupDialog`, `ExperimentForm`, `Form`, `StimulusDesigner`, `TestPulseDesigner`, `RuntimeWindow`, `PatternBrowser`, `drawTrialFlow`, `drawTestPulseSchedule`, `drawTestPulseEpoch`, `runtimeFields`, `relabelParameterGUI`, `parseNumbers`, `theme`, `logo` |
+| `tests/` | `runLuminoseTests` runs everything; `StubHiFi` and `StubPulsePal` (a PulsePal that can stop answering) are test doubles; see below |
 
 **Bpod gotchas that have already cost time.** Each is guarded in code; don't undo them.
 
@@ -356,6 +380,24 @@ where it can be tested with no hardware.
   window and clear handles first, as `LuminoseFM` does.
 - `ProgramPulsePalParam`'s header says trigger mode `1/2/3`; the firmware uses `0/1/2`, and
   the function sends the value unchanged. Gated is **2** (`lum.dev.PulsePal.GatedTriggerMode`).
+- **A light session must never run with PulsePal unprogrammed.** Bpod gates BNC1/BNC2 anyway,
+  and PulsePal answers with its last program (edge trigger, train delay, both LEDs on one input,
+  continuous loop). The session file then looks perfect while the LEDs fire at the wrong times.
+  `lum.dev.openPulsePal` refuses to start instead of falling back to the null shim, and stops
+  every output (`stopOutputs`) on connecting. Do not reintroduce a fallback.
+- PulsePal's own connection code: `PulsePal()` only prints "already open" and returns when a
+  `PulsePalSystem` is left in the base workspace, even a dead one. Its scan lists only free
+  ports, so a port a previous session did not release is never found, and it writes a handshake
+  to every free COM port it tries. `PulsePalSystem` is a `PulsePalObject`, so `isfield` on it is
+  always false. `ProgramPulsePalParam` returns `[]` on a timeout, and `[] ~= 1` is false: compare
+  with `isequal`. `lum.dev.RealPulsePal` handles all of these. `SetPulsePalVersion`, the
+  handshake behind `checkConnection`, pauses 0.1 s: call it between blocks or trials, never in a
+  loop.
+- A sleep session with test pulses must **never** cut a block inside an epoch or put two steps'
+  light in one block: Bpod drops every line at the end of a state machine, so a gate split across
+  runs becomes two gates with an upload between them, and PulsePal is only reprogrammed between
+  runs. `lum.sleep.nextBlock` guards both; `lum.sleep.validateTestPulses` guarantees a safe cut
+  exists.
 - `RunStateMachine` starts the Flex analog stream on the session's **first run**, but
   `AddFlexIOAnalogData` stamps the stream from `TrialStartTimestamp(1)`, so a run before trial 1
   (the barcode) shifts every analog timestamp by its length and every `TrialNumber` by one.
@@ -366,7 +408,10 @@ where it can be tested with no hardware.
 - Before blaming the stimulus path for "late" light or air, look at the session file: the
   `GlobalTimer<k>_Start/_End` events against `CentreHold`, the PulsePal device log, and the flow
   meter aligned to the valve (the 0.2 "air arrives at the reward port" report was the analog
-  shift above, not the stimulus).
+  shift above, not the stimulus). The PulsePal log's first line says whether PulsePal was
+  connected at all. The 0.4 report of light pulses "at the side pokes" came from rig sessions
+  whose light timers all started on the poke (39 of 39 across 0.2–0.4), while PulsePal was not
+  connected in 13 of 16 of them.
 
 ## Tests
 
@@ -385,7 +430,18 @@ messages — MATLAB has no compile step, so that is the closest thing to one. Ad
 any behaviour change; the pure functions (`+lum/*.m`, `+lum/+pattern/`, `+lum/+sync/`) are
 the cheap place to do it. `windowsTest` builds windows invisibly (`'Visible', 'off'`, and
 `'Wait', false` for the modal ones) and skips the uifigure tests where MATLAB cannot make one.
-`emulatorSessionTest` and `sleepSessionTest` run a whole behaviour and sleep session headless.
+`emulatorSessionTest` runs a whole behaviour session headless, and `sleepSessionTest` two sleep
+sessions, with and without test pulses.
+
+MATLAB and test gotchas that have already cost time:
+
+- `functiontests` takes **every** local function whose name starts with `test` as a test, so a
+  helper called `testPulses()` breaks the whole file. Name helpers otherwise.
+- A `uitable`'s `Enable` wants `'on'`/`'off'` text, not the `OnOffSwitchState` that
+  `lum.gui.Form.onOff` returns for other components.
+- `exportgraphics` refuses a classic figure holding more than one `uipanel`, and `print` refuses
+  any figure with UI components (both plot figures have both). `exportapp` captures them, and the
+  uifigure windows, headless under `-batch`.
 
 ## Docs rule
 
@@ -397,7 +453,9 @@ Keep documentation current in the same change that alters behaviour:
 - `docs/architecture.md` — the confirmed architecture decisions (D1 envelope/carrier split,
   D2 two-tier GUI, D3 runner, D4 sync, D5 stimulus set, D6 hold shaping, D7 barcode,
   D8 naming, D9 timed components, D10 restarting holds and the hold window, D11 behaviour and
-  sleep sessions, D12 the cue until the stimulus starts, and its latency). Read it before changing the stimulus path, the state graph or the GUI.
+  sleep sessions, D12 the cue until the stimulus starts, and its latency, D13 test pulses in
+  sleep sessions). Read it before changing the stimulus path, the state graph, sleep blocks or
+  the GUI.
 - `docs/` — rig drawings, `BpodSystemInfo.png`, logo.
 
 If you change a public helper's signature, the state-machine flow, the data schema, the

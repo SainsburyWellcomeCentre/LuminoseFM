@@ -9,8 +9,10 @@ classdef PulsePal < lum.dev.Device
     %
     % This class owns the translation from a carrier struct to PulsePal parameters
     % and the caching that keeps reprogramming cheap. Subclasses RealPulsePal and
-    % NullPulsePal differ only in send(): whether the bytes reach a device or only
-    % the log. Construct through lum.dev.open.
+    % NullPulsePal differ only in send() and sendStopOutput(): whether the bytes reach
+    % a device or only the log. Construct through lum.dev.open, which asks
+    % lum.dev.openPulsePal: a session that delivers light does not start without the
+    % device, and a connected device has its outputs stopped first (stopOutputs).
     %
     % Carrier: a struct array with one element per optical channel, element k
     % programming PulsePal output k (S.Light.Carrier, plus MaxDuration). The two
@@ -59,6 +61,7 @@ classdef PulsePal < lum.dev.Device
 
     properties (Access = private)
         sentValues  % Map from 'channel/paramCode' to the value last sent, for change detection
+        answered = false  % Whether a handshake has been answered yet, so only the first is logged
     end
 
     methods
@@ -134,12 +137,62 @@ classdef PulsePal < lum.dev.Device
             end
             tf = ~isequal(candidate, obj.LastCarrier);
         end
+
+        function stopOutputs(obj)
+            % stopOutputs() stops all four outputs and switches continuous playback off.
+            %
+            % Programming parameters changes what the next trigger does, not what
+            % PulsePal is doing now: a train still running carries on, and an output
+            % left looping continuously — from the front panel or by another program —
+            % plays with no trigger at all. lum.dev.openPulsePal sends this once,
+            % straight after connecting and before any trial.
+            for channel = 1:obj.nOutputChannels
+                obj.sendStopOutput(channel);
+            end
+        end
+
+        function checkConnection(obj)
+            % checkConnection() asks PulsePal to answer a handshake, and errors if it does not.
+            %
+            % Programming confirms each parameter it sends, but a session whose carrier
+            % never changes sends nothing after the first trial, so a PulsePal that was
+            % unplugged or lost its port would go unnoticed while Bpod kept gating
+            % channels A and B into it. lum.dev.openPulsePal checks once before any
+            % session uses the device; a sleep session checks again whenever it changes
+            % the carrier and at every save, and stops if the answer does not come.
+            % Errors with 'lum:dev:PulsePal:notResponding'. Only the first answer is
+            % logged, so a long session does not fill the device log with them.
+            if ~obj.handshake()
+                obj.note('did not answer a handshake');
+                error('lum:dev:PulsePal:notResponding', ...
+                      ['PulsePal did not answer a handshake. Check its USB cable and that no '...
+                       'other program holds its port.']);
+            end
+            if ~obj.answered
+                obj.answered = true;
+                if obj.Available
+                    obj.note('answered a handshake');
+                else
+                    obj.note('would check that PulsePal answers a handshake');
+                end
+            end
+        end
     end
 
     methods (Access = protected)
         function send(obj, channel, paramCode, value) %#ok<INUSD> % Overridden by subclasses
             % send() delivers one parameter to the device. Subclass responsibility.
             error('lum:dev:PulsePal:abstract', 'send() must be implemented by a subclass.');
+        end
+
+        function tf = handshake(obj) %#ok<STOUT,MANU> % Overridden by subclasses
+            % handshake() is true when the device answers. Subclass responsibility.
+            error('lum:dev:PulsePal:abstract', 'handshake() must be implemented by a subclass.');
+        end
+
+        function sendStopOutput(obj, channel) %#ok<INUSD> % Overridden by subclasses
+            % sendStopOutput() stops one output and its continuous playback.
+            error('lum:dev:PulsePal:abstract', 'sendStopOutput() must be implemented by a subclass.');
         end
     end
 

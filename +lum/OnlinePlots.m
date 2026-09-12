@@ -25,8 +25,16 @@ classdef OnlinePlots < handle
     %                   one point for one group, the two groups for two, the swept
     %                   parameter for more, B-share bins in continuous mode — with the
     %                   contingency the animal is trained on drawn behind it
-    %     By side and light  Fraction correct on left, right, light-on, light-off trials
+    %     Evidence      Every choice at the latent evidence its trial's stimulus carried
+    %                   on each channel, u_A against u_B (the fraction of the stimulus
+    %                   window A and B were lit), coloured correct or incorrect and
+    %                   pointing to the side chosen, so the animal's decision boundary
+    %                   shows: vertical or horizontal if it reads one channel, diagonal
+    %                   if it weighs both
     %   Bottom row
+    %     By side       Fraction correct on left- and right-rewarded trials
+    %     Side bias     P(chose left) over the last BiasWindow choices, with the
+    %                   P(left) bias correction aimed for on each trial
     %     Reaction time Per trial, by side chosen, with a running median
     %
     % See also: lum.newHistory, lum.scoreTrial, lum.pattern.stimulusSet, lum.gui.theme,
@@ -44,6 +52,7 @@ classdef OnlinePlots < handle
         handles = struct()
         axesOf = struct()       % Each panel's axes, by panel
         movingWindow
+        biasWindow              % Choices the side-bias panel averages over
         nSlots = 4
         maxSegments
 
@@ -51,6 +60,8 @@ classdef OnlinePlots < handle
         psychometricIndex     % Psychometric point each pattern counts towards
         psychometricTrials
         psychometricLeft
+        lightA                % Fraction of the stimulus window each pattern lights A
+        lightB                % ... and B
 
         % Per-trial series, preallocated to the session's maximum length
         correctY
@@ -65,10 +76,16 @@ classdef OnlinePlots < handle
         leftReactionY
         rightReactionY
         medianReactionY
+        biasLeftY             % P(chose left) over the last biasWindow choices, per trial
+        biasTargetY           % The P(left) bias correction aimed for, per trial
+        choseLeft             % One entry per choice made: 1 left, 0 right
+        planeX                % u_A of each choice, by correct/incorrect and side chosen:
+        planeY                % 4 x nTrials, rows correct-left, correct-right,
+                              % incorrect-left, incorrect-right
 
         % Running aggregates, updated in O(1)
-        barTrials = zeros(1, 4)   % Left, right, light on, light off
-        barCorrect = zeros(1, 4)
+        barTrials = zeros(1, 2)   % Left-rewarded, right-rewarded
+        barCorrect = zeros(1, 2)
         nChoices = 0
         nCorrect = 0
         nRewarded = 0
@@ -107,18 +124,23 @@ classdef OnlinePlots < handle
 
             nTrials = S.Session.MaxTrials;
             obj.movingWindow = min(50, max(10, round(nTrials / 20)));
+            obj.biasWindow = max(1, round(S.GUI.BiasWindow));
             obj.maxSegments = max([1, stimulusSet.nTimers]);
             blank = NaN(1, nTrials);
             [obj.correctY, obj.incorrectY, obj.noChoiceY, obj.correctness, obj.sideOfTrial, ...
              obj.performanceY, obj.leftPerformanceY, obj.rightPerformanceY, ...
              obj.reactionTimes, obj.leftReactionY, obj.rightReactionY, ...
-             obj.medianReactionY] = deal(blank);
+             obj.medianReactionY, obj.biasLeftY, obj.biasTargetY, obj.choseLeft] = deal(blank);
+            obj.planeX = NaN(4, nTrials);
+            obj.planeY = NaN(4, nTrials);
 
             if stimulusSet.Continuous
                 obj.rasterOfPattern = stimulusSet.Descriptors.BShare;
             else
                 obj.rasterOfPattern = stimulusSet.PatternGroup;
             end
+            obj.lightA = stimulusSet.Descriptors.AOn / stimulusSet.Duration;
+            obj.lightB = stimulusSet.Descriptors.BOn / stimulusSet.Duration;
             layout = psychometricLayout(stimulusSet);
             obj.psychometricIndex = layout.Index;
             obj.psychometricTrials = zeros(1, numel(layout.X));
@@ -127,7 +149,7 @@ classdef OnlinePlots < handle
             t = obj.theme;
             obj.Figure = figure('Name', 'LuminoseFM - online', 'NumberTitle', 'off', ...
                                 'MenuBar', 'none', 'ToolBar', 'none', 'Color', t.Background, ...
-                                'Position', [80 60 1320 800], 'Visible', p.Results.Visible);
+                                'Position', [80 60 1320 820], 'Visible', p.Results.Visible);
             if ~isempty(BpodSystem) && isobject(BpodSystem)
                 BpodSystem.ProtocolFigures.LuminoseOnlinePlots = obj.Figure;
             end
@@ -135,17 +157,21 @@ classdef OnlinePlots < handle
             obj.buildHeader(S, char(p.Results.Subject));
             body = uipanel(obj.Figure, 'Units', 'normalized', 'Position', [0 0 1 0.93], ...
                            'BorderType', 'none', 'BackgroundColor', t.Background);
-            tiles = tiledlayout(body, 3, 4, 'TileSpacing', 'compact', 'Padding', 'compact');
+            % Twelve columns, so the top row keeps its one-to-three split and the two
+            % rows below hold three panels of equal width.
+            tiles = tiledlayout(body, 3, 12, 'TileSpacing', 'compact', 'Padding', 'compact');
 
             % Top left is what the animal is getting now and next, with the choices
-            % beside it; how the session is going below; timing at the bottom.
+            % beside it; how the session is going below; side and timing at the bottom.
             x = 1:nTrials;
-            obj.buildUpcomingPanel(nexttile(tiles, 1));
-            obj.buildOutcomePanel(nexttile(tiles, 2, [1 3]), x, S);
-            obj.buildPerformancePanel(nexttile(tiles, 5, [1 2]), x);
-            obj.buildPsychometricPanel(nexttile(tiles, 7), layout);
-            obj.buildBarPanel(nexttile(tiles, 8));
-            obj.buildReactionTimePanel(nexttile(tiles, 9, [1 4]), x);
+            obj.buildUpcomingPanel(nexttile(tiles, 1, [1 3]));
+            obj.buildOutcomePanel(nexttile(tiles, 4, [1 9]), x, S);
+            obj.buildPerformancePanel(nexttile(tiles, 13, [1 4]), x);
+            obj.buildPsychometricPanel(nexttile(tiles, 17, [1 4]), layout);
+            obj.buildEvidencePanel(nexttile(tiles, 21, [1 4]));
+            obj.buildBarPanel(nexttile(tiles, 25, [1 4]));
+            obj.buildBiasPanel(nexttile(tiles, 29, [1 4]), x);
+            obj.buildReactionTimePanel(nexttile(tiles, 33, [1 4]), x);
             drawnow;
         end
 
@@ -181,14 +207,23 @@ classdef OnlinePlots < handle
             obj.showUpcoming(nextSpec, queue);
 
             if mod(trialNumber, obj.RefreshEvery) == 0 || trialNumber <= 2
+                sessionLimits = [0, max(20, ceil(trialNumber * 1.08))];
                 set(h.performance, 'YData', obj.performanceY);
                 set(h.leftPerformance, 'YData', obj.leftPerformanceY);
                 set(h.rightPerformance, 'YData', obj.rightPerformanceY);
-                set(obj.axesOf.performance, 'XLim', [0, max(20, ceil(trialNumber * 1.08))]);
+                set(obj.axesOf.performance, 'XLim', sessionLimits);
+
+                set(h.biasLeft, 'YData', obj.biasLeftY);
+                set(h.biasTarget, 'YData', obj.biasTargetY);
+                set(obj.axesOf.bias, 'XLim', sessionLimits);
+
+                for k = 1:4
+                    set(h.plane(k), 'XData', obj.planeX(k, :), 'YData', obj.planeY(k, :));
+                end
 
                 fractions = ratio(obj.barCorrect, obj.barTrials);
                 set(h.bars, 'YData', fractions);
-                for k = 1:4
+                for k = 1:2
                     set(h.barCounts(k), 'Position', [k, min(max(fractions(k), 0), 1) + 0.06, 0], ...
                         'String', sprintf('%d', obj.barTrials(k)));
                 end
@@ -256,6 +291,7 @@ classdef OnlinePlots < handle
             end
             obj.correctness(n) = result.Correct;
             obj.sideOfTrial(n) = spec.CorrectSide;
+            obj.biasTargetY(n) = spec.BiasTargetPLeft;
 
             obj.reactionTimes(n) = result.ReactionTime;
             if result.Choice == 1
@@ -282,9 +318,13 @@ classdef OnlinePlots < handle
             obj.leftPerformanceY(n) = meanOfScored(correct(sides == 1));
             obj.rightPerformanceY(n) = meanOfScored(correct(sides == 2));
 
-            if isnan(result.Correct)
-                % No choice, no information about performance: left out of every
-                % aggregate rather than counted as an error.
+            if isnan(result.Correct) || isnan(result.Choice)
+                % No choice, no information about performance or bias: left out of every
+                % aggregate rather than counted as an error. The bias line carries its
+                % last value across, so it does not break at every missed trial.
+                if obj.nChoices > 0
+                    obj.biasLeftY(n) = obj.biasLeftY(n - 1);
+                end
                 return
             end
             obj.nChoices = obj.nChoices + 1;
@@ -292,9 +332,18 @@ classdef OnlinePlots < handle
             side = spec.CorrectSide;
             obj.barTrials(side) = obj.barTrials(side) + 1;
             obj.barCorrect(side) = obj.barCorrect(side) + result.Correct;
-            lightBar = 3 + double(~spec.OptoOn);
-            obj.barTrials(lightBar) = obj.barTrials(lightBar) + 1;
-            obj.barCorrect(lightBar) = obj.barCorrect(lightBar) + result.Correct;
+
+            obj.choseLeft(obj.nChoices) = double(result.Choice == 1);
+            window = obj.choseLeft(max(1, obj.nChoices - obj.biasWindow + 1):obj.nChoices);
+            obj.biasLeftY(n) = mean(window);
+
+            % The light the trial actually delivered: none on a light-off trial. A small
+            % fixed jitter per trial keeps repeated patterns from hiding one another,
+            % without touching the global random stream that draws sides.
+            lit = double(spec.OptoOn);
+            series = 2 * (1 - result.Correct) + result.Choice;   % 1..4, see planeX
+            obj.planeX(series, n) = lit * obj.lightA(spec.PatternIndex) + jitter(n, 0.6180339887);
+            obj.planeY(series, n) = lit * obj.lightB(spec.PatternIndex) + jitter(n, 0.7548776662);
 
             point = obj.psychometricIndex(spec.PatternIndex);
             if point >= 1
@@ -502,22 +551,66 @@ classdef OnlinePlots < handle
             ylabel(ax, 'P(choose left)');
         end
 
+        function buildEvidencePanel(obj, ax)
+            % Choices in the plane of the evidence on A against the evidence on B.
+            t = obj.theme;
+            styleAxes(ax, t, sprintf('Evidence, u_A vs u_B, by choice  (%s left, %s right)', ...
+                                     char(9664), char(9654)));
+            obj.axesOf.evidence = ax;
+            line(ax, [0 1], [0 1], 'Color', t.Faint, 'LineStyle', '--', 'LineWidth', 1);
+            nTrials = size(obj.planeX, 2);
+            blank = NaN(1, nTrials);
+            % Rows of planeX: correct-left, correct-right, incorrect-left, incorrect-right.
+            markers = {'<', '>', '<', '>'};
+            obj.handles.plane = gobjects(1, 4);
+            for k = 1:4
+                if k <= 2
+                    style = {'MarkerFaceColor', t.Correct, 'MarkerEdgeColor', 'none'};
+                else
+                    style = {'MarkerFaceColor', 'none', 'MarkerEdgeColor', t.Incorrect, 'LineWidth', 1};
+                end
+                obj.handles.plane(k) = line(ax, blank, blank, 'LineStyle', 'none', ...
+                    'Marker', markers{k}, 'MarkerSize', 5, style{:});
+            end
+            set(ax, 'XLim', [-0.06 1.06], 'YLim', [-0.06 1.06], 'XTick', 0:0.5:1, 'YTick', 0:0.5:1);
+            xlabel(ax, 'u_A, evidence on A (fraction of the window lit)');
+            ylabel(ax, 'u_B, evidence on B');
+            legend(ax, obj.handles.plane([1 3]), {'correct', 'incorrect'}, ...
+                   'Location', 'northeast', 'Box', 'off', 'TextColor', t.Muted, 'FontSize', 8);
+        end
+
         function buildBarPanel(obj, ax)
             t = obj.theme;
-            styleAxes(ax, t, 'By side and light');
+            styleAxes(ax, t, 'By side');
             obj.axesOf.bars = ax;
-            obj.handles.bars = bar(ax, 1:4, NaN(1, 4), 0.62, 'FaceColor', 'flat', ...
+            obj.handles.bars = bar(ax, 1:2, NaN(1, 2), 0.55, 'FaceColor', 'flat', ...
                                    'EdgeColor', 'none');
-            obj.handles.bars.CData = [t.Left; t.Right; t.ChannelA; t.NoChoice];
-            line(ax, [0.4 4.6], [0.5 0.5], 'Color', t.Faint, 'LineStyle', '--');
-            obj.handles.barCounts = gobjects(1, 4);
-            for k = 1:4
+            obj.handles.bars.CData = [t.Left; t.Right];
+            line(ax, [0.4 2.6], [0.5 0.5], 'Color', t.Faint, 'LineStyle', '--');
+            obj.handles.barCounts = gobjects(1, 2);
+            for k = 1:2
                 obj.handles.barCounts(k) = text(ax, k, 0.06, '0', 'HorizontalAlignment', 'center', ...
                                                 'FontSize', 8, 'Color', t.Muted);
             end
-            set(ax, 'YLim', [0 1.12], 'XLim', [0.4 4.6], 'XTick', 1:4, ...
-                'XTickLabel', {'left', 'right', 'light on', 'light off'}, 'XGrid', 'off');
+            set(ax, 'YLim', [0 1.12], 'XLim', [0.4 2.6], 'XTick', 1:2, ...
+                'XTickLabel', {'left-rewarded', 'right-rewarded'}, 'XGrid', 'off');
             ylabel(ax, 'Fraction correct');
+        end
+
+        function buildBiasPanel(obj, ax, x)
+            t = obj.theme;
+            styleAxes(ax, t, sprintf('Side bias, last %d choices', obj.biasWindow));
+            obj.axesOf.bias = ax;
+            line(ax, [0 numel(x)], [0.5 0.5], 'Color', t.Faint, 'LineStyle', '--', 'LineWidth', 1);
+            obj.handles.biasTarget = line(ax, x, obj.biasTargetY, 'Color', t.Muted, ...
+                                          'LineStyle', ':', 'LineWidth', 1.2);
+            obj.handles.biasLeft = line(ax, x, obj.biasLeftY, 'Color', t.Left, 'LineWidth', 2);
+            set(ax, 'YLim', [0 1], 'XLim', [0 20]);
+            xlabel(ax, 'Trial');
+            ylabel(ax, 'P(left)');
+            legend(ax, [obj.handles.biasLeft, obj.handles.biasTarget], ...
+                   {'chose left', 'bias correction target'}, 'Location', 'southeast', ...
+                   'Box', 'off', 'TextColor', t.Muted);
         end
 
         function buildReactionTimePanel(obj, ax, x)
@@ -535,7 +628,8 @@ classdef OnlinePlots < handle
             ylabel(ax, 'Seconds');
             legend(ax, [obj.handles.leftReaction, obj.handles.rightReaction, ...
                         obj.handles.medianReaction], {'chose left', 'chose right', 'median'}, ...
-                   'Location', 'northeastoutside', 'Box', 'off', 'TextColor', t.Muted);
+                   'Location', 'north', 'Orientation', 'horizontal', 'Box', 'off', ...
+                   'TextColor', t.Muted);
         end
     end
 end
@@ -621,6 +715,13 @@ if isempty(values)
 else
     value = mean(values);
 end
+end
+
+
+function offset = jitter(n, step)
+% A small offset for trial n, from a low-discrepancy sequence: deterministic, spread
+% evenly, and independent of rand, which the trial policy draws sides from.
+offset = 0.025 * (2 * mod(n * step, 1) - 1);
 end
 
 

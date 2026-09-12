@@ -10,7 +10,9 @@ function LuminoseFM
 % of session this is (D11):
 %   Behaviour  the task: setup dialog, trial loop, runtime window and online plots
 %   Sleep      a home-cage sleep recording: a sleep barcode, then sync pulses on a
-%              clock, with its own reduced setup dialog and plots (lum.sleep.run)
+%              clock and, if chosen, test pulses of light on channels A and B through
+%              PulsePal, with its own setup dialog, test-pulse designer and plots
+%              (lum.sleep.run, D13)
 % Either runs end to end under Bpod('EMU') on a machine with no hardware, with working
 % GUI, plots and data saving; hardware calls fall back to shims that log what they
 % would have done. The data file records which kind it was, in Data.Session.Type.
@@ -94,7 +96,15 @@ for i = 1:numel(notes)
 end
 
 %% Hardware
-devices = lum.dev.open(rig, S);
+% A session that delivers light refuses to start without PulsePal (lum.dev.openPulsePal).
+% Bpod runs the protocol file with no try/catch of its own, so the console is released
+% here before the error is shown.
+try
+    devices = lum.dev.open(rig, S);
+catch openError
+    BpodSystem.Status.BeingUsed = 0;
+    rethrow(openError);
+end
 
 fprintf('LuminoseFM: %s\n', lum.trainingStageNote(S));
 fprintf('LuminoseFM: %s\n', lum.HoldShaping.describe(S));

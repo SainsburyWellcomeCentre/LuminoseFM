@@ -229,6 +229,19 @@ verifyEqual(testCase, S.Task.OnHoldBreak, 'Restart stimulus', 'Old files take th
 verifyTrue(testCase, any(contains(added, 'GUI.HoldWindow (was GUI.InitiationWindow)')));
 end
 
+function testTestPulsesAreFilledIntoOldSleepSettings(testCase)
+% A 0.4 settings file has a sleep section with no test pulses; they come in switched off,
+% and the operator's own sleep settings stay.
+loaded = lum.defaultSettings;
+loaded.Sleep = rmfield(loaded.Sleep, 'TestPulses');
+loaded.Sleep.DurationMinutes = 90;
+[S, added] = lum.mergeSettings(lum.defaultSettings, loaded);
+verifyEqual(testCase, S.Sleep.TestPulses, lum.defaultSettings().Sleep.TestPulses);
+verifyFalse(testCase, S.Sleep.TestPulses.Enabled);
+verifyEqual(testCase, S.Sleep.DurationMinutes, 90);
+verifyTrue(testCase, any(strcmp(added, 'Sleep.TestPulses')));
+end
+
 function testASleepSectionIsFilledIntoOldFiles(testCase)
 loaded = rmfield(lum.defaultSettings, 'Sleep');
 loaded.Session = rmfield(loaded.Session, 'Type');

@@ -20,5 +20,15 @@ classdef NullPulsePal < lum.dev.PulsePal
             % send() records the parameter that a real device would have received.
             obj.note('would set ch%d param %d = %g', channel, paramCode, value);
         end
+
+        function sendStopOutput(obj, channel)
+            % sendStopOutput() records the stop a real device would have received.
+            obj.note('would stop ch%d and switch its continuous playback off', channel);
+        end
+
+        function tf = handshake(obj) %#ok<MANU> % No device to ask
+            % handshake() stands in for an answer, so a session runs as it would on the rig.
+            tf = true;
+        end
     end
 end

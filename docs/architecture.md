@@ -1,7 +1,7 @@
 # LuminoseFM — Architecture
 
-Design record for the LuminoseFM protocol. Status: **implemented** (version 0.4); decisions
-D1–D12 confirmed. Update this file whenever the architecture changes.
+Design record for the LuminoseFM protocol. Status: **implemented** (version 0.5); decisions
+D1–D13 confirmed. Update this file whenever the architecture changes.
 
 ---
 
@@ -48,6 +48,20 @@ is then a set of one-shot timers, with no MATLAB code in the timing path.
 - 16 global timers is the hard ceiling on pattern complexity: one timer per stretch of light
   per channel. Budget validation belongs to the stimulus set (D5), not trial building.
 - PulsePal reprogramming happens only in the inter-trial window, never mid-stimulus.
+- **The split only holds while PulsePal is programmed, so a light session never runs without
+  it** (`lum.dev.openPulsePal`, 0.4.1). Bpod gates the BNC lines regardless, and an
+  unprogrammed PulsePal answers with its last program: edge triggering, a train delay, both LED
+  channels on one input, or continuous looping. Light then comes at the wrong times while every
+  `GlobalTimer<k>_Start` in the session file is on the poke. Before 0.4.1 a failed connection fell
+  back to the null shim with a warning that no light would be delivered, which was false. That
+  happened in 13 of the first 16 rig sessions: every session after the first in a MATLAB
+  instance. On connecting, every output is stopped with continuous playback off (`stopOutputs`,
+  firmware op 82), because parameters change the next trigger, not a train already playing.
+  Firmware v21 or later is required: v20 has a gated-mode bug with both inputs in use.
+- Since 0.5 a connected, stopped PulsePal must also answer a handshake (`checkConnection`) before
+  a session uses it. A session whose carrier never changes sends PulsePal nothing after trial 1,
+  so nothing else would notice a device that went away; a sleep session with test pulses asks
+  again at every carrier change and save, and stops if the answer does not come (D13).
 - Non-uniform trains stay available via `SendCustomPulseTrain` (≤5000 pulses).
 - **Gotcha:** `ProgramPulsePalParam(ch, 128, value)` passes the value straight to the
   firmware, which uses `0 = normal, 1 = toggle, 2 = gated` — the function's own header
@@ -391,10 +405,13 @@ before. *Sleep* hands over to `lum.sleep.run`: a reduced setup dialog
 validation (`lum.sleep.validate`), Flex I/O only, the session barcode with sleep markers, then
 sync pulses on a clock — `S.Sleep.Sync.Interval` ± `IntervalJitter`, widths fixed or jittered as
 for trials — for `S.Sleep.DurationMinutes`, with a figure of the pulses sent (`lum.sleep.Plots`).
-Pulses go out in blocks of about 10 s (`lum.sleep.pulsesPerBlock`), each a state machine of
-`PulseNNN`/`GapNNN` states (`lum.sleep.blockStateMachine`) run with blocking `RunStateMachine`, on
-the rig as in the emulator. The data file records `Session.Type` and, for sleep, `SyncPulses`
-(`Onset`, `Width`, `Block`).
+Pulses go out in blocks of about 10 s, run with blocking `RunStateMachine`, on the rig as in the
+emulator. Since 0.5 the pulses are laid out before the first block (`lum.sleep.syncPulseTimes`),
+cut into blocks by `lum.sleep.nextBlock`, and each block is a state machine of `LevelNNN` states,
+one per span between edges of its lines (`lum.sleep.blockStateMachine`) — which is what lets test
+pulses share the blocks (D13); before, a block was `PulseNNN`/`GapNNN` states sized by
+`lum.sleep.pulsesPerBlock`. The data file records `Session.Type` and, for sleep, `SyncPulses`
+(`Onset`, `Width`, `Block`), and `LightSegments` with test pulses.
 
 **Why.** Pre- and post-behaviour sleep is recorded on the same acquisition devices, so it needs
 the same kind of timeline and a barcode that says which kind of session a recording holds. States
@@ -482,6 +499,71 @@ cue's end from stimulus onset puts it on the same clock as every other stimulus 
 - The cue loop has no onset ramp (a ramp would be heard at every repeat); its tail is ramped off
   but not on, since it takes over mid-tone.
 
+### D13 — Test pulses in sleep sessions: one timeline of gates, cut into blocks where it is safe
+
+**Decision.** A sleep session may send *test pulses* (`S.Sleep.TestPulses`, off by default): probes
+— a single pulse or a pair, one epoch every inter-epoch interval — and named plasticity trains
+(theta burst and high frequency provided), in a schedule of steps: probe, rest or a train, on A and
+B, on one of them, or alternating epoch by epoch. They are delivered by the D1 split: Bpod gates
+BNC1/BNC2, and PulsePal, gated, fills each gate — with constant light for a probe, so the gate is the
+pulse, and with the train's pulses for a burst.
+
+- `lum.sleep.testPulsePlan` compiles the schedule before the session into every gate of light
+  (*segment*: onset, duration, channel, step, epoch) and every *epoch* (a probe, or one train), in
+  integer cycles of the 100 µs clock, and each step's carrier. A burst's gate runs from its first
+  pulse to half way through the gap after its last, so PulsePal completes the last pulse and cannot
+  begin another. A probe step of M minutes holds `floor(60 M / interval)` epochs, each followed by a
+  whole interval inside the step; a train step lasts `nTrains × TrainInterval`. With test pulses on,
+  the recording lasts as long as the schedule.
+- `lum.sleep.syncPulseTimes` lays out the sync pulses over the same span, and `lum.sleep.nextBlock`
+  cuts the two into state machines of about 10 s: only at a moment when every line is low, never
+  inside an epoch, and before the first epoch of the next step — shortened until the block fits
+  `MaxStates − 2`. `lum.sleep.blockStateMachine` makes one state per span between edges of the sync
+  line, A and B, holding each at its level.
+- PulsePal is given a step's carrier between blocks, with every line low, after answering a
+  handshake, and is asked again at every save; a failure ends the session with what was sent saved
+  and `Session.TestPulses.StoppedReason` set. A sleep session opens PulsePal through
+  `lum.dev.openPulsePal` (via `lum.sleep.deviceSettings`), so a session with test pulses is refused
+  without it, on the same terms as behaviour.
+- `lum.sleep.validateTestPulses` adds the checks that depend on the session around the schedule:
+  darkness after every epoch long enough for a whole sync pulse plus 1 ms, and the busiest epoch,
+  with the sync pulses that can fall inside it, within one state machine.
+- The file stores the compiled steps once (`Session.TestPulses`) and one row per gate sent
+  (`LightSegments`); `lum.sleep.epochShape` recovers the pulses PulsePal put in a gate.
+
+**Why.**
+
+1. *The same light path as behaviour.* A probe during sleep and a stimulus during the task reach the
+   bulb through the same BNC → PulsePal → LED chain with the same programming code, so responses are
+   comparable, and the refusal that protects behaviour (D1) protects sleep.
+2. *States, not timers or MATLAB.* Four hours of paired probes is 28,800 gates. Global timers cannot
+   hold that (16 on the rig, 5 in the emulator, and no `LoopMode` in the emulator), and MATLAB cannot
+   time it. Edges as states cost nothing from the timer budget, run the same in the emulator, and put
+   every onset in the trial record. A second of 100 Hz pulses as states would be 200 of them; as one
+   gate that PulsePal fills, it is two.
+3. *One timeline, cut where pausing costs nothing.* Sync pulses and light share each state machine,
+   so they are laid out together. Between blocks every line is low for the few milliseconds of the
+   upload; cutting only there makes that pause lengthen one dark interval, visibly in the data, and
+   never a pulse. Never splitting an epoch keeps a pair's interval and a theta rhythm exact. Cutting
+   before a new step's first epoch is what lets PulsePal change carrier with no light in flight.
+4. *A handshake, repeatedly.* A sleep session holds one carrier for hours and sends PulsePal nothing
+   that could fail; a device lost in hour two would go unnoticed while the file recorded light.
+
+**Consequences.**
+
+- Sleep block states are `Level001`… (were `Pulse001`/`Gap001`); `lum.sleep.pulsesPerBlock` is gone.
+- Every epoch must be followed by the longest sync pulse plus 1 ms of darkness, and one session holds
+  at most 500,000 gates.
+- Intervals across a block boundary are longer by the time spent between blocks (upload, plot, and
+  a save every sixth block), so a long session runs somewhat longer than its schedule; onsets in the
+  data are the state machine's own.
+- Train definitions are checked only while plasticity trains are on, so an unfinished one does not
+  block a session of probes.
+- In the emulator the gates drive BNC1/BNC2 on the console and PulsePal's programming is logged;
+  the emulator keeps no millisecond time, so an emulated interval is only a lower bound.
+- The designer (`lum.gui.TestPulseDesigner`) and the sleep setup dialog run the same compilation
+  and validation as the session.
+
 ---
 
 ## What is built, and where
@@ -490,8 +572,10 @@ cue's end from stimulus onset puts it on the same clock as every other stimulus 
 - `hardware/RigConfig.m` — the channel map (ports 1–5, channels A/B on BNC 1–2, Flex 2,
   module names) and the connected machine's live limits.
 - `+lum/+dev/` — PulsePal, HiFi and Flex behind a common base (`lum.dev.Device`), each with a
-  real and a null implementation, selected once by `lum.dev.open`. `Flex` also sends the
-  barcode and opens Bpod's analog viewer.
+  real and a null implementation, selected once by `lum.dev.open`. The HiFi module falls back
+  to its null shim when unreachable; PulsePal does not, in a session that delivers light
+  (`lum.dev.openPulsePal`, see D1), and must answer a handshake (`checkConnection`) before it is
+  used. `Flex` also sends the barcode and opens Bpod's analog viewer.
 - `hardware/CheckRig.m` — preflight report, hardware-only checks skipped in emulator mode.
 
 ### Trial engine
@@ -573,29 +657,38 @@ All per-trial work — runtime sync, trial spec, PulsePal programming, plot upda
 inside the prepare window, and its cost is written to `Data.Timing`.
 
 ### Sleep sessions
-`+lum/+sleep/`: `run` (the session sequence), `pulseSchedule`, `pulsesPerBlock`,
-`blockStateMachine`, `validate`, `Plots` (D11).
+`+lum/+sleep/`: `run` (the session sequence), `pulseSchedule` and `syncPulseTimes` (sync pulses),
+`testPulsePlan`, `stepChoices`, `epochShape`, `describeTestPulses`, `describeTrain` (test pulses),
+`nextBlock` and `blockStateMachine` (blocks), `validate` and `validateTestPulses`, `deviceSettings`,
+`Plots` (D11, D13).
 
 ### GUI
 As decided in D2. `lum.gui.SessionTypeDialog` (behaviour or sleep), `lum.gui.SetupDialog` (tabs;
 live validation; `PatternBrowser` on the Stimulus tab; `drawTrialFlow` on the Task tab),
-`lum.gui.SleepSetupDialog`, `lum.gui.StimulusDesigner` (every generator parameter, groups table,
-browser), `lum.gui.RuntimeWindow` (tabbed or compact). Both setup dialogs build the experiment
+`lum.gui.SleepSetupDialog` (with the test-pulse panel), `lum.gui.StimulusDesigner` (every generator
+parameter, groups table, browser), `lum.gui.TestPulseDesigner` (probe, LED drive, trains, schedule
+table and presets; previews through `drawTestPulseSchedule` and `drawTestPulseEpoch`),
+`lum.gui.RuntimeWindow` (tabbed or compact). Both setup dialogs build the experiment
 record through `lum.gui.ExperimentForm` and lay out forms with `lum.gui.Form`; all draw with
 `lum.gui.theme` and a small `lum.gui.logo`.
 
 ### Online plots
-`+lum/OnlinePlots.m` owns one figure: header; top row now and next (left) and outcomes; middle row
-performance, psychometric (laid out by `psychometricLayout` from the set: one point, pair, sweep or
-B-share bins) and by side and light; bottom row reaction time. Handles created once; aggregates
-kept incrementally; per-trial panels scroll and rescale to what is on screen; one
-`drawnow limitrate` per trial. `lum.sleep.Plots` is the sleep session's figure.
+`+lum/OnlinePlots.m` owns one figure on a 12-column grid: header; top row now and next (left) and
+outcomes; middle row performance, psychometric (laid out by `psychometricLayout` from the set: one
+point, pair, sweep or B-share bins) and evidence (each choice at the latent evidence u_A and u_B its
+stimulus carried, the fraction of the window A and B were lit, by correctness and side chosen, jittered by a fixed sequence rather than `rand`, which the
+trial policy draws sides from); bottom row by side, side bias (P(chose left) over the bias window,
+and the correction target) and reaction time. Handles created once; aggregates kept incrementally;
+per-trial panels scroll and rescale to what is on screen; one `drawnow limitrate` per trial.
+`lum.sleep.Plots` is the sleep session's figure: with test pulses, the schedule with progress, the
+lines (sync, A, B), the latest epoch, sync widths and epochs by step; without, lines and widths.
 
 ### Data
 Per README §4.6. The stimulus set (without preview states), settings, rig map, barcode, session
 type and device logs are stored once in `Data.Session`; each trial holds scalars and indices.
 Per-trial series live outside `BpodSystem.Data` during the session and are copied in trimmed at
-each save. Sleep sessions store `Data.SyncPulses` instead of trial series.
+each save. Sleep sessions store `Data.SyncPulses` instead of trial series, and with test pulses
+`Data.LightSegments` and `Data.Session.TestPulses` (D13).
 
 ### Tests
 `tests/runLuminoseTests.m` runs the suite from WSL via `matlab.exe -batch`. It refuses to run
@@ -661,3 +754,8 @@ These are properties of Bpod v1.9.0 that shaped the code and are easy to redisco
 - Confirm on the rig that a sleep session's pulses and sleep barcode reach the acquisition
   devices on Flex2, and that a behaviour session's merged airflow now rises with `CentreHold`.
 - Whether sleep sessions should drive the house light (port 5).
+- Confirm on the rig, with a scope downstream of PulsePal, that a sleep session's probes are 10 ms of
+  light 50 ms apart, that a theta-burst gate holds exactly four pulses, and that PulsePal changes
+  carrier between steps with nothing emitted.
+- Whether 5 ms is the right pulse width for the provided 100 Hz trains in OSN-ChR mice, and whether
+  paired probes on A and B should be simultaneous (the default) or alternate.

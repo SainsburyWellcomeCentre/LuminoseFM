@@ -68,6 +68,24 @@ A **light pattern** is the sequence of ON/OFF states of channels A and B over th
 window. At any instant the pair is in one of four joint states: dark, A only, B only, or A
 and B together. While a channel is on, PulsePal fills it with that channel's carrier.
 
+**A session that delivers light does not start without PulsePal.** The protocol programs
+PulsePal at the start of every session: both trigger inputs gated, output 1 on input 1 and
+output 2 on input 2, the carrier, no train delay, and every output stopped with continuous
+playback off. Bpod gates BNC1 and BNC2 whether or not that has happened, and a PulsePal the
+session has not programmed answers with whatever program it last held. That can be edge
+triggering with a long train, a train delay, both LED channels on one input, or an output
+looping on its own, so light comes at the wrong times. Meanwhile the session file shows every
+light timer starting on the poke. If PulsePal cannot be connected the session stops with
+PulsePal's own error message. Check its USB cable, close anything else holding its port
+(restarting MATLAB releases it), or untick **Light pattern** on the Task tab to run without
+light. Sessions before version 0.4.1 ran on regardless; the first line of their
+`Session.DeviceLog.PulsePal` says whether PulsePal was connected.
+
+Once connected and stopped, PulsePal must also **answer a handshake** before a session uses it
+(since 0.5). A sleep session that sends test pulses (§4.8) is refused on the same terms, asks
+again whenever it gives PulsePal a new carrier and at every save (about once a minute), and stops,
+saving what it sent, if PulsePal stops answering.
+
 ### 2.3 Flex I/O
 
 The r2+ adds four Flex I/O channels, each configurable as digital output (5 V TTL), digital
@@ -115,8 +133,9 @@ launch manager requires the protocol file name to match its folder name). Helper
 classes and utilities are organised in subfolders.
 
 **Two kinds of session.** The first window LuminoseFM opens asks what kind of session is
-starting. *Behaviour* opens the setup dialog and runs the task below. *Sleep* opens a reduced
-setup dialog and records home-cage sleep: a session barcode, then sync pulses only (§4.8). The
+starting. *Behaviour* opens the setup dialog and runs the task below. *Sleep* opens its own
+setup dialog and records home-cage sleep: a session barcode, sync pulses and, if chosen, test
+pulses of light on channels A and B (§4.8). The
 choice is saved with the subject's settings, so the next launch starts on it, and the data file
 records it as `SessionData.Session.Type` (`'Behaviour'` or `'Sleep'`).
 
@@ -266,6 +285,21 @@ Ticking a component on the Task tab switches it on: its rows light up on the tab
 and that tab's title counts the components on. The small logo in the header is from
 [`docs/logo`](docs/logo).
 
+**Sleep session setup** — three columns: the animal, the recording length and the sync pulses; the
+recordings and the session barcode; and **Test pulses** — whether light is sent on channels A and
+B, a summary of the probe and the schedule, a preview of the whole session and of one epoch, and
+**Design test-pulse schedule…**. With test pulses on, the recording lasts as long as their schedule,
+and the duration field shows it.
+
+**Test-pulse designer** — the probe (single or paired, pulse width, inter-pulse and inter-epoch
+intervals, both onset to onset), the LED drive on A and B, the plasticity trains (switched on here;
+one row per named train, *Theta burst* and *High frequency* to start with, and any added), and the
+schedule as a table of steps — probe, rest or a train, on A and B together, on one of them, or
+alternating — with presets, the minute each step starts, its epoch count, and previews of the
+session and of one epoch of the selected step. Everything compiles on each edit, and nothing
+leaves the window until the session could run it. It opens on its own too:
+`S = lum.gui.TestPulseDesigner();`.
+
 **Runtime window** — the parameters that are safe to change with an animal in the box,
 synced once per trial. On the rig it is a window of its own, in tabs (*Trial*: reward and
 timing; *Task*: punishment, bias correction, hold shaping; *Delivery*: light, sound and port
@@ -377,9 +411,17 @@ D:\luminoseData\<subject>\LuminoseFM\Session Settings\<settings name>.mat
     `HoldAttempts`, plus `TrialSettings` (the runtime parameters only) and `OutcomeNames` for
     decoding `Outcome`.
 - A sleep session file carries `SessionData.Session` with `Type` `'Sleep'` (subject, settings, rig,
-  devices, whether sync was sent, start and end time, barcode, version, Flex log) and
-  `SessionData.SyncPulses` — `Onset` (state machine clock, s), `Width` (s) and `Block`, one value per
-  pulse sent. Each block of pulses is one Bpod trial in `RawEvents`.
+  devices, whether sync was sent, start and end time, barcode, `TestPulses`, version, PulsePal and
+  Flex logs) and `SessionData.SyncPulses` — `Onset` (state machine clock, s), `Width` (s) and
+  `Block`, one value per pulse sent. Each block is one Bpod trial in `RawEvents`.
+  - With test pulses, `SessionData.LightSegments` — `Onset` (state machine clock, s), `Duration`
+    (s), `Channel` (1 = A, 2 = B), `Step`, `Epoch` and `Block`, one value per gate of light sent.
+    For a probe step the gate is the pulse; for a train step it is a burst, and
+    `lum.sleep.epochShape(lum.sleep.testPulsePlan(SessionData.Session.Settings.Sleep.TestPulses), step, epoch)`
+    gives the pulses PulsePal put in it.
+  - `Session.TestPulses` — `Enabled`, the compiled `Steps` (kind, channels, start, duration, epoch
+    count, and each step's PulsePal carrier and train), the schedule's `Duration`, whether it
+    `Completed`, and a `StoppedReason` when PulsePal stopped answering.
   - `SessionData.Timing` — how long each trial's prepare, send, plot and save steps took, so lag
     regressions show up in the data rather than only in the room.
 
@@ -401,8 +443,17 @@ time. Panels, in the order they are read:
   - **Psychometric** — P(choose left) with error bars, laid out for the stimulus set: one point for
     one group, the groups for two, along the swept parameter for more, in B-share bins for
     continuous patterns — with the contingency drawn behind it
-  - **By side and light** — fraction correct on left, right, light-on and light-off trials
+  - **Evidence, u_A vs u_B** — every choice at the latent evidence its trial's stimulus carried on
+    each channel: u_A and u_B, the fraction of the stimulus window channel A and channel B were lit.
+    Points are filled green when correct and outlined red when not, and point left (◀) or right (▶)
+    for the side chosen. An animal reading one channel separates
+    its left and right choices along a vertical or horizontal boundary; one weighing both, along a
+    diagonal. Light-off trials sit at the origin, and a small fixed jitter keeps repeated patterns
+    visible.
 - Bottom row
+  - **By side** — fraction correct on left- and right-rewarded trials
+  - **Side bias** — P(chose left) over the last `BiasWindow` choices (as set when the session
+    started), with the P(left) that bias correction aimed for on each trial
   - **Reaction time** — by side chosen, with a running median
 
 The per-trial panels scroll with the session and rescale to what is on screen, so they stay
@@ -421,14 +472,56 @@ window; the **sleep setup dialog** then asks only for what a sleep recording nee
 - the sync pulses: widths (*Fixed width* or *Jittered width*, as for behaviour trials), the
   interval between pulses and an optional jitter on it
 - the session barcode, with its **sleep marker** (200 ms by default) and a preview
+- the **test pulses**, if any, designed in the test-pulse designer (below)
 
-When started, the session sends the sleep barcode, then one sync pulse every interval until the time
-is up or the session is stopped from the console. Pulses are sent in blocks of about 10 s, each a
-state machine of its own, and each pulse's onset is recorded from the state machine's clock. The
-**sleep plot** shows only the sync line: the last 30 s of pulses as sent, and the width of every
-pulse against session time, under a header with the barcode and the pulse count. No light, sound or
-runtime window is used. In the emulator the session runs the same, drives no line, and records the
-barcode and pulses it would have sent.
+When started, the session sends the sleep barcode, then one sync pulse every interval — and the
+test pulses, on their schedule — until the recording is over or the session is stopped from the
+console.
+
+**Test pulses.** Light on channels A and B during the recording, to probe the bulb's response to it
+and to change that response. It goes out exactly as a behaviour stimulus does (§2.2): Bpod drives
+BNC1 and BNC2, and PulsePal, in gated mode, fills each gate.
+
+- A **probe** is one *epoch* every *inter-epoch interval* (2 s by default): a single pulse, or a pair
+  of pulses an *inter-pulse interval* apart (50 ms), each 10 ms of constant light. Both intervals are
+  onset to onset.
+- **Plasticity trains**, once switched on, are named definitions: bursts of pulses at a pulse
+  frequency, bursts at a burst frequency, a number of trains a train interval apart. Bpod gates each
+  burst and PulsePal puts the pulses in it. Provided: *Theta burst* — 10 bursts of 4 pulses (5 ms)
+  at 100 Hz, bursts at 4 Hz, 5 trains 20 s apart — and *High frequency* — 100 pulses (5 ms) at
+  100 Hz, 4 trains 20 s apart. Any other can be added.
+- The **schedule** is a list of steps run in order from the start of the recording: a probe or rest
+  for so many minutes, or a train (which lasts its trains), on A and B together, on one of them, or
+  alternating between them epoch by epoch. The default is paired-pulse probes on A and B for
+  4 hours. The recording lasts as long as the schedule.
+- The LED drive is set per channel, in volts.
+
+A schedule is refused before the session starts if it cannot be sent: pulses of a pair that overlap,
+epochs too long for their interval, a train step while trains are off, darkness after an epoch too
+short to hold a sync pulse, or an epoch so busy that it and the sync pulses that can fall in it do
+not fit one state machine.
+
+**How it is sent.** Every sync pulse and every gate of light is laid out before the first block, and
+the timeline goes out in state machines of about 10 s. Each is cut only where every line is low,
+never inside an epoch — so a pair keeps its interval and a train its rhythm — and before the first
+epoch of a new step, so PulsePal is given that step's carrier with no light in flight. Each state
+holds the sync line, A and B at one level until the next edge, so no global timers are used.
+Uploading the next block lengthens one interval by a few milliseconds, and the time spent between
+blocks makes a long session run a little longer than its schedule; every onset in the data is read
+from the state machine's clock.
+
+**PulsePal.** A sleep session with test pulses does not start without PulsePal, and PulsePal must
+answer a handshake whenever it is given a new carrier and at every save. If it stops answering, the
+session stops, saves what it sent and records why (`Session.TestPulses.StoppedReason`).
+
+The **sleep plot** shows, under a header with the pulse rule, the test pulses, the barcode and the
+counts: with test pulses, the schedule across the session with the part already sent shaded; the
+last 30 s of the sync line (and of A and B); with test pulses, the latest epoch at millisecond scale
+— its gates, and the light in them; the width of every sync pulse against session time; and, with
+test pulses, epochs sent against planned, step by step. No sound or runtime window is used. In the
+emulator the session runs the same: it drives BNC1 and BNC2 on the console but no sync line, logs
+PulsePal's programming, and records the barcode and every pulse it would have sent. The emulator
+keeps no millisecond time, so emulated intervals are only lower bounds.
 
 ---
 
@@ -450,6 +543,12 @@ The same words mean the same thing in the code, the windows, the plots and the d
 | session type | Behaviour or sleep; `Session.Type` |
 | carrier | What PulsePal does on a channel while it is on (frequency, pulse width, voltage) |
 | centre | British spelling, in identifiers as well as text: `CentreHold`, `WaitForCentrePoke` |
+| test pulses | Light during a sleep recording, probes and plasticity trains on a schedule: `S.Sleep.TestPulses` |
+| epoch | One probe — a single pulse or a pair — or one train: what a schedule step repeats |
+| inter-pulse interval, inter-epoch interval | Onset to onset: between the two pulses of a pair; between successive epochs |
+| plasticity train | Bursts of pulses meant to change the response: theta burst, high frequency, or one of your own |
+| schedule step | One row of the schedule: probe, rest or a train, for its length, on its channels |
+| light segment | One gate on channel A or B: a probe pulse, or a burst PulsePal fills with pulses (`LightSegments`) |
 
 Version 0.2 renamed several states, data fields and settings so that they say what they are.
 Settings files are converted when loaded; analysis code reading 0.1 files needs the old names:
@@ -485,6 +584,16 @@ Version 0.4 keeps the cue on until the poke and starts the stimulus on it:
 | runtime `PreStimulusHold`, 0.05 s by default; leaving it re-armed the trial unpunished | pre-session `S.Stimulus.Latency` (Stimulus tab), 0 by default; leaving it is a broken hold. State `PreStimulusHold` is entered only when the latency is above 0, otherwise the poke enters `CentreHold`. The runtime setting is retired on load, not converted |
 | cue rows `Latency`, `Duration` from trial start; `Cue.CentreLightDuringHold` | cue rows `ThroughStimulus`, `Duration` from stimulus onset; converted on load (the centre light keeps its hold setting, tone and air go off as the stimulus starts) |
 | task-event sync low in `PreStimulusHold` | low on the poke: in `PreStimulusHold`, or `CentreHold` without a latency |
+
+Version 0.5 adds test pulses to sleep sessions and rearranges the online plots:
+
+| 0.4 | 0.5 |
+|-----|-----|
+| sleep block states `Pulse001`, `Gap001`… | `Level001`…: one state per span between edges of the sync line and channels A and B |
+| sleep sessions never open PulsePal | they do when test pulses are on, and are refused without it |
+| — | `S.Sleep.TestPulses` (filled in, switched off, on load), `SessionData.LightSegments`, `Session.TestPulses`, `Session.DeviceLog.PulsePal` |
+| PulsePal connected and stopped | also answers a handshake before a session uses it |
+| online panel *By side and light* | *By side*; new *Evidence, u_A vs u_B* and *Side bias* panels |
 
 ---
 
@@ -537,6 +646,12 @@ module's active sound set, the utility refuses to run while a protocol is in pro
 S = lum.gui.StimulusDesigner();   % defaults, sized to the connected machine's timers
 ```
 
+### `lum.gui.TestPulseDesigner` — design sleep test pulses away from the rig
+
+```matlab
+S = lum.gui.TestPulseDesigner();  % defaults: paired-pulse probes on A and B for 4 hours
+```
+
 ---
 
 ## 7. Later: controlling the Doric LED from MATLAB
@@ -569,9 +684,9 @@ LuminoseFM/
 │   ├── +pattern/                 stimulus generator, stimulus set, light patterns
 │   ├── +stim/                    cue and stimulus components
 │   ├── +sync/                    session barcode
-│   ├── +sleep/                   sleep sessions: run, pulses, validation, plots
+│   ├── +sleep/                   sleep sessions: run, sync and test pulses, blocks, validation, plots
 │   ├── +dev/                     device shims, real and null
-│   └── +gui/                     session type, setup dialogs, stimulus designer, runtime window, theme
+│   └── +gui/                     session type, setup dialogs, stimulus and test-pulse designers, runtime window, theme
 ├── hardware/
 │   ├── RigConfig.m               the channel map — the single source of truth
 │   ├── CheckRig.m                preflight report
@@ -606,9 +721,11 @@ matlab -batch "cd('/path/to/LuminoseFM'); addpath('tests'); runLuminoseTests"
 
 Most of it is pure functions — the stimulus generator and stimulus set, the cue's timing once the
 stimulus starts, trial generation, bias correction, hold shaping and break modes, outcome scoring, the barcode and its kinds, the analog
-realignment, settings conversion and validation, the PulsePal carrier, the sleep pulse schedule.
-`stateMachineTest` asserts the state graph itself (restarts and the hold window included),
-`windowsTest` drives the runtime window, both plot figures, the session type chooser, both setup
-dialogs and the stimulus designer invisibly, and `emulatorSessionTest` and `sleepSessionTest` run a
-whole behaviour and sleep session under `Bpod('EMU')` and check the files they produce. `lintTest`
-keeps the repository at zero MATLAB Code Analyzer messages.
+realignment, settings conversion and validation, the PulsePal carrier and its health check (against
+a stub PulsePal that can stop answering), the sleep pulse schedule, the test-pulse plan and how a
+sleep session is cut into blocks. `stateMachineTest` asserts the state graph itself (restarts and
+the hold window included), `windowsTest` drives the runtime window, both plot figures, the session
+type chooser, both setup dialogs and both designers invisibly, and `emulatorSessionTest` and
+`sleepSessionTest` run a whole behaviour session and two sleep sessions — with and without test
+pulses — under `Bpod('EMU')` and check the files they produce. `lintTest` keeps the repository at
+zero MATLAB Code Analyzer messages.

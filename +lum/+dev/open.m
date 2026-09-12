@@ -16,11 +16,14 @@ function devices = open(rig, S)
 %   .hifi      lum.dev.HiFi subclass — sound
 %   .flex      lum.dev.Flex subclass — flow meter stream and sync TTL
 %
-% A device that is asked for but unreachable degrades to its null shim with a
-% warning, rather than ending the session: a rig with a loose PulsePal cable
-% should still be able to run a sound-only training session.
+% The HiFi module, when it is asked for but unreachable, degrades to its null shim
+% with a warning rather than ending the session: a rig with a loose HiFi cable can
+% still run a silent session. PulsePal does not: a session that delivers light
+% refuses to start without it, because Bpod would still gate channels A and B into a
+% PulsePal this session never programmed (lum.dev.openPulsePal). PulsePal is opened
+% first, so a refusal leaves nothing else open.
 %
-% See also: RigConfig, CheckRig, lum.dev.Device
+% See also: RigConfig, CheckRig, lum.dev.Device, lum.dev.openPulsePal
 
 global BpodSystem %#ok<GVMIS> % The one place emulator mode is read
 
@@ -33,31 +36,9 @@ if devices.emulated
              'Hardware calls are logged, not sent.\n'], rig.Limits.GlobalTimers);
 end
 
-devices.pulsePal = openPulsePal(devices.emulated, S);
+devices.pulsePal = lum.dev.openPulsePal(devices.emulated, S);
 devices.hifi     = openHiFi(devices.emulated, rig, S);
 devices.flex     = openFlex(devices.emulated, rig);
-
-
-function pulsePal = openPulsePal(emulated, S)
-% Connect to PulsePal, or explain why the session will run without it.
-if ~S.Session.UseOpto
-    pulsePal = lum.dev.NullPulsePal('optogenetic stimulus disabled for this session');
-    return
-end
-if emulated
-    pulsePal = lum.dev.NullPulsePal('emulator mode');
-    return
-end
-pulsePalRoot = fullfile(fileparts(fileparts(lum.repoRoot)), 'PulsePal');
-try
-    pulsePal = lum.dev.RealPulsePal(pulsePalRoot);
-catch connectionError
-    warning('lum:dev:open:noPulsePal', ...
-            ['Could not connect to PulsePal: %s\n'...
-             'The session will run, but no light will be delivered. Stop now if the '...
-             'session needs optogenetic stimulation.'], connectionError.message);
-    pulsePal = lum.dev.NullPulsePal('connection failed');
-end
 
 
 function hifi = openHiFi(emulated, rig, S)

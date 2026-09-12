@@ -166,6 +166,38 @@ S.Sleep.Sync = struct('Mode', lum.SyncMode.JitteredWidth, 'FixedWidth', 0.05, ..
                       'MeanWidth', 0.055, 'WidthJitter', 0.045, ...
                       'Interval', 1, 'IntervalJitter', 0);
 
+% Test pulses: light on channels A and B during a sleep recording, to probe the
+% response to it and to change it (lum.sleep.testPulsePlan, D13). As in behaviour, Bpod
+% gates BNC1/BNC2 and PulsePal fills each gate: with constant light for a probe, so the
+% gate is the pulse, and with a train's pulses for a plasticity train. When Enabled,
+% the recording lasts as long as the schedule, and DurationMinutes is not used.
+%   Probe     One epoch every InterEpochInterval seconds: a single pulse, or a pair of
+%             pulses InterPulseInterval apart (Mode 'Paired'). Both intervals are
+%             onset to onset; widths and intervals in seconds.
+%   Voltage   LED drive into the Doric driver, channel A then B, volts
+%   Trains    Named plasticity trains, used by name in the schedule, and only when
+%             PlasticityTrains is on: bursts of PulsesPerBurst pulses at
+%             PulseFrequency, BurstsPerTrain bursts at BurstFrequency, nTrains trains
+%             TrainInterval seconds apart (onset to onset). Theta burst is the first.
+%   Schedule  Steps run in order from the start of the recording. Kind is 'Probe',
+%             'Rest' or a train's name; Channels one of lum.sleep.stepChoices; Minutes
+%             the length of a probe or rest step (a train step lasts its trains).
+S.Sleep.TestPulses.Enabled = false;
+S.Sleep.TestPulses.Voltage = [5 5];
+S.Sleep.TestPulses.Probe = struct('Mode', 'Paired', 'PulseWidth', 0.010, ...
+                                  'InterPulseInterval', 0.050, 'InterEpochInterval', 2);
+S.Sleep.TestPulses.PlasticityTrains = false;
+S.Sleep.TestPulses.Trains = struct( ...
+    'Name',           {'Theta burst', 'High frequency'}, ...
+    'PulseFrequency', {100,           100}, ...
+    'PulseWidth',     {0.005,         0.005}, ...
+    'PulsesPerBurst', {4,             100}, ...
+    'BurstFrequency', {4,             1}, ...
+    'BurstsPerTrain', {10,            1}, ...
+    'nTrains',        {5,             4}, ...
+    'TrainInterval',  {20,            20});
+S.Sleep.TestPulses.Schedule = struct('Kind', {'Probe'}, 'Channels', {'A and B'}, 'Minutes', {240});
+
 %% Runtime tier: parameters that may change with an animal in the box
 %
 % Declared through the three helpers below rather than by hand, so that a

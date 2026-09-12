@@ -192,6 +192,159 @@ verifyNotEmpty(testCase, pulsePal.log(), 'The shim must say why it is not connec
 end
 
 
+%% Opening PulsePal for a session ---------------------------------------------------
+
+function testStoppingOutputsReachesAllFourAndEndsContinuousPlayback(testCase)
+% Parameters change what the next trigger does, not what PulsePal is doing: a train
+% still running carries on, and an output left looping continuously plays with no
+% trigger at all. Both are stopped, on every output, used or not.
+pulsePal = lum.dev.NullPulsePal('test');
+nBefore = numel(pulsePal.log());
+pulsePal.stopOutputs();
+lines = pulsePal.log();
+expected = arrayfun(@(k) sprintf('would stop ch%d and switch its continuous playback off', k), ...
+                    1:4, 'UniformOutput', false);
+verifyEqual(testCase, lines(nBefore + 1:end), expected);
+end
+
+function testALightSessionDoesNotStartWithoutPulsePal(testCase)
+% Bpod gates A and B into PulsePal whether or not the session programmed it, and an
+% unprogrammed PulsePal answers with whatever program it last held: light at the wrong
+% times while the data file shows a correct stimulus. There is no fallback on the rig.
+S = lum.defaultSettings;
+S.Session.UseOpto = true;
+try
+    lum.dev.openPulsePal(false, S, @unreachablePulsePal);
+    verifyFail(testCase, 'A light session must not start without PulsePal');
+catch refusal
+    verifyEqual(testCase, refusal.identifier, 'lum:dev:openPulsePal:notConnected');
+    verifySubstring(testCase, refusal.message, 'no Pulse Pal on any port');
+end
+end
+
+function pulsePal = unreachablePulsePal() %#ok<STOUT>
+% A connection attempt that finds no device. It declares an output, as a real one does:
+% an anonymous @() error(...) asked for one fails on that instead of on its message.
+error('test:noDevice', 'no Pulse Pal on any port');
+end
+
+function testAConnectedPulsePalIsStoppedBeforeTheSessionUsesIt(testCase)
+S = lum.defaultSettings;
+S.Session.UseOpto = true;
+pulsePal = lum.dev.openPulsePal(false, S, @() lum.dev.NullPulsePal('stand-in for the device'));
+verifyEqual(testCase, nnz(startsWith(pulsePal.log(), 'would stop ch')), 4);
+end
+
+function testASessionWithoutLightNeverOpensPulsePal(testCase)
+S = lum.defaultSettings;
+S.Session.UseOpto = false;
+pulsePal = lum.dev.openPulsePal(false, S, @() error('test:opened', 'PulsePal was opened'));
+verifyFalse(testCase, pulsePal.Available);
+end
+
+function testTheEmulatorNeverOpensPulsePal(testCase)
+pulsePal = lum.dev.openPulsePal(true, lum.defaultSettings, ...
+                                @() error('test:opened', 'PulsePal was opened'));
+verifyFalse(testCase, pulsePal.Available);
+verifyTrue(testCase, any(strcmp(pulsePal.log(), 'would check that PulsePal answers a handshake')), ...
+           'The device log reads as it would on the rig');
+end
+
+
+%% A healthy connection -------------------------------------------------------------
+
+function testAPulsePalThatAnswersPassesTheCheckAndIsLoggedOnce(testCase)
+pulsePal = StubPulsePal(true);
+pulsePal.checkConnection();
+pulsePal.checkConnection();
+verifyEqual(testCase, nnz(strcmp(pulsePal.log(), 'answered a handshake')), 1, ...
+            'A long session must not fill the log with answers');
+end
+
+function testAPulsePalThatStopsAnsweringFailsTheCheck(testCase)
+pulsePal = StubPulsePal(true);
+pulsePal.checkConnection();
+pulsePal.Answers = false;
+verifyError(testCase, @() pulsePal.checkConnection(), 'lum:dev:PulsePal:notResponding');
+verifyTrue(testCase, any(strcmp(pulsePal.log(), 'did not answer a handshake')));
+end
+
+function testASessionDoesNotStartWithAPulsePalThatDoesNotAnswer(testCase)
+% A port that opens but reaches no live device is as bad as no port.
+S = lum.defaultSettings;
+S.Session.UseOpto = true;
+try
+    lum.dev.openPulsePal(false, S, @() StubPulsePal(false));
+    verifyFail(testCase, 'A PulsePal that does not answer must not be used');
+catch refusal
+    verifyEqual(testCase, refusal.identifier, 'lum:dev:openPulsePal:notConnected');
+    verifySubstring(testCase, refusal.message, 'did not answer a handshake');
+end
+end
+
+function testAConnectedPulsePalIsStoppedAndThenMustAnswer(testCase)
+S = lum.defaultSettings;
+S.Session.UseOpto = true;
+pulsePal = lum.dev.openPulsePal(false, S, @() StubPulsePal(true));
+lines = pulsePal.log();
+stops = find(startsWith(lines, 'stub stop ch'));
+answer = find(strcmp(lines, 'answered a handshake'));
+verifyNumElements(testCase, stops, 4);
+verifyNumElements(testCase, answer, 1);
+verifyGreaterThan(testCase, answer, max(stops), 'Stopped first, then checked');
+end
+
+
+%% Sleep sessions -------------------------------------------------------------------
+
+function testASleepSessionWithTestPulsesDoesNotStartWithoutPulsePal(testCase)
+% A sleep session gates channels A and B into PulsePal exactly as a behaviour session
+% does, so it is refused on the same terms, whatever the behaviour light switch says.
+S = lum.defaultSettings;
+S.Sleep.TestPulses.Enabled = true;
+S.Session.UseOpto = false;
+try
+    lum.dev.openPulsePal(false, lum.sleep.deviceSettings(S), @unreachablePulsePal);
+    verifyFail(testCase, 'A sleep session with test pulses must not start without PulsePal');
+catch refusal
+    verifyEqual(testCase, refusal.identifier, 'lum:dev:openPulsePal:notConnected');
+end
+end
+
+function testASleepSessionWithoutTestPulsesNeverOpensPulsePal(testCase)
+S = lum.defaultSettings;
+S.Session.UseOpto = true;
+settings = lum.sleep.deviceSettings(S);
+pulsePal = lum.dev.openPulsePal(false, settings, @() error('test:opened', 'PulsePal was opened'));
+verifyFalse(testCase, pulsePal.Available);
+verifyFalse(testCase, settings.Session.UseSound, 'Sleep sessions never open the HiFi module');
+end
+
+function testEveryTestPulseCarrierIsWhatTheDeviceAccepts(testCase)
+% The carriers a sleep schedule compiles must be the carriers the device takes, gated.
+design = lum.defaultSettings().Sleep.TestPulses;
+design.Enabled = true;
+design.PlasticityTrains = true;
+design.Schedule = struct('Kind', {'Probe', 'Theta burst', 'High frequency'}, 'Channels', 'A and B', ...
+                         'Minutes', {1, 0, 0});
+plan = lum.sleep.testPulsePlan(design);
+pulsePal = lum.dev.NullPulsePal('test');
+p = lum.dev.PulsePal.Param;
+pulsePal.configure(plan.Steps(1).Carrier);
+verifyEqual(testCase, pulsePal.sentValue(1, p.Phase1Duration), 0.11, 'AbsTol', 1e-12, ...
+            'Constant light outlasts the 10 ms gate');
+pulsePal.configure(plan.Steps(2).Carrier);
+verifyEqual(testCase, pulsePal.sentValue(2, p.Phase1Duration), 0.005, 'AbsTol', 1e-12);
+verifyEqual(testCase, pulsePal.sentValue(2, p.InterPulseInterval), 0.005, 'AbsTol', 1e-12, '100 Hz');
+verifyGreaterThan(testCase, pulsePal.sentValue(1, p.PulseTrainDuration), 0.0375, ...
+                  'The train outlasts each burst''s gate');
+pulsePal.configure(plan.Steps(3).Carrier);
+verifyEqual(testCase, [pulsePal.sentValue(1, p.TriggerMode), pulsePal.sentValue(2, p.TriggerMode)], [2 2]);
+verifyGreaterThan(testCase, pulsePal.sentValue(1, p.PulseTrainDuration), 0.9975, ...
+                  'A one-second burst is not cut short');
+end
+
+
 function w = waveform(frequency, pulseWidth)
 % One carrier per optical channel, both the same unless a test says otherwise.
 w = struct('Channel', {1, 2}, 'Frequency', frequency, 'PulseWidth', pulseWidth, ...

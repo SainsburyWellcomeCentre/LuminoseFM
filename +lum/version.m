@@ -11,11 +11,18 @@ function text = version()
 % HoldAttempts series, added sleep sessions (Data.Session.Type) and corrected the
 % analog timeline for the barcode (D10, D11). 0.4.0 keeps the cue on until the poke,
 % starts the stimulus on the poke (the Cue, Cue2... and PreStimulusHold states are gone)
-% and times each cue component from stimulus onset (D12).
+% and times each cue component from stimulus onset (D12). 0.4.1 refuses to start a
+% session that delivers light without PulsePal, and stops PulsePal's outputs on
+% connecting; before it, a session ran on with PulsePal unprogrammed, which its device
+% log's first line records ("not connected (connection failed)"). 0.5.0 adds test
+% pulses to sleep sessions (S.Sleep.TestPulses, Data.LightSegments, Session.TestPulses;
+% D13), sends a sleep session's blocks as LevelNNN states in place of PulseNNN/GapNNN,
+% has PulsePal answer a handshake before a session uses it, and rearranges the online
+% plots (evidence u_A vs u_B and side bias; light on and off no longer compared).
 %
 % See also: LuminoseFM
 
-release = '0.4.0';
+release = '0.5.0';
 text = release;
 
 try
