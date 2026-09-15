@@ -102,6 +102,36 @@ verifyEqual(testCase, lum.pattern.patternAt(stimulusSet, 2).Segments, [2 0 1], '
 end
 
 
+function testReversingTheContingencySwapsEverySide(testCase)
+% The reversal is applied once, where the set is compiled, so everything downstream
+% reads the contingency actually in force; the operator's own numbers stay in
+% S.Task.GroupPLeft and come back as BasePLeft.
+S = settingsWith();
+S.Task.GroupPLeft = [1 0.25 0];
+S.Stimulus.Generator.nGroups = 3;
+plain = lum.pattern.stimulusSet(S, 16, 2);
+S.Task.ReverseContingency = true;
+reversed = lum.pattern.stimulusSet(S, 16, 2);
+verifyFalse(testCase, plain.Reversed);
+verifyTrue(testCase, reversed.Reversed);
+verifyEqual(testCase, reversed.GroupPLeft, 1 - plain.GroupPLeft, 'AbsTol', 1e-12);
+verifyEqual(testCase, reversed.BasePLeft, plain.GroupPLeft, 'AbsTol', 1e-12);
+verifyEqual(testCase, reversed.PatternPLeft, 1 - plain.PatternPLeft, 'AbsTol', 1e-12);
+verifyEqual(testCase, reversed.TrialPattern, plain.TrialPattern, ...
+            'Reversing pays the other side; it does not reorder the trials');
+end
+
+function testAReversedSetIsStillCheckedForIndistinguishableGroups(testCase)
+% The check has to see the contingency the animal meets, not the one typed in.
+S = settingsWith('Family', 'arbitrary', 'nGroups', 2, ...
+                 'Pulses', [1 1 0 0.5; 2 1 0 0.5]);
+S.Task.GroupPLeft = [1 0];
+S.Task.ReverseContingency = true;
+verifyError(testCase, @() lum.pattern.stimulusSet(S, 16, 2), ...
+            'lum:pattern:stimulusSet:indistinguishable');
+end
+
+
 function S = settingsWith(varargin)
 % Default settings with a fixed seed and generator fields overridden.
 S = lum.defaultSettings;

@@ -143,8 +143,11 @@ end
 
 
 function width = textWidth(text, isBold)
-% A generous estimate of a 9 pt label's width in pixels.
-perCharacter = 6.4 + 0.6 * isBold;
+% A generous estimate of a 9 pt label's width in pixels. Generous on purpose: the
+% estimate is what keeps a caption inside the axes, and one that came out short left
+% the longest caption — the shaped centre hold's — a few pixels over the left edge on
+% a narrow window.
+perCharacter = 7.1 + 0.7 * isBold;
 width = numel(text) * perCharacter;
 
 

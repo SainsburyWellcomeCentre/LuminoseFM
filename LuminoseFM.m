@@ -173,73 +173,88 @@ fprintf('LuminoseFM: running in %s mode, %s runtime window.\n', runner.Mode, low
 % rather than after it ends.
 plots.showNext(spec, queue);
 runtime.showStatus(sprintf('Session started  |  %s', runningText(spec, stimulusSet)));
-runner.begin(sma);
 nextSpec = spec;
 
 %% Trial loop
-for currentTrial = 1:maxTrials
-    spec = nextSpec;
+% Wrapped, because a session that fails part way through must still be torn down:
+% Bpod runs the protocol file with no try/catch of its own, so an error thrown from
+% here would leave the trial manager's polling timer running, the runtime window and
+% plots open, the analog file handle unflushed and the console believing the rig is
+% free — which is what the operator sees as a frozen protocol. Whatever went wrong,
+% the trials that completed are saved and every device is released below.
+stoppedReason = '';
+try
+    runner.begin(sma);
+    for currentTrial = 1:maxTrials
+        spec = nextSpec;
 
-    runner.awaitPrepareWindow();
-    if BpodSystem.Status.BeingUsed == 0; break; end
+        runner.awaitPrepareWindow();
+        if BpodSystem.Status.BeingUsed == 0; break; end
 
-    prepareTimer = tic;
-    if currentTrial < maxTrials
-        [S, nextSpec, sma, valveCache, queue] = prepareTrial(S, rig, devices, history, stimulusSet, ...
-            queue, sounds, cueComponents, stimulusComponents, currentTrial + 1, valveCache, runtime);
-    else
-        nextSpec = [];
+        prepareTimer = tic;
+        if currentTrial < maxTrials
+            [S, nextSpec, sma, valveCache, queue] = prepareTrial(S, rig, devices, history, stimulusSet, ...
+                queue, sounds, cueComponents, stimulusComponents, currentTrial + 1, valveCache, runtime);
+        else
+            nextSpec = [];
+        end
+        prepareSeconds = toc(prepareTimer);
+
+        sendTimer = tic;
+        if currentTrial < maxTrials
+            runner.queue(sma);
+        end
+        sendSeconds = toc(sendTimer);
+
+        rawEvents = runner.awaitTrialData();
+        if BpodSystem.Status.BeingUsed == 0; break; end
+        HandlePauseCondition;
+        if currentTrial < maxTrials
+            runner.advance();
+        end
+        if isempty(fieldnames(rawEvents))
+            continue  % The session was stopped mid-trial; nothing to record
+        end
+
+        %% Record
+        BpodSystem.Data = AddTrialEvents(BpodSystem.Data, rawEvents);
+        BpodSystem.Data = BpodNotebook('sync', BpodSystem.Data);
+        if currentTrial == 1
+            % AddTrialEvents builds Data.Info from scratch on the first trial, so
+            % session-level annotations have to be added after it, not before.
+            BpodSystem.Data.Info.EmulatorMode = devices.emulated;
+            BpodSystem.Data.Session = sessionRecord(S, rig, stimulusSet, runner, devices, startTime, ...
+                                                    barcode, barcodeSent, windowMode);
+        end
+
+        result = lum.scoreTrial(BpodSystem.Data.RawEvents.Trial{currentTrial}, spec, rig);
+        history = lum.updateHistory(history, currentTrial, spec, result);
+        data = recordTrial(data, currentTrial, spec, result, S);
+
+        plotTimer = tic;
+        plots.update(currentTrial, spec, result, nextSpec, queue, S.GUI.RewardAmount);
+        runtime.showStatus(statusLine(currentTrial, result, nextSpec, stimulusSet));
+        plotSeconds = toc(plotTimer);
+
+        % Recorded before the save, so the file written this trial already carries this
+        % trial's timing. The save's own cost lands in the next file.
+        data.Timing.prepare(currentTrial) = prepareSeconds;
+        data.Timing.send(currentTrial) = sendSeconds;
+        data.Timing.plot(currentTrial) = plotSeconds;
+
+        saveTimer = tic;
+        if mod(currentTrial, S.Session.SaveEveryNTrials) == 0
+            BpodSystem.Data = publishTrialFields(BpodSystem.Data, data, currentTrial);
+            SaveBpodSessionData;
+        end
+        data.Timing.save(currentTrial) = toc(saveTimer);
     end
-    prepareSeconds = toc(prepareTimer);
-
-    sendTimer = tic;
-    if currentTrial < maxTrials
-        runner.queue(sma);
-    end
-    sendSeconds = toc(sendTimer);
-
-    rawEvents = runner.awaitTrialData();
-    if BpodSystem.Status.BeingUsed == 0; break; end
-    HandlePauseCondition;
-    if currentTrial < maxTrials
-        runner.advance();
-    end
-    if isempty(fieldnames(rawEvents))
-        continue  % The session was stopped mid-trial; nothing to record
-    end
-
-    %% Record
-    BpodSystem.Data = AddTrialEvents(BpodSystem.Data, rawEvents);
-    BpodSystem.Data = BpodNotebook('sync', BpodSystem.Data);
-    if currentTrial == 1
-        % AddTrialEvents builds Data.Info from scratch on the first trial, so
-        % session-level annotations have to be added after it, not before.
-        BpodSystem.Data.Info.EmulatorMode = devices.emulated;
-        BpodSystem.Data.Session = sessionRecord(S, rig, stimulusSet, runner, devices, startTime, ...
-                                                barcode, barcodeSent, windowMode);
-    end
-
-    result = lum.scoreTrial(BpodSystem.Data.RawEvents.Trial{currentTrial}, spec, rig);
-    history = lum.updateHistory(history, currentTrial, spec, result);
-    data = recordTrial(data, currentTrial, spec, result, S);
-
-    plotTimer = tic;
-    plots.update(currentTrial, spec, result, nextSpec, queue, S.GUI.RewardAmount);
-    runtime.showStatus(statusLine(currentTrial, result, nextSpec, stimulusSet));
-    plotSeconds = toc(plotTimer);
-
-    % Recorded before the save, so the file written this trial already carries this
-    % trial's timing. The save's own cost lands in the next file.
-    data.Timing.prepare(currentTrial) = prepareSeconds;
-    data.Timing.send(currentTrial) = sendSeconds;
-    data.Timing.plot(currentTrial) = plotSeconds;
-
-    saveTimer = tic;
-    if mod(currentTrial, S.Session.SaveEveryNTrials) == 0
-        BpodSystem.Data = publishTrialFields(BpodSystem.Data, data, currentTrial);
-        SaveBpodSessionData;
-    end
-    data.Timing.save(currentTrial) = toc(saveTimer);
+catch sessionError
+    % Nothing more may be sent to the state machine, so stop the loop here and let
+    % the teardown below save, close and release. The error is shown after the
+    % teardown, so the operator reads it with the rig already free.
+    stoppedReason = sessionError.message;
+    BpodSystem.Status.BeingUsed = 0;
 end
 
 %% Teardown
@@ -254,6 +269,7 @@ try
     if isfield(BpodSystem.Data, 'Session')
         BpodSystem.Data.Session.DeviceLog = deviceLogs(devices);
         BpodSystem.Data.Session.EndTime = char(datetime('now'), 'yyyy-MM-dd HH:mm:ss');
+        BpodSystem.Data.Session.StoppedReason = stoppedReason;
     end
     BpodSystem.Data = devices.flex.mergeAnalogData(BpodSystem.Data);
     if nCompleted > 0
@@ -276,11 +292,18 @@ if nCompleted > 0
     fprintf('  %s\n  Data: %s\n', summary, BpodSystem.Path.CurrentDataFile);
 end
 
-% If the loop ran to completion rather than being stopped from the console, end the
-% session the way the stop button does: release the ports, close the protocol figures
-% and let the console show that the rig is free.
-if BpodSystem.Status.BeingUsed == 1
+% If the loop ran to completion, or ended in an error rather than at the console's
+% stop button, end the session the way the stop button does: release the ports, flush
+% the serial link, close the protocol figures and let the console show that the rig
+% is free. Only a session the operator stopped has had this done for it already.
+if BpodSystem.Status.BeingUsed == 1 || ~isempty(stoppedReason)
     RunProtocol('Stop');
+end
+
+if ~isempty(stoppedReason)
+    % After the teardown, so the rig is already free when the operator reads it.
+    warning('lum:LuminoseFM:sessionFailed', ...
+            'The session ended early: %s', stoppedReason);
 end
 
 
@@ -432,6 +455,7 @@ record.DevicesAvailable = struct('PulsePal', devices.pulsePal.Available, ...
                                  'FlexAnalog', devices.flex.hasAnalog(), ...
                                  'FlexSync', devices.flex.hasSync());
 record.StartTime = char(startTime, 'yyyy-MM-dd HH:mm:ss');
+record.StoppedReason = '';  % Filled in at teardown if the session ended in an error
 record.Barcode = struct('Value', barcode.Value, 'Hex', barcode.Hex, 'Kind', barcode.Kind, ...
                         'Sent', barcodeSent, 'Params', barcode.Params);
 record.ProtocolVersion = lum.version();

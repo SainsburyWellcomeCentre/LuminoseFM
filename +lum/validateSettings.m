@@ -77,6 +77,13 @@ for part = cue
     end
 end
 choices = lum.experimentChoices();
+if ~ismember(S.Task.Variant, choices.TaskVariants)
+    fail('badTaskVariant', 'The task must be one of: %s.', strjoin(choices.TaskVariants, ', '));
+end
+reversal = S.Task.ReverseContingency;
+if ~(isscalar(reversal) && (islogical(reversal) || (isnumeric(reversal) && ismember(reversal, [0 1]))))
+    fail('badReversal', 'Reverse contingency must be on or off.');
+end
 for side = {'Left', 'Right'}
     checkTiming(S.(side{1}).Light, window, sprintf('%s port light', side{1}));
     checkTiming(S.(side{1}).Tone, window, sprintf('%s tone', side{1}));
@@ -167,12 +174,30 @@ switch S.Sync.Mode
             fail('badSyncWidth', 'The fixed sync pulse must be longer than 0 s.');
         end
     case lum.SyncMode.JitteredWidth
+        if ~(S.Sync.MeanWidth > 0)
+            fail('badSyncWidth', 'The mean sync pulse must be longer than 0 s.');
+        end
         if ~(S.Sync.WidthJitter < S.Sync.MeanWidth)
             fail('badSyncJitter', ...
                  ['A jitter of %g s around a mean of %g s would ask for pulses of zero width '...
                   'or less. Reduce the jitter below the mean.'], S.Sync.WidthJitter, ...
                  S.Sync.MeanWidth);
         end
+end
+% A pulsed mode is the trial's first state, so the cue starts one pulse width after the
+% state machine does. That is nothing at the tens of milliseconds the modes are meant for,
+% and worth saying out loud past that.
+longestPulse = 0;
+switch S.Sync.Mode
+    case lum.SyncMode.FixedWidth
+        longestPulse = S.Sync.FixedWidth;
+    case lum.SyncMode.JitteredWidth
+        longestPulse = S.Sync.MeanWidth + S.Sync.WidthJitter;
+end
+if S.Session.UseSync && rig.Available.Sync && longestPulse > 0.25
+    notes{end+1} = sprintf(['The sync pulse is up to %g s long, and it is the trial''s first '...
+                            'state, so the cue starts that much after the trial does.'], ...
+                           longestPulse);
 end
 if S.Sync.Barcode.Enabled
     lum.sync.barcode(0, S.Sync.Barcode);

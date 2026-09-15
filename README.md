@@ -124,6 +124,27 @@ Module ports are high-speed communication channels for external Bpod hardware ex
 
 Base MATLAB only; no toolboxes. Bpod user guide: <https://sanworks.github.io/Bpod_Wiki/user-guide/>
 
+**Start every session from a clean slate.** Close MATLAB, then power-cycle the Bpod state
+machine and PulsePal (unplug their USB, or switch the powered hub off and on) before the first
+session of a run, and again after any session that ended in an error. Then start MATLAB, run
+`Bpod`, and launch the protocol.
+
+This is not superstition, and it is not optional after a failure. Both devices talk over a USB
+serial port that only the process holding it can use, and both keep state between sessions:
+
+- A MATLAB that was killed, or a protocol that errored, can leave the port open. Bpod's own
+  scan lists only *free* ports, so the next session either cannot find the device or opens it
+  with bytes from the last one still in the buffer. A state machine link that has lost its place
+  in the byte stream shows up mid-session as a missed-deadline warning with an absurd number in
+  it, followed by *"The last state machine sent was not acknowledged by the Bpod device"*. From
+  version 0.5.1 LuminoseFM saves the trials that completed, releases the rig and says so instead
+  of freezing — but the session is over, and only a restart brings the link back.
+- PulsePal answers with **its last program** when nothing has reprogrammed it. `PulsePal()`
+  prints "already open" and returns if a `PulsePalSystem` object is left in the base workspace,
+  even a dead one, so a stale object hides a disconnected device.
+- A stale `BpodSystem` also keeps the old Flex I/O configuration and module list, so a channel
+  reconfigured in the console since startup may not be the one the protocol sees.
+
 ---
 
 ## 4. Protocol
@@ -187,11 +208,37 @@ hold broke before the window ran out; *EarlyWithdrawal* — a break ended the tr
 only); *NoResponse*, *Correct*, *Incorrect*, *CorrectNoReward*. `Data.HoldAttempts` counts how many
 times the stimulus started on each trial.
 
+**Which task.** The Task tab's first field says which variant of the task this session runs:
+*Familiar/Novel*, *Mixture*, *Sequence* or *Motifs*. It names the kind of stimulus set the
+session is built around and is stored with the data (`Session.Settings.Task.Variant`), so a data
+set can be selected by it. Choosing one does not yet change any other setting; the per-variant
+defaults will be added here.
+
 **Training stages.** Stage 1 (*Habituation*) rewards **both** side ports, whichever way the
 animal goes, so it learns that the side ports pay before it has to learn which one. By
 default the rewarded ports are also lit during the response window in habituation (the
 *guide light*, set per side). Stages 2 (*Training*) and 3 (*Experiment*) reward only the
 correct side.
+
+Choosing a stage also sets the session up the way that stage is normally run
+(`lum.stageDefaults`), the moment it is chosen:
+
+| Stage | Light pattern | Stimulus air |
+|-------|---------------|--------------|
+| Habituation | **off** (no PulsePal needed) | **on**, for the whole stimulus window |
+| Training, Experiment | on | off |
+
+Habituation therefore delivers **air alone**: the hold is exactly as long and as salient as it
+will be later, and carries nothing to discriminate. These are defaults, not a lock — untick or
+tick anything afterwards and the session runs as you leave it.
+
+**Reversing the contingency.** The Task tab's *Contingency: reverse* tick swaps the sides for
+every group at once: each group's `P(left)` becomes `1 - P(left)`, so the light that paid left
+pays right. The table of groups on the Stimulus tab keeps showing the unreversed numbers — they
+are what you type — and the status line says when a reversal is in force. It is applied once,
+where the stimulus set is compiled, so the set, the online plots and every trial record agree
+on the contingency the animal actually meets: `Session.StimulusSet.GroupPLeft` is the reversed
+contingency, `BasePLeft` the typed one, and `Reversed` says which happened.
 
 **Centre-hold shaping.** A naive animal cannot hold its nose in the centre port for a whole
 stimulus, so the hold can be trained up in two ways, alone or together (Task tab):
@@ -273,12 +320,12 @@ edit; the status line says what is wrong, and **Start session** stays disabled u
 | Tab | What it holds |
 |-----|---------------|
 | Experiment | Subject (from the launch manager); genotype (OSN-ChR or wild type offered, any other typed into the box); *Neuropixels recording* (probe, implant, target, coordinates, serial), *EEG/EMG recording* (channel counts), *Drug administration* (name, delivery route, dose and unit, vehicle, time given); session length, devices, runtime window, notes |
-| Task | Training stage and what it does to rewards; trial order; centre hold — how long it is, what a broken hold does, and hold shaping; which components make up the cue, the stimulus and each side; a timeline of one trial, with the hold window |
+| Task | Which task (Familiar/Novel, Mixture, Sequence, Motifs); training stage and what it does to rewards — choosing one sets the session up the way that stage is normally run; trial order, including the contingency reversal; centre hold — how long it is, what a broken hold does, and hold shaping; which components make up the cue, the stimulus and each side; a timeline of one trial, with the hold window |
 | Cue | For each cue component (centre light, tone, air): whether it continues through the stimulus, and if not, how long it stays on into it; the cue tone's frequency; sound output; a timeline of the cue against the latency and the stimulus, one row per component |
 | Stimulus | The stimulus window and its latency from the poke; a summary of the stimulus set with **Design stimuli…** and **New trial order**; P(left) per group; every trial of the session to scroll through; timing of air, centre light and tone |
 | Light path | The fiber bundle and which cables are on A and B; the carrier for each channel (frequency, pulse width, LED drive voltage) |
 | Left, Right | That side's port light and tone, each timed from stimulus onset; its guide light; which groups pay that side |
-| Sync | Trial sync pulse mode and widths; the session barcode (behaviour and sleep marker widths), with a preview |
+| Sync | Trial sync pulse mode and widths — every mode is driven by states, and a pulsed one is the trial's first state, so the cue follows it; the session barcode (behaviour and sleep marker widths), with a preview |
 | Runtime | Starting values of the parameters that stay editable during the session |
 
 Ticking a component on the Task tab switches it on: its rows light up on the tab that times it,
@@ -330,14 +377,30 @@ data file's name. To read it from a recording:
 startTime = lum.sync.barcodeTime(value);   % kind is 'Behaviour' or 'Sleep'
 ```
 
-**Trial pulses** have three modes:
+**Trial pulses** have three modes, and every one of them drives the line from **states**, so
+none costs a global timer:
 
 - *Fixed width* — one pulse per trial, always the same length: enough to count trials.
 - *Jittered width* — one pulse per trial, its width drawn uniformly within a jitter either side of
   a mean. The widths are near-unique, so a recording is matched to `Data.SyncPulseWidth` trial by
   trial rather than by counting edges. (Called *Random width* before version 0.2.)
-- *Task events* — no pulse: the line goes high at trial start and low when the animal pokes the
-  centre port, so its own edges mark the events. Costs no global timer.
+- *Task events* — no pulse: the line goes high at trial start, stays high while the animal is
+  asked to poke, and goes low when it pokes the centre port, so its own edges mark the events.
+
+In a pulsed mode the pulse **is** the trial's first state: `TrialStart` drives the line high and
+lasts the pulse's width, and `WaitForCentrePoke` drives it low as the cue comes on. The cue
+therefore starts one pulse width (10-100 ms) after the state machine does — invisible to an
+animal whose only sign that a trial has begun is the cue itself, and it makes the rising edge an
+exact marker for the cue as well.
+
+> **Sessions before 0.5.1 have no usable trial pulses.** Until then the pulse was a global timer
+> linked to the sync channel, triggered in `TrialStart` — whose state timer was 0. Bpod writes
+> every output channel from the entered state's own row, so `WaitForCentrePoke`, reached one
+> state-machine cycle later, wrote the line low again and the pulse reached the recording as a
+> ~100 us glitch. The session barcode was never affected: its every edge is a state. To align a
+> session from 0.2-0.5.0, use the barcode and `Data.TrialStartTimestamp` rather than looking for
+> trial pulses. `TestSyncLine` (§6) sends both kinds of train on demand, so the line and the way
+> it is driven can be told apart on a scope.
 
 ### 4.5 Emulator mode
 
@@ -402,9 +465,12 @@ D:\luminoseData\<subject>\LuminoseFM\Session Settings\<settings name>.mat
 - Alongside Bpod's own fields, a behaviour session file carries:
   - `SessionData.Session` — written once: `Type` (`'Behaviour'`), `Subject`, the frozen `Settings`,
     the `StimulusSet` (every pattern as a segment table, the trial order, each group's label and
-    `P(left)`, and descriptors of each pattern), the rig channel map, which devices were available,
-    the runner and runtime window used, `StartTime` and `EndTime`, the `Barcode` (value, kind,
-    whether it was sent, its parameters), the protocol version, and the device log.
+    `P(left)` as run (`GroupPLeft`), as typed (`BasePLeft`) and whether the contingency was
+    `Reversed`, and descriptors of each pattern), the rig channel map, which devices were
+    available, the runner and runtime window used, `StartTime` and `EndTime`, the `Barcode`
+    (value, kind, whether it was sent, its parameters), the protocol version, the device log, and
+    `StoppedReason` — empty for a session that ran to its end or was stopped from the console, and
+    the error otherwise.
   - One value per trial for `StimulusGroup`, `PatternIndex`, `CorrectSide`, `Choice`, `Correct`,
     `Rewarded`, `Outcome`, `ReactionTime`, `OptoOn`, `SoundOn`, `SyncMode`, `SyncPulseWidth`,
     `BiasTargetPLeft`, `TrainingStage`, `HoldDuration`, `HoldGrace`, `HoldBreaks` and
@@ -549,6 +615,8 @@ The same words mean the same thing in the code, the windows, the plots and the d
 | plasticity train | Bursts of pulses meant to change the response: theta burst, high frequency, or one of your own |
 | schedule step | One row of the schedule: probe, rest or a train, for its length, on its channels |
 | light segment | One gate on channel A or B: a probe pulse, or a burst PulsePal fills with pulses (`LightSegments`) |
+| task variant | Which variant of the task a session runs: Familiar/Novel, Mixture, Sequence, Motifs (`S.Task.Variant`) |
+| contingency reversal | Swapping which side every group pays, `P(left)` to `1 - P(left)` (`S.Task.ReverseContingency`) |
 
 Version 0.2 renamed several states, data fields and settings so that they say what they are.
 Settings files are converted when loaded; analysis code reading 0.1 files needs the old names:
@@ -595,6 +663,18 @@ Version 0.5 adds test pulses to sleep sessions and rearranges the online plots:
 | PulsePal connected and stopped | also answers a handshake before a session uses it |
 | online panel *By side and light* | *By side*; new *Evidence, u_A vs u_B* and *Side bias* panels |
 
+Version 0.5.1 fixes the trial sync pulse and gives the Task tab two new fields:
+
+| 0.5.0 | 0.5.1 |
+|-------|-------|
+| trial sync pulse from a global timer, overwritten one cycle later (so ~100 us reached the recording) | the pulse is `TrialStart`'s own state timer; no mode costs a global timer |
+| `TrialStart` had a zero timer in every mode | it lasts the pulse in a pulsed mode, zero in task-event mode |
+| task-event sync went low on leaving `TrialStart` | the line is held high through `WaitForCentrePoke` until the poke |
+| the cue and the stimulus were dropped by `PreStimulusHold`, `HoldBreak` and `CentreHoldResumed` | their levels are written again there (`lum.stim.Component.sustainActions`) |
+| — | `S.Task.Variant`, `S.Task.ReverseContingency`, `Session.StoppedReason`, `StimulusSet.BasePLeft` / `.Reversed` |
+| habituation was set up by hand | `lum.stageDefaults`: air and no light, applied when the stage is chosen |
+| a session that lost the Bpod link froze the protocol | the trials so far are saved, the rig is released, the error is reported |
+
 ---
 
 ## 6. Utilities
@@ -640,6 +720,22 @@ playback falls back to the PC audio device. Because loading a sound overwrites a
 module's active sound set, the utility refuses to run while a protocol is in progress unless
 `'Force', true` is passed. `help TestHiFiSound` lists all options.
 
+### `TestSyncLine` — see what reaches the sync line
+
+```matlab
+TestSyncLine                       % 10 x 50 ms pulses on Flex2DO, driven both ways
+TestSyncLine('Drive', 'states')    % only the way the protocol drives it
+TestSyncLine('Channel', 'BNC2')    % a different output channel
+TestSyncLine('Barcode', true)      % finish with a real, decodable session barcode
+```
+
+Put a scope, a logic analyser or the acquisition system itself on the line and run it. It sends
+the same train twice: once from **states**, the way the barcode and (from 0.5.1) the trial pulses
+are sent, and once from a **global timer** linked to the channel, the way trial pulses were sent
+before. If one train arrives and the other does not, the line is fine and the way it was driven
+is not. Nothing here touches the animal — no valve, no LED, no optical channel — and it refuses
+to run while a protocol is in progress unless `'Force', true` is passed.
+
 ### `lum.gui.StimulusDesigner` — design stimuli away from the rig
 
 ```matlab
@@ -677,6 +773,7 @@ LuminoseFM/
 │   ├── HoldShaping.m             centre-hold shaping and what a broken hold does
 │   ├── scoreTrial.m              outcome classification
 │   ├── validateSettings.m        everything that must hold before a session starts
+│   ├── stageDefaults.m           the session shape a training stage assumes
 │   ├── timerBudget.m             global timers left for light
 │   ├── SessionRunner.m           TrialManager on the rig, blocking in the emulator
 │   ├── OnlinePlots.m             the live figure
@@ -690,7 +787,8 @@ LuminoseFM/
 ├── hardware/
 │   ├── RigConfig.m               the channel map — the single source of truth
 │   ├── CheckRig.m                preflight report
-│   └── TestHiFiSound.m           play a test sound through the HiFi module
+│   ├── TestHiFiSound.m           play a test sound through the HiFi module
+│   └── TestSyncLine.m            drive the sync TTL, from states and from a global timer
 ├── tests/
 │   └── runLuminoseTests.m        the whole suite; needs no hardware
 └── docs/

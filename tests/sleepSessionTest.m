@@ -124,7 +124,11 @@ verifyTrue(testCase, any(strcmp(log, 'would set ch1 param 4 = 0.11')), 'Constant
 verifyTrue(testCase, any(strcmp(log, 'would set ch1 param 4 = 0.005')), 'The train''s pulse width');
 verifyTrue(testCase, any(strcmp(log, 'would set ch1 param 128 = 2')), 'Gated');
 verifyFalse(testCase, sessionData.Session.DevicesAvailable.PulsePal, 'The emulator has no PulsePal');
-verifyEqual(testCase, max(sessionData.LightSegments.Block), sessionData.nTrials);
+% Every gate belongs to a block that ran. The last block need not carry light: a block
+% is cut where every line is low, so a schedule whose final epoch ends before the last
+% sync pulse leaves a trailing block of sync alone.
+verifyGreaterThanOrEqual(testCase, min(sessionData.LightSegments.Block), 1);
+verifyLessThanOrEqual(testCase, max(sessionData.LightSegments.Block), sessionData.nTrials);
 end
 
 function testTheProtocolFolderIsStillUsableAfterTheSession(testCase)

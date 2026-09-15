@@ -43,6 +43,12 @@ classdef Sound < lum.stim.Component
         function actions = stopActions(~, context)
             actions = context.devices.hifi.stopAction();
         end
+
+        function actions = sustainActions(~, ~)
+            % Nothing: the module plays on across states, and repeating the play
+            % command would start the sound again from its beginning.
+            actions = {};
+        end
     end
 
     methods (Access = private)

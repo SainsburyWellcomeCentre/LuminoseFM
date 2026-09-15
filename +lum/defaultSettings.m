@@ -68,8 +68,17 @@ S.Session.ShowAnalogViewer = true;  % Open Bpod's analog viewer (flow meter) at 
 S.Session.RuntimeWindow = 'Automatic';
 
 %% Pre-session tier: task structure
+% Which variant of the task this session runs (lum.experimentChoices). It names the
+% kind of stimulus set the session is built around, so a data set can be selected by
+% it; picking one in the setup dialog will later fill in that variant's defaults.
+S.Task.Variant = 'Familiar/Novel';
 S.Task.TrainingStage = 2;           % 1 Habituation, 2 Training, 3 Experiment
 S.Task.TrainingStageNames = {'Habituation', 'Training', 'Experiment'};
+% Swap which side each group pays: every group's P(left) becomes 1 - P(left), so the
+% light that paid left pays right. Applied where the stimulus set is compiled, so the
+% set, the plots and every trial record agree on the contingency actually in force;
+% S.Task.GroupPLeft keeps the unreversed values, and the set records both.
+S.Task.ReverseContingency = false;
 % Chance that the left port pays, one value per stimulus group; in continuous mode
 % one for A-led and one for B-led patterns. 1 and 0 give a fixed contingency,
 % values in between a psychometric one.

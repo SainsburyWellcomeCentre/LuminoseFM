@@ -36,6 +36,10 @@ registered — systemd in `/etc/wsl.conf` often clears it. It is not a MATLAB pr
 agent cannot fix it without sudo. Ask the operator to run, in a WSL terminal:
 `sudo sh -c 'echo :WSLInterop:M::MZ::/init:PF > /proc/sys/fs/binfmt_misc/register'`.
 
+The operator restarts MATLAB and power-cycles the state machine and PulsePal between sessions,
+and always after a session that ended in an error (README §3). Assume a fresh process when
+reasoning about device state; do not add code that tries to recover a stale COM port.
+
 Never open COM ports, call `Bpod`, `PulsePal`, or run the protocol against real hardware
 from an agent session — the rig may be running an animal. Use `Bpod('EMU')` (emulator) or
 pure-function tests instead, and hand hardware runs to the operator.
@@ -72,7 +76,7 @@ the r2+. Design around this:
   `rig.Limits.GlobalTimers` from `RigConfig`; never hard-code 16. The trial uses conditions
   1–4 (left, right, centre port clear; hold window over) and always one timer for the hold
   window, so the emulator has four left for light — fewer when a cue light or cue air goes off
-  part way through the stimulus, which takes one each.
+  part way through the stimulus, which takes one each. The sync line takes none, in any mode.
 - **No Flex I/O at all**: no `Flex1` analog stream, no `Flex2DO`, so no airflow viewer, no
   sync pulses and no session barcode (it is recorded with `Sent = false`).
 - `BpodSystem.assertModule` **errors** in EMU, as does `BpodTrialManager`'s constructor
@@ -131,6 +135,12 @@ stops the session part way through as though the End button had been pressed.
   **once** in `Data.Session`; per-trial records hold only events, timestamps, outcome and
   indices into them (`PatternIndex` into `Session.StimulusSet`). Strip `States` from the
   stimulus set before storing it — segments are enough.
+- `Data.Session.StoppedReason` is `''` for a session that ran to its end or was stopped from
+  the console, and the error message for one that failed. `Session.StimulusSet.GroupPLeft` is
+  the contingency as run, `BasePLeft` the one typed in, `Reversed` says whether
+  `S.Task.ReverseContingency` swapped them.
+- Trial pulses in sessions from 0.2 to 0.5.0 are ~100 us glitches, not the recorded widths
+  (D4); align those sessions by the barcode and `Data.TrialStartTimestamp`.
 - Per-trial series are listed once, in `trialSeriesNames` in `LuminoseFM.m`; the README and
   `emulatorSessionTest` list them too — keep all three in step.
 
@@ -146,12 +156,13 @@ stops the session part way through as though the End button had been pressed.
 - Fiber bundles (`lum.fiberBundles`): 2-to-19 (ch1 fiber 10 spots on A, ch2 fiber 9 on B);
   4-to-19 with cables black (4 spots), blue, orange, green (5 each), any two on A and B,
   recorded in `S.Light.Cables`. The drawing colours orange red.
-- Flex I/O (`Bpod Local/Settings/FlexConfig.mat`, `channelTypes = [2 4 4 4]`):
-  Flex1 = **analog input** (flow meter, 1 kHz) — already configured; Flex2 = sync TTL
-  digital output (barcode and trial pulses) — **not yet configured** (set it in the Bpod
-  console before `Flex2DO` exists as a channel name); Flex3-4 disabled. Note
-  `docs/BpodSystemInfo.png` predates the Flex1 config, so trust `FlexConfig.mat` where
-  they disagree.
+- Flex I/O (`Bpod Local/Settings/FlexConfig.mat`): channel types are 0 = digital in,
+  1 = digital out, 2 = analog in, 3 = analog out, 4 = disabled. Flex1 = **analog input**
+  (flow meter, 1 kHz); Flex2 = **digital output**, the sync TTL (barcode and trial pulses) —
+  configured on this rig since 0.5.0 (sessions from 2026-09-15 record
+  `Session.DevicesAvailable.FlexSync = 1`); Flex3-4 disabled. Read the live configuration
+  (`BpodSystem.HW.FlexIO_ChannelTypes`), never the saved file. Note `docs/BpodSystemInfo.png`
+  predates both, so trust the live values where they disagree.
 - Modules: `HiFi1` (Module#1, USB `COM8`) → amplifier → speaker. Modules 2/3 unregistered.
 - Budget: 16 global timers, 8 global counters, 16 conditions **on the rig**; the emulator
   has 5/5/5. Read `rig.Limits` rather than assuming either. The hold window always takes one
@@ -180,6 +191,8 @@ doc that does not:
 | session type | `'Behaviour'` or `'Sleep'` (`S.Session.Type`, `Data.Session.Type`) | protocol, mode |
 | carrier | PulsePal per-channel frequency, pulse width, voltage | waveform |
 | centre | British spelling in identifiers too (`CentreHold`) | `Center` |
+| task variant | which variant of the task a session runs: Familiar/Novel, Mixture, Sequence, Motifs (`S.Task.Variant`) | task type, paradigm |
+| contingency reversal | swapping which side every group pays, P(left) to 1 - P(left) (`S.Task.ReverseContingency`) | flip, switch |
 | test pulses | light in a sleep session: probes and plasticity trains on a schedule (`S.Sleep.TestPulses`) | opto stimulation, stim |
 | epoch | one probe (single pulse or pair) or one train; never split across state machines | trial, sweep |
 | inter-pulse / inter-epoch interval | onset to onset: within a pair; between epochs | gap, ISI (unqualified) |
@@ -215,6 +228,19 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   session with test pulses is refused without PulsePal. `lum.sleep.validateTestPulses` is the
   one check the designer, the sleep dialog and the session share. With test pulses on, the
   recording lasts as long as the schedule; `S.Sleep.DurationMinutes` is kept but unused.
+- **The training stage shapes the session (`lum.stageDefaults`).** Choosing *Habituation* in the
+  setup dialog switches the light pattern off (`S.Session.UseOpto`, `S.GUI.OptoOn`) and the
+  stimulus air on for the whole window; choosing *Training* or *Experiment* does the reverse.
+  Defaults, applied only on the dropdown's change, never during a session and never enforced by
+  validation — the operator may untick anything afterwards. `S.Task.Variant` (Familiar/Novel,
+  Mixture, Sequence, Motifs; `lum.experimentChoices().TaskVariants`) names the task and is
+  recorded; per-variant defaults will go in `lum.stageDefaults`'s neighbourhood when they exist.
+- **A failed session is torn down, not abandoned.** The trial loop in `LuminoseFM` is wrapped in
+  a `try`: on an error the trials that completed are saved, the analog stream merged, the
+  windows closed, the devices released and `RunProtocol('Stop')` called (which flushes the serial
+  link), and only then is the error warned about, with `Data.Session.StoppedReason` recording it.
+  `lum.SessionRunner` reports a lost Bpod link as `lum:SessionRunner:linkLost`. Anything added to
+  the loop must keep working when it is entered part way through.
 - **Namespacing**: put reusable code in a MATLAB package (`+lum/...`) or clearly named
   helper folders; the protocol file stays a thin session script. `hardware/` holds rig
   utilities usable outside a session (e.g. `TestHiFiSound.m`).
@@ -248,8 +274,9 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
     dark palette. The logo comes from `lum.gui.logo(n)` (block-averaged, cached, no toolbox).
 - **The stimulus is a stimulus set (D5).** `lum.pattern.generate` makes the patterns and a
   balanced order from `S.Stimulus.Generator` and a seed; `lum.pattern.stimulusSet` compiles it
-  into segments, applies `S.Task.GroupPLeft`, and refuses a pattern over the timer budget or
-  identical groups paying different sides. `lum.pattern.patternAt(set, k)` recovers one
+  into segments, applies `S.Task.GroupPLeft` and then `S.Task.ReverseContingency` (`GroupPLeft`
+  is the contingency as run, `BasePLeft` as typed, `Reversed` says which), and refuses a pattern
+  over the timer budget or identical groups paying different sides. `lum.pattern.patternAt(set, k)` recovers one
   pattern. The seed is drawn per session by `lum.pattern.prepareSeed` before the setup dialog
   opens, so the preview is the session. The generator uses a private `RandStream` — never the
   global rng.
@@ -302,10 +329,20 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   straight into `WaitForResponse`, or the side ports are live with the animal's nose still in
   the centre port and its withdrawal beam break is scored as a choice.
   - **States, not timers, for what happens outside the stimulus** — the cue before stimulus
-    onset, the latency, the barcode, and a sleep session's sync and test pulses (D13). Global timers are for what happens inside the hold, where leaving the port
+    onset, the latency, the barcode, every trial sync pulse (D4), and a sleep session's sync and
+    test pulses (D13). Global timers are for what happens inside the hold, where leaving the port
     must end it at any instant: light segments (D1), the grace hold clock (D6), stimulus
     components switched on late or off early (D9), and cue components switched off part way
-    through the stimulus (D12).
+    through the stimulus (D12). A timer's `Channel` only holds a line while no state writes it:
+    the state wins on every state entry, so a timer can never carry a level across a state change.
+  - **Output actions do not persist across states.** Bpod writes *every* output channel from the
+    entered state's own row, so a level a state switched on is dropped by the next state unless
+    that state writes it again. `lum.stim.Component.sustainActions` / `sustainOnsetActions` are
+    those repetitions — the same levels, without the timer triggers that must fire once and
+    without the play commands that would restart a sound (a serial channel with no action in a
+    row is sent nothing, so sound plays on by itself). `PreStimulusHold` sustains the cue;
+    `HoldBreak` and `CentreHoldResumed` sustain the stimulus, so a forgiven break does not switch
+    the air or the centre light off; `WaitForResponse` repeats `WaitForCentreExit`'s guide lights.
   - **The HiFi module plays one sound at a time**; a new play command replaces the sound playing.
     `lum.validateSettings` refuses two sounds that start with the stimulus (`soundClash`), and
     with restarts an early-withdrawal noise is let finish before `WaitForCentrePoke` plays the
@@ -313,14 +350,22 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   - `HoldBreak` and `CentreHoldResumed` exist in every trial. Without grace shaping they are
     unreachable; with it, `CentreHold` triggers the stimulus timers and the hold clock, and
     `CentreHoldResumed` must **not** re-trigger them.
-- **Sync TTL**: `S.Session.UseSync` says whether the line is driven, `S.Sync.Mode`
-  (`lum.SyncMode`: FixedWidth, JitteredWidth, TaskEvents) says how trials drive it.
-  `TaskEvents` uses no timer, driving the line high in `TrialStart` and low on the poke — in
-  `PreStimulusHold`, or `CentreHold` without a latency — and in `NoInitiation`. The mode is part of the data format — it decides what
-  a rising edge in the ephys file means — so it is written to every trial record; append
-  modes, never renumber them. The session barcode (`lum.sync.barcode`, D7) is sent once, by
-  `devices.flex.sendBarcode`, as its own state machine before the runner is created. Its
-  markers carry the session type: `MarkerWidth` for behaviour, `SleepMarkerWidth` for sleep.
+- **Sync TTL, driven by states in every mode (D4)**: `S.Session.UseSync` says whether the line
+  is driven, `S.Sync.Mode` (`lum.SyncMode`: FixedWidth, JitteredWidth, TaskEvents) says how
+  trials drive it. A pulsed mode makes the pulse `TrialStart`'s own state timer and drops the
+  line in `WaitForCentrePoke` as the cue comes on; `TaskEvents` leaves `TrialStart` at zero,
+  holds the line high through `WaitForCentrePoke`, and drops it on the poke — in
+  `PreStimulusHold`, or `CentreHold` without a latency — and in `NoInitiation`. **No mode costs
+  a global timer**, and none may: before 0.5.1 a pulsed mode was a global timer linked to the
+  channel and triggered in `TrialStart`, whose zero timer meant `WaitForCentrePoke` re-wrote the
+  line low one cycle later, so every pulse reached the recording as a ~100 us glitch while the
+  barcode came through perfectly. Never drive the sync line from a global timer again. The mode
+  is part of the data format — it decides what a rising edge in the ephys file means — so it is
+  written to every trial record; append modes, never renumber them. The session barcode
+  (`lum.sync.barcode`, D7) is sent once, by `devices.flex.sendBarcode`, as its own state machine
+  before the runner is created. Its markers carry the session type: `MarkerWidth` for behaviour,
+  `SleepMarkerWidth` for sleep. `hardware/TestSyncLine.m` drives the line both ways outside a
+  session, for the operator to scope.
 - **Determinism**: anything that must be sub-millisecond accurate lives in the state machine
   or PulsePal, not in MATLAB loop code.
 
@@ -335,8 +380,10 @@ where it can be tested with no hardware.
 | `hardware/RigConfig.m` | The channel map and the connected machine's live limits |
 | `hardware/CheckRig.m` | Preflight report |
 | `hardware/TestHiFiSound.m` | Play a test sound outside a session |
+| `hardware/TestSyncLine.m` | Drive the sync TTL outside a session, from states and from a global timer |
 | `+lum/defaultSettings.m`, `mergeSettings.m` | The two-tier settings struct; old settings files converted (renames, reshapes, retirements) |
 | `+lum/validateSettings.m` | Everything that must hold before a session starts; returns the stimulus set |
+| `+lum/stageDefaults.m` | The session a training stage assumes: habituation is air and no light |
 | `+lum/timerBudget.m` | Global timers left for light after sync, hold clock and timed components |
 | `+lum/buildTrialSM.m` | The state graph (fixed names; outputs, timers and transitions vary) |
 | `+lum/cueTiming.m` | What each cue component does once the stimulus starts: continues, off, or timed (D12) |
@@ -362,6 +409,14 @@ where it can be tested with no hardware.
 
 **Bpod gotchas that have already cost time.** Each is guarded in code; don't undo them.
 
+- **Output actions are not sticky.** Bpod writes every output channel from the entered state's
+  own row, so a line a state drove high goes low on the next state unless that state drives it
+  high too. This is what made the trial sync pulse invisible for three releases (D4): a global
+  timer set Flex2DO high on entering `TrialStart`, whose timer was 0, and `WaitForCentrePoke`
+  wrote it low one 100 us cycle later. Bpod's own example protocols repeat `stimulusOutput` in
+  consecutive states for the same reason, and `SetGlobalTimer`'s help says "State output events
+  can still manipulate the linked channel while the timer is running". Serial (module) channels
+  are the exception: no action in a row means nothing is sent, so a sound plays on.
 - `AddState` rejects a repeated output channel in one state, so lists that switch something
   off and something else on must go through `lum.mergeActions` first. Timer trigger and
   cancel masks from several components are built once by `buildTrialSM`, never merged — a
@@ -405,6 +460,9 @@ where it can be tested with no hardware.
   trial-aligned copy (it reads the first option as that flag): pass `'Volts'` alone.
 - `BpodHiFi.load` reads `'LoopMode', 'LoopDuration'` by position too; `lum.dev.RealHiFi` passes
   them in that order. The cue tone loops for up to the hold window's upper limit.
+- A `GlobalTimer<k>_Start` / `_End` pair in the trial record proves the *timer* ran, not that
+  the *channel* moved. If a line is dead while its timer's events are there, look for a state
+  that writes the same channel, not at the timer.
 - Before blaming the stimulus path for "late" light or air, look at the session file: the
   `GlobalTimer<k>_Start/_End` events against `CentreHold`, the PulsePal device log, and the flow
   meter aligned to the valve (the 0.2 "air arrives at the reward port" report was the analog

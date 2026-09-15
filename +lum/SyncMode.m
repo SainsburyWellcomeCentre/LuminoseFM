@@ -12,11 +12,18 @@ classdef SyncMode
     % session barcode sent before the first trial is separate too, and is the
     % same whatever mode the trials use (lum.sync.barcode).
     %
+    % Every mode drives the line from states, never from a global timer: the pulsed
+    % modes give TrialStart the pulse's width and drop the line as the cue comes on,
+    % task-event mode leaves TrialStart at zero and drops it on the poke. So no mode
+    % costs a global timer, and all three take the same path as the barcode and a
+    % sleep session's pulses, which is the path the rig is known to drive (D4).
+    %
     % See also: lum.nextTrialSpec, lum.buildTrialSM, lum.sync.barcode
 
     properties (Constant)
-        % One pulse per trial, always S.Sync.FixedWidth long. The simplest thing to
-        % detect, and enough when the acquisition system counts trials.
+        % One pulse per trial, always S.Sync.FixedWidth long, in TrialStart. The
+        % simplest thing to detect, and enough when the acquisition system counts
+        % trials.
         FixedWidth    = 1
 
         % One pulse per trial, its width drawn uniformly within S.Sync.WidthJitter

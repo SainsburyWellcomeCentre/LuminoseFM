@@ -501,20 +501,41 @@ end
 
 %% Sync and timers -----------------------------------------------------------------
 
-function testNoSyncTimerIsBuiltWithoutFlexOutput(testCase)
+function testNoSyncIsDrivenWithoutFlexOutput(testCase)
 [~, plan] = lum.buildTrialSM(makeTestContext());
-verifyEmpty(testCase, plan.syncTimer);
+verifyFalse(testCase, plan.syncDriven);
+verifyEqual(testCase, plan.syncPulse, 0, 'TrialStart must not wait for a pulse nobody sends');
 end
 
-function testAPulsedSyncModeUsesAGlobalTimer(testCase)
+function testAPulsedSyncModeIsTrialStartsOwnTimerAndCostsNoGlobalTimer(testCase)
+% The pulse is the first state of the trial: high on entering TrialStart, low again
+% as WaitForCentrePoke comes up with the cue. No global timer is spent on it, and no
+% timer channel is linked to the line — that path is not the one the rig drives (D4).
+global BpodSystem %#ok<GVMIS>
+column = find(strcmp(BpodSystem.StateMachineInfo.OutputChannelNames, 'BNC2'));
 S = lum.defaultSettings;
 S.Sync.Mode = lum.SyncMode.FixedWidth;
 context = makeTestContext('Settings', S, 'SyncChannel', 'BNC2');
 context.spec.SyncMode = lum.SyncMode.FixedWidth;
 context.spec.SyncPulseWidth = 0.02;
 [sma, plan] = lum.buildTrialSM(context);
-verifyNotEmpty(testCase, plan.syncTimer);
-verifyEqual(testCase, sma.GlobalTimers.Duration(plan.syncTimer), 0.02, 'AbsTol', 1e-9);
+verifyTrue(testCase, plan.syncDriven);
+verifyFalse(testCase, plan.syncByTaskEvents);
+verifyEqual(testCase, plan.syncPulse, 0.02, 'AbsTol', 1e-9);
+verifyEqual(testCase, stateTimer(sma, 'TrialStart'), 0.02, 'AbsTol', 1e-9);
+verifyEqual(testCase, sma.OutputMatrix(stateIndex(sma, 'TrialStart'), column), 1);
+verifyEqual(testCase, sma.OutputMatrix(stateIndex(sma, 'WaitForCentrePoke'), column), 0);
+verifyEmpty(testCase, find(sma.GlobalTimers.OutputChannel == column, 1), ...
+            'No global timer may be linked to the sync line');
+end
+
+function testAJitteredPulseOfZeroWidthIsRefused(testCase)
+S = lum.defaultSettings;
+S.Sync.Mode = lum.SyncMode.JitteredWidth;
+context = makeTestContext('Settings', S, 'SyncChannel', 'BNC2');
+context.spec.SyncMode = lum.SyncMode.JitteredWidth;
+context.spec.SyncPulseWidth = 0;
+verifyError(testCase, @() lum.buildTrialSM(context), 'lum:buildTrialSM:badSyncPulse');
 end
 
 function testTaskEventSyncNeedsNoTimerAndFollowsTheTrial(testCase)
@@ -526,13 +547,71 @@ context = makeTestContext('Settings', S, 'SyncChannel', 'BNC2');
 context.spec.SyncMode = lum.SyncMode.TaskEvents;
 context.spec.SyncPulseWidth = NaN;
 [sma, plan] = lum.buildTrialSM(context);
-verifyEmpty(testCase, plan.syncTimer, 'Task-event sync must cost no global timer');
+verifyTrue(testCase, plan.syncByTaskEvents);
+verifyEqual(testCase, plan.syncPulse, 0, 'Task-event sync has no pulse to wait for');
+verifyEqual(testCase, stateTimer(sma, 'TrialStart'), 0);
 verifyEqual(testCase, sma.OutputMatrix(stateIndex(sma, 'TrialStart'), column), 1);
+% The line has to be written high again in every state before the poke: Bpod sets
+% every channel from the entered state's own row, so leaving it out would drop it.
+verifyEqual(testCase, sma.OutputMatrix(stateIndex(sma, 'WaitForCentrePoke'), column), 1, ...
+            'Task-event sync must hold the line high until the animal pokes');
 verifyEqual(testCase, sma.OutputMatrix(stateIndex(sma, 'CentreHold'), column), 0);
 latencySma = lum.buildTrialSM(makeTestContext('Settings', withLatency(S, 0.1), 'SyncChannel', 'BNC2', ...
                                               'Spec', context.spec));
 verifyEqual(testCase, latencySma.OutputMatrix(stateIndex(latencySma, 'PreStimulusHold'), column), 0);
 verifyEqual(testCase, sma.OutputMatrix(stateIndex(sma, 'NoInitiation'), column), 0);
+end
+
+%% Levels a later state has to write again -----------------------------------------
+
+function testTheCueSurvivesTheLatency(testCase)
+% Bpod writes every output channel from the entered state's own row, so the centre
+% light the cue switched on in WaitForCentrePoke would go out on entering
+% PreStimulusHold unless that state writes it again (D12).
+global BpodSystem %#ok<GVMIS>
+S = withLatency(lum.defaultSettings, 0.2);
+context = makeTestContext('Settings', S);
+sma = lum.buildTrialSM(context);
+column = find(strcmp(BpodSystem.StateMachineInfo.OutputChannelNames, context.rig.LED.Centre));
+brightness = sma.OutputMatrix(stateIndex(sma, 'WaitForCentrePoke'), column);
+verifyGreaterThan(testCase, brightness, 0, 'The cue light must be on while the animal is asked to poke');
+verifyEqual(testCase, sma.OutputMatrix(stateIndex(sma, 'PreStimulusHold'), column), brightness);
+end
+
+function testAForgivenBreakKeepsTheStimulusWithoutRestartingIt(testCase)
+% The air of a stimulus that spans the window has to be written again in HoldBreak and
+% CentreHoldResumed, or a forgiven break would switch it off; the timers must not be
+% triggered again there, or the light pattern would restart (D6, D10).
+global BpodSystem %#ok<GVMIS>
+S = withShaping(withStimulusRow(lum.defaultSettings, 'Air', true, 0, 1), 'Shrink grace');
+context = makeTestContext('Settings', S);
+sma = lum.buildTrialSM(context);
+column = find(strcmp(BpodSystem.StateMachineInfo.OutputChannelNames, context.rig.Valve.Air));
+held = sma.OutputMatrix(stateIndex(sma, 'CentreHold'), column);
+verifyGreaterThan(testCase, held, 0);
+for name = {'HoldBreak', 'CentreHoldResumed'}
+    verifyEqual(testCase, sma.OutputMatrix(stateIndex(sma, name{1}), column), held, ...
+                sprintf('%s dropped the stimulus air', name{1}));
+    verifyEqual(testCase, sma.OutputMatrix(stateIndex(sma, name{1}), ...
+                                           BpodSystem.HW.Pos.GlobalTimerTrig), 0, ...
+                sprintf('%s must not re-trigger the stimulus timers', name{1}));
+end
+end
+
+function testASoundIsNotWrittenAgainByALaterState(testCase)
+% A sound plays on across states by itself; repeating the play command would restart
+% it, so the sustain lists leave it out.
+S = withShaping(lum.defaultSettings, 'Shrink grace');
+S = withStimulusRow(S, 'Tone', true, 0, 0.2);
+context = withStubHiFi(makeTestContext('Settings', S));
+[cue, stimulus] = lum.stim.build(context.S);
+components = [cue stimulus];
+for i = 1:numel(components)
+    if isa(components{i}, 'lum.stim.Sound') || isa(components{i}, 'lum.stim.CueTone')
+        verifyEmpty(testCase, components{i}.sustainActions(context), ...
+                    'A sound must not be played again to sustain it');
+    end
+end
 end
 
 function testTheBuilderUsesExactlyTheTimersTheBudgetReserved(testCase)

@@ -8,8 +8,9 @@ function [budget, reserved] = timerBudget(S, rig)
 %   HoldWindow One, always: the time the animal has to complete a hold, counted from
 %              trial start across every restart (S.GUI.HoldWindow, D10). A state
 %              timer would start again each time the animal came back.
-%   Sync       One per trial for a fixed or jittered sync pulse, when the line
-%              exists. Task-event sync is driven by states and costs none.
+%   Sync       None, in any mode: every edge of the sync line is a state's output
+%              action (D4). Kept in the struct, always 0, so that a session file or a
+%              message that quotes the reservation still reads the same.
 %   HoldClock  One when breaks in the hold are forgiven (lum.HoldShaping), because
 %              the hold has to be timed across the animal leaving and returning.
 %   Components One for each stimulus component that switches on after stimulus
@@ -38,8 +39,7 @@ function [budget, reserved] = timerBudget(S, rig)
 
 reserved = struct();
 reserved.HoldWindow = 1;
-reserved.Sync = double(S.Session.UseSync && rig.Available.Sync ...
-                       && S.Sync.Mode ~= lum.SyncMode.TaskEvents);
+reserved.Sync = 0;  % States, not timers, drive the sync line in every mode (D4)
 reserved.HoldClock = double(lum.HoldShaping.hasGrace(S.Task.HoldShaping));
 reserved.Components = lum.stim.timerCost(S);
 budget = rig.Limits.GlobalTimers - reserved.HoldWindow - reserved.Sync ...

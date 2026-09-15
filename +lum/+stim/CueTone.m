@@ -44,6 +44,18 @@ classdef CueTone < lum.stim.Component
         function actions = stopActions(~, context)
             actions = context.devices.hifi.stopAction();
         end
+
+        function actions = sustainActions(~, ~)
+            % Nothing: the loop plays on across states, and playing it again would
+            % restart it part way through the animal's wait.
+            actions = {};
+        end
+
+        function actions = sustainOnsetActions(~, ~)
+            % Nothing: whatever happened at stimulus onset — carry on, stop, or the
+            % tail — has already happened, and repeating it would restart the sound.
+            actions = {};
+        end
     end
 
     methods (Static, Access = private)

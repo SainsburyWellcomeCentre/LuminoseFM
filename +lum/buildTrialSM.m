@@ -9,8 +9,8 @@ function [sma, plan] = buildTrialSM(context)
 % lum.stim.Component, never as a new state.
 %
 %   TrialStart -> WaitForCentrePoke -> [PreStimulusHold] -> CentreHold
-%                 (the cue is on)       (the latency, when   (the stimulus starts)
-%                                        there is one)
+%   (the sync     (the cue is on)       (the latency, when   (the stimulus starts)
+%    pulse)                              there is one)
 %
 %   CentreHold ----------------------------------------------> WaitForCentreExit
 %     | leaves the centre port                                       ^
@@ -45,6 +45,14 @@ function [sma, plan] = buildTrialSM(context)
 % WaitForCentrePoke with the cue on again: its next poke starts the latency and the
 % stimulus again, from their beginning. The trial ends when a hold is completed or
 % when the hold window runs out.
+%
+% The sync line is driven by states, not by a global timer (D4). In a pulsed mode
+% TrialStart raises it and lasts the pulse's width, and WaitForCentrePoke drops it as
+% the cue comes on; in task-event mode TrialStart has no timer, the line stays high
+% through the wait for the poke, and the poke drops it. So a pulsed mode delays the
+% cue by the pulse width — 10 to 100 ms, invisible to an animal whose only sign that
+% a trial has started is the cue itself — and the rising edge marks the state machine
+% starting in every mode.
 %
 % The hold window (S.GUI.HoldWindow) is a global timer started in TrialStart, so it
 % keeps counting across every restart; a state timer would start again each time the
@@ -93,9 +101,9 @@ spec = context.spec;
 
 %% Allocate global timers
 % Stimulus components first, then cue components that go off part way through the
-% stimulus, the hold clock, the hold window and the sync pulse. The stimulus set was
-% validated against lum.timerBudget when the session started, and that budget reserves
-% the others, so this cannot overflow by now.
+% stimulus, the hold clock and the hold window. The sync line takes none. The stimulus
+% set was validated against lum.timerBudget when the session started, and that budget
+% reserves the others, so this cannot overflow by now.
 nextTimer = 1;
 [timerGrants, nextTimer] = grantTimers(context.stimulus, context, nextTimer);
 [cueGrants, nextTimer] = grantTimers(context.cue, context, nextTimer);
@@ -113,14 +121,21 @@ end
 holdWindowTimer = nextTimer;
 nextTimer = nextTimer + 1;
 
-% A sync pulse of programmed width costs a global timer. Task-event mode costs none:
-% the line is driven high and low by the states that mark those events.
+% The sync line costs no global timer in any mode: every edge it carries is an
+% output action of a state, the way the barcode and a sleep session's pulses are
+% (D4). A pulsed mode gives TrialStart the pulse's width as its state timer; a
+% task-event mode leaves TrialStart at zero and the line high until the poke.
 useSync = S.Session.UseSync && context.devices.flex.hasSync();
 syncByTaskEvents = useSync && S.Sync.Mode == lum.SyncMode.TaskEvents;
-syncTimer = [];
+syncPulse = 0;
 if useSync && ~syncByTaskEvents
-    syncTimer = nextTimer;
-    nextTimer = nextTimer + 1;
+    syncPulse = spec.SyncPulseWidth;
+    if ~isscalar(syncPulse) || ~isfinite(syncPulse) || syncPulse <= 0
+        error('lum:buildTrialSM:badSyncPulse', ...
+              ['Trial %d asks for a sync pulse of %g s. A pulsed sync mode needs a width '...
+               'above 0 s; this should have been caught by lum.validateSettings.'], ...
+              spec.TrialNumber, spec.SyncPulseWidth);
+    end
 end
 
 if nextTimer - 1 > rig.Limits.GlobalTimers
@@ -156,33 +171,47 @@ end
 sma = SetGlobalTimer(sma, 'TimerID', holdWindowTimer, 'Duration', S.GUI.HoldWindow, ...
                      'OnsetDelay', 0);
 holdWindowEnded = sprintf('GlobalTimer%d_End', holdWindowTimer);
-if ~isempty(syncTimer)
-    % One pulse per trial, fixed or jittered, so the acquisition devices can align
-    % trial by trial rather than counting edges from the session start.
-    sma = SetGlobalTimer(sma, 'TimerID', syncTimer, 'Duration', spec.SyncPulseWidth, ...
-                         'OnsetDelay', 0, 'Channel', rig.Sync.Channel);
-end
-
-% Task-event mode marks the events themselves: high from trial start, low on the
-% poke (in whichever state the poke enters), and low again where the animal never
-% pokes at all.
+% Every mode drives the line from states. A pulsed mode raises it in TrialStart,
+% which lasts the pulse, and drops it as the cue comes on: one pulse per trial, of
+% a fixed or a near-unique width, so the acquisition devices can align trial by
+% trial rather than counting edges from the session start. Task-event mode marks the
+% events themselves: high from trial start, low on the poke (in whichever state the
+% poke enters), and low again where the animal never pokes at all.
 syncHigh = {};
-syncLow = {};
-if syncByTaskEvents
+cueStateSync = {};
+pokeSync = {};
+if useSync
     syncHigh = {rig.Sync.Channel, 1};
-    syncLow = {rig.Sync.Channel, 0};
+    if syncByTaskEvents
+        cueStateSync = syncHigh;   % Held high for as long as the animal is asked to poke
+        pokeSync = {rig.Sync.Channel, 0};
+    else
+        cueStateSync = {rig.Sync.Channel, 0};  % The pulse ends as the cue comes on
+    end
 end
 
 % Every cue component is on while the animal is asked to poke; at the poke each keeps
 % going, stops, or is left to its timer; all of them stop when the hold ends. Every
 % timer that belongs to the stimulus, the cue's included, starts with the hold and is
 % cancelled with it.
+%
+% Bpod sets every output channel from the state's own row on entering it, so a level
+% a state switched on is dropped by the next state unless that state writes it again.
+% The sustain lists are exactly that repetition: the same levels, without the timer
+% triggers that must fire once and without the play commands that would restart a
+% sound (lum.stim.Component.sustainActions). PreStimulusHold sustains the cue through
+% the latency; HoldBreak and CentreHoldResumed sustain the stimulus through a
+% forgiven break.
 centreOff = {rig.LED.Centre, 0};
 cueOn = collect(context.cue, context, 'outputActions');
 cueAtOnset = collect(context.cue, context, 'onsetActions');
 cueOff = collect(context.cue, context, 'stopActions');
+cueSustain = collect(context.cue, context, 'sustainActions');
 deliveryTimers = [stimulusTimers cueTimers holdClock];
-stimulusOn = lum.mergeActions(cueAtOnset, collect(context.stimulus, context, 'outputActions'), ...
+stimulusLevels = lum.mergeActions(cueAtOnset, collect(context.stimulus, context, 'outputActions'));
+stimulusSustain = lum.mergeActions(collect(context.cue, context, 'sustainOnsetActions'), ...
+                                   collect(context.stimulus, context, 'sustainActions'));
+stimulusOn = lum.mergeActions(stimulusLevels, ...
                               lum.timerMaskAction('GlobalTimerTrig', deliveryTimers));
 stimulusOff = lum.mergeActions(collect(context.stimulus, context, 'stopActions'), cueOff, ...
                                lum.timerMaskAction('GlobalTimerCancel', deliveryTimers));
@@ -213,11 +242,13 @@ if restartsOnBreak && hasCueTone && playsNoise(context, earlyWithdrawalPunishmen
 end
 
 % The hold window starts with the trial and is never cancelled or re-triggered.
+% TrialStart also carries the sync line's rising edge, and in a pulsed mode it lasts
+% the pulse: the cue therefore comes on one pulse width after the state machine
+% starts, which is the only thing this state's timer delays.
 sma = AddState(sma, 'Name', 'TrialStart', ...
-    'Timer', 0, ...
+    'Timer', syncPulse, ...
     'StateChangeConditions', {'Tup', 'WaitForCentrePoke'}, ...
-    'OutputActions', lum.mergeActions(lum.timerMaskAction('GlobalTimerTrig', ...
-                                                          [holdWindowTimer syncTimer]), ...
+    'OutputActions', lum.mergeActions(lum.timerMaskAction('GlobalTimerTrig', holdWindowTimer), ...
                                       syncHigh));
 
 % The cue: on from trial start until the poke, and on again after every hold that broke
@@ -233,7 +264,7 @@ sma = AddState(sma, 'Name', 'WaitForCentrePoke', ...
     'Timer', 0, ...
     'StateChangeConditions', {rig.PokeIn.Centre, afterPoke, ...
                               holdWindowEnded, 'NoInitiation', 'Condition4', 'NoInitiation'}, ...
-    'OutputActions', cueOn);
+    'OutputActions', lum.mergeActions(cueOn, cueStateSync));
 
 % The latency: the animal holds with the cue still on, and nothing of the stimulus has
 % started. Leaving is a broken hold, never forgiven by grace, which is timed from
@@ -241,7 +272,7 @@ sma = AddState(sma, 'Name', 'WaitForCentrePoke', ...
 sma = AddState(sma, 'Name', 'PreStimulusHold', ...
     'Timer', latency, ...
     'StateChangeConditions', {rig.PokeOut.Centre, 'EarlyWithdrawal', 'Tup', 'CentreHold'}, ...
-    'OutputActions', syncLow);
+    'OutputActions', lum.mergeActions(cueSustain, pokeSync));
 
 % The hold from stimulus onset, entered on the poke or at the end of the latency. The
 % hold is the same length whether or not light is delivered, so that its duration never
@@ -266,19 +297,21 @@ end
 sma = AddState(sma, 'Name', 'CentreHold', ...
     'Timer', holdTimer, ...
     'StateChangeConditions', holdTransitions, ...
-    'OutputActions', lum.mergeActions(stimulusOn, syncLow));
+    'OutputActions', lum.mergeActions(stimulusOn, pokeSync));
 
 % A forgiven break: nothing is switched off, so the stimulus carries on while the
-% animal is out, and nothing is re-triggered when it returns.
+% animal is out, and nothing is re-triggered when it returns. The levels the hold
+% state switched on are written again, because Bpod would otherwise drop them on
+% entering this state; the timer triggers are not, so no timer restarts.
 sma = AddState(sma, 'Name', 'HoldBreak', ...
     'Timer', breakTimer, ...
     'StateChangeConditions', breakTransitions, ...
-    'OutputActions', {});
+    'OutputActions', stimulusSustain);
 
 sma = AddState(sma, 'Name', 'CentreHoldResumed', ...
     'Timer', 0, ...
     'StateChangeConditions', resumedTransitions, ...
-    'OutputActions', {});
+    'OutputActions', stimulusSustain);
 
 % The hold is over and the animal now has to leave the centre port before it can
 % answer; the side ports stay dead until it does. The response configuration goes up
@@ -293,8 +326,8 @@ sma = AddState(sma, 'Name', 'WaitForCentreExit', ...
 
 % Reached only from WaitForCentreExit, so the animal is out of the centre port for
 % the whole of this state and every side poke here is a fresh entry. The output
-% actions repeat WaitForCentreExit's so the response configuration does not depend on
-% Bpod's channel persistence.
+% actions repeat WaitForCentreExit's, because Bpod writes every channel from the
+% entered state's own row and would otherwise drop the guide lights here.
 [leftAction, rightAction] = responseActions(spec);
 sma = AddState(sma, 'Name', 'WaitForResponse', ...
     'Timer', S.GUI.ResponseWindow, ...
@@ -370,7 +403,7 @@ sma = AddState(sma, 'Name', 'NoResponse', ...
 sma = AddState(sma, 'Name', 'NoInitiation', ...
     'Timer', 0, ...
     'StateChangeConditions', {'Tup', 'ITI'}, ...
-    'OutputActions', lum.mergeActions(cueOff, centreOff, syncLow));
+    'OutputActions', lum.mergeActions(cueOff, centreOff, pokeSync));
 
 % The ITI is where the trial manager builds and uploads the next trial, so it is
 % also the protocol's slack: every per-trial cost has to fit inside it.
@@ -380,7 +413,8 @@ sma = AddState(sma, 'Name', 'ITI', ...
     'OutputActions', lum.mergeActions(centreOff, guideOff, context.devices.hifi.stopAction()));
 
 plan = struct('timers', {timerGrants}, 'cueTimers', {cueGrants}, 'holdClock', holdClock, ...
-              'syncTimer', syncTimer, 'holdWindowTimer', holdWindowTimer, ...
+              'syncPulse', syncPulse, 'syncDriven', useSync, ...
+              'syncByTaskEvents', syncByTaskEvents, 'holdWindowTimer', holdWindowTimer, ...
               'restartsOnBreak', restartsOnBreak, 'nTimersUsed', nextTimer - 1, ...
               'holdDuration', spec.HoldDuration, 'holdGrace', spec.HoldGrace, ...
               'latency', latency, ...

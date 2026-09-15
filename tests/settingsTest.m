@@ -200,21 +200,49 @@ fields = lum.gui.runtimeFields(S);
 verifyEqual(testCase, sort({fields.Name}), sort(fieldnames(S.GUI))');
 end
 
-function testTheSyncPulseCostsOneTimerFromTheBudget(testCase)
-% The hold window always takes one; a pulsed sync mode takes one more.
+function testTheSyncPulseCostsNoTimerInAnyMode(testCase)
+% The hold window always takes one; the sync line takes none, in any mode, because
+% every edge it carries is a state's output action (D4).
 S = lum.defaultSettings;
 rig = struct('Limits', struct('GlobalTimers', 16), 'Available', struct('Sync', true));
 [budget, reserved] = lum.timerBudget(S, rig);
-verifyEqual(testCase, budget, 14);
+verifyEqual(testCase, budget, 15);
 verifyEqual(testCase, reserved.HoldWindow, 1);
-S.Sync.Mode = lum.SyncMode.TaskEvents;
-verifyEqual(testCase, lum.timerBudget(S, rig), 15, 'Task-event sync is driven by states');
-S.Sync.Mode = lum.SyncMode.FixedWidth;
+verifyEqual(testCase, reserved.Sync, 0);
+for mode = [lum.SyncMode.FixedWidth lum.SyncMode.JitteredWidth lum.SyncMode.TaskEvents]
+    S.Sync.Mode = mode;
+    verifyEqual(testCase, lum.timerBudget(S, rig), 15, ...
+                'Every sync mode is driven by states');
+end
 S.Session.UseSync = false;
 verifyEqual(testCase, lum.timerBudget(S, rig), 15);
 S.Session.UseSync = true;
 rig.Available.Sync = false;   % Flex2 not configured as a digital output
 verifyEqual(testCase, lum.timerBudget(S, rig), 15);
+end
+
+function testATaskVariantAndAContingencyReversalAreRecorded(testCase)
+% Both are pre-session settings, stored once with the session, and validated.
+S = lum.defaultSettings;
+rig = RigConfig;
+verifyTrue(testCase, ismember(S.Task.Variant, lum.experimentChoices().TaskVariants));
+verifyFalse(testCase, S.Task.ReverseContingency);
+for variant = lum.experimentChoices().TaskVariants
+    S.Task.Variant = variant{1};
+    verifyWarningFree(testCase, @() lum.validateSettings(S, rig));
+end
+S.Task.Variant = 'Something else entirely';
+verifyError(testCase, @() lum.validateSettings(S, rig), 'lum:validateSettings:badTaskVariant');
+end
+
+function testASettingsFileFromBeforeTheTaskVariantGetsOne(testCase)
+loaded = lum.defaultSettings;
+loaded.Task = rmfield(loaded.Task, {'Variant', 'ReverseContingency'});
+[S, added] = lum.mergeSettings(lum.defaultSettings, loaded);
+verifyEqual(testCase, S.Task.Variant, 'Familiar/Novel');
+verifyFalse(testCase, S.Task.ReverseContingency);
+verifyTrue(testCase, any(strcmp(added, 'Task.Variant')));
+verifyTrue(testCase, any(strcmp(added, 'Task.ReverseContingency')));
 end
 
 function testTheInitiationWindowBecomesTheHoldWindow(testCase)

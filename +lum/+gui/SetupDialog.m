@@ -82,7 +82,7 @@ tabGroup = uitabgroup(outer);
 
 controls = struct();
 controls = buildExperimentTab(tabGroup, S, controls, choices, t, @refresh);
-controls = buildTaskTab(tabGroup, S, controls, runtime, t, @refresh);
+controls = buildTaskTab(tabGroup, S, controls, runtime, t, @refresh, @stageChosen);
 controls = buildCueTab(tabGroup, S, controls, t, @refresh);
 controls = buildStimulusTab(tabGroup, S, controls, t, @refresh, @openDesigner, @newTrialOrder);
 controls = buildLightPathTab(tabGroup, S, controls, t, @refresh);
@@ -175,6 +175,34 @@ end
         refresh();
     end
 
+    function stageChosen()
+        % Choosing a training stage applies the session that goes with it
+        % (lum.stageDefaults): habituation delivers air and no light, the other stages
+        % the light pattern. The controls are written back, so the operator sees what
+        % changed and is free to change it again — these are defaults, not a lock.
+        try
+            candidate = collectSettings();
+        catch readError
+            setStatus(readError.message, false);
+            return
+        end
+        [candidate, changed] = lum.stageDefaults(candidate);
+        if isempty(changed)
+            refresh();
+            return
+        end
+        controls.UseOpto.Value = candidate.Session.UseOpto;
+        for k = 1:numel(candidate.Stimulus.Components)
+            controls.StimulusEnabled(k).Value = candidate.Stimulus.Components(k).Enabled;
+            controls.StimulusOnset(k).Value = candidate.Stimulus.Components(k).Onset;
+            controls.StimulusLength(k).Value = candidate.Stimulus.Components(k).Duration;
+        end
+        if isfield(controls.Runtime, 'OptoOn')
+            controls.Runtime.OptoOn.Value = logical(candidate.GUI.OptoOn);
+        end
+        refresh();
+    end
+
     function refresh()
         % Read every control, bring the dialog's appearance in line with it, and
         % validate the lot.
@@ -203,6 +231,10 @@ end
                            'uses %d of the %d global timers left for light.'], ...
                           stimulusSet.nGroups, stimulusSet.nTrials, max([0 stimulusSet.nTimers]), ...
                           budget);
+        if stimulusSet.Reversed
+            message = sprintf('%s  Contingency REVERSED: every group pays the other side.', ...
+                              message);
+        end
         if ~isempty(notes)
             message = sprintf('%s  Note: %s', message, strjoin(notes, ' '));
         end
@@ -236,9 +268,11 @@ end
         candidate.Session.ShowAnalogViewer = c.ShowAnalogViewer.Value;
         candidate.Session.RuntimeWindow = c.RuntimeWindow.Value;
 
+        candidate.Task.Variant = char(c.TaskVariant.Value);
         candidate.Task.TrainingStage = find(strcmp(c.TrainingStage.Value, ...
                                                    S.Task.TrainingStageNames), 1);
         candidate.Task.MaxSameSide = round(c.MaxSameSide.Value);
+        candidate.Task.ReverseContingency = c.ReverseContingency.Value;
         candidate.Task.HoldShaping = c.HoldShaping.Value;
         candidate.Task.OnHoldBreak = c.OnHoldBreak.Value;
         candidate.Task.GroupPLeft = readPLeft(c.GroupTable.Data);
@@ -389,8 +423,11 @@ end
         data = cell(nGroups, 5);
         for g = 1:nGroups
             members = stimulusSet.PatternGroup == g;
+            % BasePLeft, not GroupPLeft: the cell is read back into S.Task.GroupPLeft,
+            % and showing the reversed value there would reverse it again on the next
+            % edit. The reversal is said in words in the status line instead.
             data(g, :) = {g, stimulusSet.GroupLabels{g}, sum(groupOfTrial == g), ...
-                          max([0 stimulusSet.nTimers(members)]), stimulusSet.GroupPLeft(g)};
+                          max([0 stimulusSet.nTimers(members)]), stimulusSet.BasePLeft(g)};
         end
         if ~isequal(controls.GroupTable.Data, data)
             controls.GroupTable.Data = data;
@@ -497,31 +534,45 @@ controls = lum.gui.ExperimentForm.merge(controls, ...
 end
 
 
-function controls = buildTaskTab(tabGroup, S, controls, runtime, t, onEdit)
+function controls = buildTaskTab(tabGroup, S, controls, runtime, t, onEdit, onStage)
 tab = uitab(tabGroup, 'Title', 'Task', 'BackgroundColor', t.Background);
 grid = uigridlayout(tab, [2 2], 'ColumnWidth', {480, '1x'}, 'RowHeight', {'1x', 170}, ...
                     'Padding', 12, 'ColumnSpacing', 12, 'RowSpacing', 10, ...
                     'BackgroundColor', t.Background);
 
 shaping = runtime(strcmp({runtime.Panel}, 'Shaping'));
-left = uigridlayout(grid, [3 1], 'RowHeight', {panelHeight(2) + 20, panelHeight(1), '1x'}, ...
+left = uigridlayout(grid, [3 1], 'RowHeight', {panelHeight(3) + 20, panelHeight(2), '1x'}, ...
                     'Padding', 0, 'RowSpacing', 10, 'BackgroundColor', t.Background);
 left.Layout.Row = 1;
 left.Layout.Column = 1;
 
-form = formPanel(left, 'Training', 2, t, 170);
-form.RowHeight = {26, 44};
+variants = lum.experimentChoices().TaskVariants;
+variant = S.Task.Variant;
+if ~ismember(variant, variants)
+    variant = variants{1};  % A settings file from before the list, or from a later one
+end
+form = formPanel(left, 'Task', 3, t, 170);
+form.RowHeight = {26, 26, 44};
+label(form, 'Task', t);
+controls.TaskVariant = uidropdown(form, 'Items', variants, 'Value', variant, ...
+    'ValueChangedFcn', @(~, ~) onEdit(), ...
+    'Tooltip', 'Which variant of the task this session runs; recorded with the data');
 label(form, 'Training stage', t);
 controls.TrainingStage = uidropdown(form, 'Items', S.Task.TrainingStageNames, ...
     'Value', S.Task.TrainingStageNames{S.Task.TrainingStage}, ...
-    'ValueChangedFcn', @(~, ~) onEdit());
+    'ValueChangedFcn', @(~, ~) onStage());
 label(form, 'Rewards', t);
 controls.StageNote = uilabel(form, 'Text', '', 'WordWrap', 'on', 'FontColor', t.Muted, ...
                              'FontSize', 11);
 
-form = formPanel(left, 'Trial order', 1, t, 170);
+form = formPanel(left, 'Trial order', 2, t, 170);
 label(form, 'Max same side in a row', t);
 controls.MaxSameSide = numberField(form, S.Task.MaxSameSide, [0 50], onEdit, true);
+label(form, 'Contingency', t);
+controls.ReverseContingency = uicheckbox(form, 'Text', 'Reverse: swap the sides', ...
+    'Value', S.Task.ReverseContingency, 'ValueChangedFcn', @(~, ~) onEdit(), ...
+    'Tooltip', ['Every group pays the other side: P(left) becomes 1 - P(left). The table '...
+                'on the Stimulus tab keeps showing the unreversed values.']);
 
 panel = uipanel(left, 'Title', 'Centre hold', 'FontWeight', 'bold', ...
                 'BackgroundColor', t.Panel, 'ForegroundColor', t.Accent);
@@ -974,7 +1025,7 @@ end
 function key = setKey(S, rig)
 % Everything the stimulus set depends on, to decide whether it has to be rebuilt.
 key = {S.Stimulus.Generator, S.Stimulus.Duration, S.Session.MaxTrials, S.Session.UseOpto, ...
-       S.Task.GroupPLeft, lum.timerBudget(S, rig)};
+       S.Task.GroupPLeft, S.Task.ReverseContingency, lum.timerBudget(S, rig)};
 end
 
 
@@ -1037,13 +1088,15 @@ function text = syncNote(mode)
 % What the acquisition system will see, by mode.
 switch mode
     case lum.SyncMode.FixedWidth
-        text = 'One pulse per trial, always the same width: enough to count trials.';
+        text = ['One pulse per trial, always the same width: enough to count trials. The '...
+                'pulse is the trial''s first state, so the cue follows it.'];
     case lum.SyncMode.JitteredWidth
         text = ['One pulse per trial, its width drawn within the jitter of the mean. The '...
-                'widths are near-unique, so a recording is matched trial by trial.'];
+                'widths are near-unique, so a recording is matched trial by trial. The '...
+                'pulse is the trial''s first state, so the cue follows it.'];
     otherwise
         text = ['No pulse: high at trial start, low when the animal pokes the centre port, so '...
-                'the edges mark those events. Costs no global timer.'];
+                'the edges mark those events.'];
 end
 end
 

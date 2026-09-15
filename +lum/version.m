@@ -19,10 +19,19 @@ function text = version()
 % D13), sends a sleep session's blocks as LevelNNN states in place of PulseNNN/GapNNN,
 % has PulsePal answer a handshake before a session uses it, and rearranges the online
 % plots (evidence u_A vs u_B and side bias; light on and off no longer compared).
+% 0.5.1 drives the behaviour trial's sync pulse from states rather than a global timer:
+% before it, TrialStart's zero timer meant the next state re-wrote the line low within
+% one cycle, so every fixed- and jittered-width pulse reached the recording as a ~100 us
+% glitch (D4). Sessions from 0.2 to 0.5.0 have no usable trial pulses, though their
+% barcode is sound; use Data.TrialStartTimestamp and the barcode to align them. The same
+% release writes the cue's levels again in PreStimulusHold and the stimulus's in
+% HoldBreak and CentreHoldResumed, adds S.Task.Variant and S.Task.ReverseContingency,
+% gives habituation its own session shape (lum.stageDefaults) and tears a failed session
+% down instead of leaving the protocol frozen.
 %
 % See also: LuminoseFM
 
-release = '0.5.0';
+release = '0.5.1';
 text = release;
 
 try

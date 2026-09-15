@@ -32,6 +32,7 @@ classdef SessionRunner < handle
     properties (SetAccess = private)
         Mode           % 'trialmanager' or 'blocking'
         TriggerStates  % States whose onset opens the prepare window
+        Failed = false % True once a call to the state machine has failed
     end
 
     properties (Access = private)
@@ -62,7 +63,7 @@ classdef SessionRunner < handle
         function begin(obj, sma)
             % begin(sma) sends the first trial's state machine and starts it.
             if strcmp(obj.Mode, 'trialmanager')
-                obj.trialManager.startTrial(sma);
+                obj.start(sma, 1);
             else
                 obj.pendingSma = sma;
             end
@@ -110,7 +111,7 @@ classdef SessionRunner < handle
         function advance(obj)
             % advance() begins monitoring the trial that queue() uploaded.
             if strcmp(obj.Mode, 'trialmanager')
-                obj.trialManager.startTrial();  % No argument: the machine was already sent
+                obj.start([], 0);  % No argument: the machine was already sent
             end
         end
 
@@ -122,7 +123,42 @@ classdef SessionRunner < handle
                 obj.trialManager = [];
             end
         end
+    end
 
+    methods (Access = private)
+        function start(obj, sma, hasSma)
+            % start() calls BpodTrialManager.startTrial and turns a failure to talk
+            % to the state machine into one error the session loop can act on.
+            %
+            % The failure this exists for is a USB link that has lost its place in
+            % the byte stream: BpodTrialManager then reads a trial-start timestamp
+            % that is not one (the console shows a missed-deadline warning of
+            % astronomical size), and the next trial's acknowledgement byte never
+            % arrives, so startTrial errors. Bpod's own message says only that the
+            % state machine was not acknowledged; what the operator needs to know is
+            % that the session is over, the data are safe and the link has to be
+            % reset. Failed records that it happened, for anything that asks the
+            % runner afterwards rather than catching the error.
+            try
+                if hasSma
+                    obj.trialManager.startTrial(sma);
+                else
+                    obj.trialManager.startTrial();
+                end
+            catch startError
+                obj.Failed = true;
+                error('lum:SessionRunner:linkLost', ...
+                      ['Lost the link to the Bpod state machine part way through the '...
+                       'session: %s\n'...
+                       'The trials completed so far are saved. Close MATLAB, power-cycle '...
+                       'the state machine and PulsePal, and start again; a session that '...
+                       'begins on a port a previous one did not release is the usual '...
+                       'cause.'], startError.message);
+            end
+        end
+    end
+
+    methods
         function delete(obj)
             obj.close();
         end

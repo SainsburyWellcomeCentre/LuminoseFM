@@ -69,5 +69,23 @@ classdef Component < handle
             % stopActions() returns OutputActions pairs that switch delivery off.
             actions = {};
         end
+
+        function actions = sustainActions(obj, context)
+            % sustainActions() is what a *later* state has to repeat to keep this
+            % component doing what outputActions started.
+            %
+            % Bpod writes every output channel from each state's own row on entering
+            % it, so a level — a port light, the air valve, a TTL line — is dropped by
+            % the next state unless that state writes it again. A sound is not a
+            % level: the module plays on by itself, and repeating the play command
+            % would restart it, so the components that play sound return nothing here.
+            actions = obj.outputActions(context);
+        end
+
+        function actions = sustainOnsetActions(obj, context)
+            % sustainOnsetActions() is sustainActions for what onsetActions started:
+            % what a state entered during the stimulus has to repeat.
+            actions = obj.onsetActions(context);
+        end
     end
 end

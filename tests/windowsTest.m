@@ -268,6 +268,50 @@ verifyEqual(testCase, started.GUI, S.GUI);
 delete(cleanup);
 end
 
+function testChoosingHabituationShapesTheSession(testCase)
+% The stage dropdown applies lum.stageDefaults and writes the result into the controls,
+% so the operator sees what changed and can change it again.
+assumeUIFigures(testCase);
+S = testCase.TestData.S;
+S.Task.TrainingStage = 2;
+[~, ~, app] = lum.gui.SetupDialog(S, testCase.TestData.rig, 'Wait', false, 'Visible', 'off');
+cleanup = onCleanup(@() closeIfOpen(app.Figure));
+verifyTrue(testCase, app.controls.UseOpto.Value);
+
+app.controls.TrainingStage.Value = 'Habituation';
+app.controls.TrainingStage.ValueChangedFcn([], []);
+candidate = app.collect();
+verifyFalse(testCase, candidate.Session.UseOpto, 'Habituation delivers no light');
+air = candidate.Stimulus.Components(strcmp({candidate.Stimulus.Components.Type}, 'Air'));
+verifyTrue(testCase, air.Enabled, 'Habituation delivers air');
+verifyFalse(testCase, app.controls.UseOpto.Value, 'The tick has to follow the settings');
+
+app.controls.TrainingStage.Value = 'Training';
+app.controls.TrainingStage.ValueChangedFcn([], []);
+candidate = app.collect();
+verifyTrue(testCase, candidate.Session.UseOpto);
+air = candidate.Stimulus.Components(strcmp({candidate.Stimulus.Components.Type}, 'Air'));
+verifyFalse(testCase, air.Enabled);
+delete(cleanup);
+end
+
+function testTheTaskTabOffersTheTaskVariantsAndTheContingencyReversal(testCase)
+assumeUIFigures(testCase);
+S = testCase.TestData.S;
+[~, ~, app] = lum.gui.SetupDialog(S, testCase.TestData.rig, 'Wait', false, 'Visible', 'off');
+cleanup = onCleanup(@() closeIfOpen(app.Figure));
+verifyEqual(testCase, app.controls.TaskVariant.Items, lum.experimentChoices().TaskVariants);
+app.controls.TaskVariant.Value = 'Motifs';
+verifyEqual(testCase, app.collect().Task.Variant, 'Motifs');
+
+verifyFalse(testCase, contains(app.status(), 'REVERSED'));
+app.controls.ReverseContingency.Value = true;
+app.refresh();
+verifyTrue(testCase, app.collect().Task.ReverseContingency);
+verifySubstring(testCase, app.status(), 'REVERSED');
+delete(cleanup);
+end
+
 function testAnyGenotypeCanBeTyped(testCase)
 assumeUIFigures(testCase);
 S = testCase.TestData.S;

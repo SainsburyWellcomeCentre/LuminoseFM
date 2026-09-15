@@ -13,7 +13,8 @@ function result = stimulusSet(S, timerBudget, nChannels)
 %
 % Arguments:
 %   S            Settings: S.Stimulus.Generator, S.Stimulus.Duration,
-%                S.Session.MaxTrials, S.Session.UseOpto and S.Task.GroupPLeft
+%                S.Session.MaxTrials, S.Session.UseOpto, S.Task.GroupPLeft and
+%                S.Task.ReverseContingency
 %   timerBudget  Global timers left for light segments (lum.timerBudget). Ignored
 %                when the session delivers no light.
 %   nChannels    Optical channels the rig has (default 2)
@@ -22,7 +23,10 @@ function result = stimulusSet(S, timerBudget, nChannels)
 %   .Family, .Duration, .BinDuration, .nBins, .nTrials, .Continuous, .Seed
 %   .nGroups       Groups, or 2 categories in continuous mode
 %   .GroupLabels   1 x nGroups labels
-%   .GroupPLeft    1 x nGroups chance that the left port pays
+%   .GroupPLeft    1 x nGroups chance that the left port pays, as the session will
+%                  run it: reversed already, when the contingency is reversed
+%   .BasePLeft     1 x nGroups the same before any reversal, i.e. S.Task.GroupPLeft
+%   .Reversed      True when S.Task.ReverseContingency swapped the sides
 %   .SweepName     What the groups sweep, '' when nothing
 %   .SweepValues   1 x nGroups
 %   .nPatterns     Patterns: nGroups, or nTrials in continuous mode
@@ -65,6 +69,18 @@ if numel(groupPLeft) ~= G.nGroups
 end
 if any(~isfinite(groupPLeft)) || any(groupPLeft < 0 | groupPLeft > 1)
     error('lum:pattern:stimulusSet:badPLeft', 'Every P(left) must lie in [0, 1].');
+end
+
+% Reversing the contingency swaps the sides for every group at once: the light that
+% paid left pays right and the other way about. It is applied here, once, so that the
+% set, the online plots, lum.nextTrialSpec and every trial record read the same
+% contingency; S.Task.GroupPLeft keeps the operator's own numbers, and BasePLeft
+% carries them into the data file beside the reversed ones.
+basePLeft = groupPLeft;
+reversed = isfield(S, 'Task') && isfield(S.Task, 'ReverseContingency') ...
+           && isequal(logical(S.Task.ReverseContingency), true);
+if reversed
+    groupPLeft = 1 - groupPLeft;
 end
 
 nPatterns = size(G.States, 2);
@@ -129,7 +145,8 @@ end
 result = struct('Family', G.Family, 'Duration', G.Duration, 'BinDuration', G.BinDuration, ...
              'nBins', G.nBins, 'nTrials', G.nTrials, 'Continuous', G.Continuous, ...
              'Seed', G.Seed, 'nGroups', G.nGroups, 'GroupLabels', {G.GroupLabels}, ...
-             'GroupPLeft', groupPLeft, 'SweepName', G.SweepName, ...
+             'GroupPLeft', groupPLeft, 'BasePLeft', basePLeft, 'Reversed', reversed, ...
+             'SweepName', G.SweepName, ...
              'SweepValues', G.SweepValues, 'nPatterns', nPatterns, ...
              'PatternGroup', G.PatternGroup, 'PatternPLeft', patternPLeft, ...
              'TrialPattern', G.TrialPattern, 'Segments', segments, ...

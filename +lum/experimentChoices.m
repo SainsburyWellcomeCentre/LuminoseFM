@@ -12,6 +12,9 @@ function choices = experimentChoices()
 
 choices = struct();
 choices.SessionTypes = {'Behaviour', 'Sleep'};
+% The task variants (S.Task.Variant). Each names the kind of stimulus set a session
+% is built around; the list is closed, because analysis selects sessions by it.
+choices.TaskVariants = {'Familiar/Novel', 'Mixture', 'Sequence', 'Motifs'};
 % Suggestions only: the genotype dropdown is editable, so any genotype can be typed.
 choices.Genotypes = {'OSN-ChR', 'Wild type'};
 choices.Probes = {'Neuropixels 1.0', 'Neuropixels 2.0 (single shank)', ...

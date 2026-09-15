@@ -1,11 +1,11 @@
 function actions = mergeActions(varargin)
 % lum.mergeActions concatenates OutputActions lists, letting later values win.
 %
-% Bpod output actions persist until a later state changes them, so most states in
-% the trial have to both switch something off and switch something else on — and
-% those two lists routinely name the same channel. AddState rejects that outright
-% ("Duplicate output actions detected in state: X. Only one value for PWM2 is
-% allowed"), so the lists cannot simply be concatenated.
+% Bpod writes every output channel from the entered state's own row, so a state that
+% wants one line on and another off has to say both — and the lists that say them,
+% assembled from different components, routinely name the same channel. AddState
+% rejects that outright ("Duplicate output actions detected in state: X. Only one
+% value for PWM2 is allowed"), so the lists cannot simply be concatenated.
 %
 % This resolves them the way the intent reads: the last value given for a channel
 % is the one that survives, and each channel appears once, in the order it was
