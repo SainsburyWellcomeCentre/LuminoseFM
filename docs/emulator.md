@@ -36,7 +36,13 @@ again on the next trial. A sleep session needs no clicks.
   recorded as not sent).
 - **PulsePal and the HiFi module are unavailable**, so sound states run silently and no light is
   delivered. The runtime window opens in its reduced, single-page form (Bpod's own parameter
-  window, relabelled).
+  window, relabelled). The setup dialog's **▶ Play** buttons play through the PC's speakers.
+- **Cameras are simulated.** With SpinCam found, the session records SpinCam's synthetic cameras
+  (640 × 512 frames through the real engine, into real files in `Session Videos`,
+  `Session.Cameras.Backend = 'mock'`); without it, no video, logged. Encoding simulated video loads
+  the computer, and the emulator runs its states from a MATLAB loop, so expect emulated intervals
+  to stretch further with video on. Real cameras can still be previewed on the setup dialog's
+  Cameras tab.
 - **Light can look late on the console.** The emulator emits no start event for a light segment
   that starts at stimulus onset, so the console never draws it; only segments that start later are
   drawn, and the light seems to arrive some time after the poke. The state machine starts every
@@ -63,7 +69,8 @@ have sent. Because the emulator keeps no millisecond time, emulated intervals ar
 ## How it is implemented
 
 The protocol detects emulator mode in exactly **one** place — `lum.dev.open` — which builds real
-or null device shims once at startup. Every hardware call on a null shim is logged rather than
+or null device shims once at startup; for cameras, `lum.dev.openCameras` picks SpinCam's simulated
+backend there. Every hardware call on a null shim is logged rather than
 sent, and the log is written into the data file as `Data.Session.DeviceLog`. Anything else that
 must behave differently is told so through `devices.emulated`.
 

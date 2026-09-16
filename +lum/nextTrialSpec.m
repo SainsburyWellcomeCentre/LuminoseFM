@@ -43,6 +43,8 @@ function [spec, queue] = nextTrialSpec(S, stimulusSet, queue, history, trialNumb
 %                     mode, where the line follows the trial rather than pulsing
 %   .HoldDuration     Centre hold this trial requires, seconds (lum.HoldShaping)
 %   .HoldGrace        Longest break in the hold that is forgiven, seconds
+%   .HoldSteppedBack  True when automatic shaping stepped the hold back for this trial,
+%                     after too many early withdrawals
 %
 % Side draws and pulse widths come from rand(), so seeding with rng() makes a
 % session or a test reproducible. The pattern order does not: it is fixed by the
@@ -117,7 +119,7 @@ spec.OptoOn = S.Session.UseOpto && S.GUI.OptoOn == 1;
 spec.SoundOn = S.Session.UseSound && S.GUI.SoundOn == 1;
 spec.SyncMode = S.Sync.Mode;
 spec.SyncPulseWidth = syncPulseWidth(S);
-[spec.HoldDuration, spec.HoldGrace] = lum.HoldShaping.next(S, history);
+[spec.HoldDuration, spec.HoldGrace, spec.HoldSteppedBack] = lum.HoldShaping.next(S, history);
 
 
 function tf = canPay(pLeft, side)

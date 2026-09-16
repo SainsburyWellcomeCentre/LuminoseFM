@@ -6,9 +6,11 @@ classdef RuntimeWindow < handle
     %
     %   'Tabbed'   A window of its own, in tabs (S.GUITabs) of panels (S.GUIPanels),
     %              with readable labels and units, limits enforced as values are
-    %              typed, and a header that says which trial is running and what
-    %              comes next. Built from classic uicontrols, so creating it is quick
-    %              and syncing it costs a few property reads per parameter.
+    %              typed, a header that says which trial is running and what comes
+    %              next, and a help line at the foot that describes the parameter under
+    %              the pointer (lum.gui.HelpLine, from GUIMeta.Help). Built from classic
+    %              uicontrols, so creating it is quick and syncing it costs a few
+    %              property reads per parameter.
     %   'Compact'  Bpod's own BpodParameterGUI, every panel on one page, relabelled
     %              by lum.gui.relabelParameterGUI. The reduced form, for emulator
     %              sessions and for anyone who prefers Bpod's window.
@@ -40,6 +42,7 @@ classdef RuntimeWindow < handle
         controls     % One uicontrol per field
         lastValues   % Value of each field at the last sync
         status       % Header text control showing the running trial
+        help         % lum.gui.HelpLine at the foot of the window
     end
 
     methods
@@ -140,6 +143,7 @@ classdef RuntimeWindow < handle
             panelGap = 10;
             width = 460;
             headerHeight = 64;
+            footerHeight = 52;
 
             tabNames = unique({obj.fields.Tab}, 'stable');
             tabHeights = zeros(1, numel(tabNames));
@@ -149,7 +153,7 @@ classdef RuntimeWindow < handle
                 tabHeights(k) = nPanels * (panelTitle + panelGap) + numel(inTab) * rowHeight + 20;
             end
             bodyHeight = max(tabHeights) + 34;
-            height = headerHeight + bodyHeight;
+            height = headerHeight + bodyHeight + footerHeight;
 
             obj.Figure = figure('Name', 'LuminoseFM - runtime parameters', 'NumberTitle', 'off', ...
                                 'MenuBar', 'none', 'ToolBar', 'none', 'Resize', 'off', ...
@@ -179,7 +183,11 @@ classdef RuntimeWindow < handle
                                    'Position', [70 height - 56 width - 80 20]);
 
             group = uitabgroup(obj.Figure, 'Units', 'pixels', ...
-                               'Position', [6 4 width - 12 bodyHeight]);
+                               'Position', [6 footerHeight width - 12 bodyHeight]);
+            helpText = uicontrol(obj.Figure, 'Style', 'text', 'String', '', 'FontSize', 9, ...
+                                 'HorizontalAlignment', 'left', 'BackgroundColor', t.AccentSoft, ...
+                                 'ForegroundColor', t.Ink, ...
+                                 'Position', [8 4 width - 16 footerHeight - 8]);
             obj.controls = gobjects(1, numel(obj.fields));
             obj.lastValues = cell(1, numel(obj.fields));
 
@@ -202,13 +210,17 @@ classdef RuntimeWindow < handle
                         uicontrol(panel, 'Style', 'text', 'String', obj.fields(i).Label, ...
                                   'HorizontalAlignment', 'right', 'FontSize', 10, ...
                                   'BackgroundColor', t.Panel, 'ForegroundColor', t.Ink, ...
-                                  'Position', [8 y - 2 238 20]);
+                                  'Tooltip', obj.fields(i).Help, 'Position', [8 y - 2 238 20]);
                         obj.controls(i) = obj.makeControl(panel, i, [256 y 160 24], t);
+                        set(obj.controls(i), 'Tooltip', obj.fields(i).Help);
                         obj.lastValues{i} = obj.fields(i).Value;
                     end
                     top = top - panelHeight - panelGap;
                 end
             end
+            obj.help = lum.gui.HelpLine(obj.Figure, helpText, ...
+                                        'Point at a parameter to see what it does.');
+            obj.help.registerTooltips();
         end
 
         function control = makeControl(obj, parent, i, position, t)

@@ -23,6 +23,9 @@ function result = scoreTrial(trialEvents, spec, rig)
 %   .HoldAttempts  Times the stimulus started (visits to CentreHold): 1 for a trial
 %                  held at the first try, more when broken holds restarted it, 0
 %                  when it never started
+%   .EarlyWithdrawals  Times the animal left the centre port before the hold was
+%                  complete and the break was not forgiven (visits to
+%                  EarlyWithdrawal), during the latency or the hold
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
@@ -33,7 +36,7 @@ events = trialEvents.Events;
 
 result = struct('Outcome', lum.Outcome.NoResponse, 'Choice', NaN, ...
                 'Correct', NaN, 'Rewarded', 0, 'ReactionTime', NaN, 'HoldBreaks', 0, ...
-                'HoldAttempts', 0);
+                'HoldAttempts', 0, 'EarlyWithdrawals', 0);
 
 %% Which side was poked, and how quickly
 responseWindow = getState(states, 'WaitForResponse');
@@ -55,6 +58,7 @@ end
 result.Rewarded = double(visited(states, 'LeftReward') || visited(states, 'RightReward'));
 result.HoldBreaks = nVisits(states, 'HoldBreak');
 result.HoldAttempts = nVisits(states, 'CentreHold');
+result.EarlyWithdrawals = nVisits(states, 'EarlyWithdrawal');
 
 %% Outcome, in the order the trial could have ended
 % An EarlyWithdrawal visit ends the trial only if the hold was never completed

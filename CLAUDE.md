@@ -20,6 +20,7 @@ platform did not resolve the symlink, read `CLAUDE.md`.
 | PulsePal | `../../PulsePal` — **not** on the saved MATLAB path; add it explicitly |
 | Examples | `../../Bpod_Gen2/Examples/Protocols`, and `../FreelyMoving2AFC` (lab's prior 2-AFC) |
 | Stimulus generator origin | `../../generatePattern` (`generateStimuli.m`), ported into `+lum/+pattern/generate.m` |
+| SpinCam | `../../SpinCam` — the lab's camera package, its own repository (read its `CLAUDE.md` before touching the camera path). On this machine's saved MATLAB path; sessions name it by `S.Camera.SpinCamFolder` |
 | GUI inspiration | `../../luminose_hf` (head-fixed Luminose protocols) — structure only, not its colours |
 | Bpod `ProtocolFolder` | `C:\Users\harrislab\Documents\MATLAB\HarrisLabBpodProtocols\` |
 | Bpod `DataFolder` | `D:\luminoseData\` = `/mnt/d/luminoseData` — session data live **outside** the repo |
@@ -72,6 +73,10 @@ choice in `LuminoseFM.m` is the example.
 **The emulator is not this rig.** `Bpod('EMU')` emulates a state machine **r0.7-1.0**, not
 the r2+. Design around this:
 
+- **Cameras are SpinCam's `mock` backend** when SpinCam is found (synthetic frames through the real
+  native engine, real files), `NullCameras` otherwise. Encoding them loads the computer and
+  stretches the emulator's already loose timing: session tests that check emulated intervals set
+  `S.Camera.Enabled = false`; `cameraTest` runs its own sessions with video.
 - **5 global timers, 5 counters, 5 conditions** — against the rig's 16/8/16. Always read
   `rig.Limits.GlobalTimers` from `RigConfig`; never hard-code 16. The trial uses conditions
   1–4 (left, right, centre port clear; hold window over) and always one timer for the hold
@@ -142,7 +147,15 @@ stops the session part way through as though the End button had been pressed.
 - Trial pulses in sessions from 0.2 to 0.5.0 are ~100 us glitches, not the recorded widths
   (D4); align those sessions by the barcode and `Data.TrialStartTimestamp`.
 - Per-trial series are listed once, in `trialSeriesNames` in `LuminoseFM.m`; `docs/data-format.md`
-  and `emulatorSessionTest` list them too — keep all three in step.
+  and `emulatorSessionTest` list them too — keep all three in step. Since 0.6.0 they include
+  `EarlyWithdrawals` (visits to `EarlyWithdrawal`) and `CameraTime` (seconds on SpinCam's host clock
+  when the trial's events arrived; sleep sessions store one per block).
+- Video (D14): `...\LuminoseFM\Session Videos\<view>_<data file name>.avi` + `.csv` per camera,
+  `<data file name>_events.csv` and `_session.json`, written by SpinCam; `Data.Session.Cameras`
+  (`lum.dev.Cameras.sessionRecord`) records settings, plan and per-camera summary (the summary is
+  written by the second save after the video stops). `_events.csv` ends `SessionSaved`,
+  `RecordingStop`. The folder is `lum.dev.Cameras.videoFolder(dataFile)`; never write video
+  anywhere else.
 
 ## Hardware map (Bpod FSM r2+, firmware 23, FSM `COM3`, App `COM4`)
 
@@ -164,6 +177,10 @@ stops the session part way through as though the End button had been pressed.
   (`BpodSystem.HW.FlexIO_ChannelTypes`), never the saved file. Note `docs/BpodSystemInfo.png`
   predates both, so trust the live values where they disagree.
 - Modules: `HiFi1` (Module#1, USB `COM8`) → amplifier → speaker. Modules 2/3 unregistered.
+- Cameras: 2 × Chameleon3 CM3-U3-13Y3M on one USB 3.0 controller, recorded through SpinCam.
+  **24226887 = sideview, 24226657 = topview** (`S.Camera.Cameras`). Default 100 Hz full frame,
+  `avi-mjpeg-mt`; both cameras on one USB 3.0 controller deliver at most 120 Hz full frame together.
+  Line0 (yellow/brown) is logged per frame; **Flex2 is not yet wired to the cameras** (it goes to the scope), so `TTL_State` is 0.
 - Budget: 16 global timers, 8 global counters, 16 conditions **on the rig**; the emulator
   has 5/5/5. Read `rig.Limits` rather than assuming either. The hold window always takes one
   timer (`lum.timerBudget`).
@@ -199,6 +216,11 @@ doc that does not:
 | plasticity train | named bursts-of-pulses definition (theta burst, high frequency, custom) | protocol, stimulation |
 | schedule step | one row of `S.Sleep.TestPulses.Schedule`: probe, rest or a train name | block (a block is a state machine run) |
 | light segment | one gate on A or B; a probe pulse, or a burst PulsePal fills (`LightSegments`) | pulse, when it is a burst |
+| automatic shaping | performance-driven training under one switch (`S.Task.AutoShaping`): now the centre hold, method `S.Task.HoldShaping`; later trial difficulty | hold shaping *Off* (the 0.5 mode) |
+| step back | automatic shaping shortening the hold one growth step after `HoldStepBackAfter` early withdrawals at one hold | regress, reset (in names too) |
+| early withdrawal | leaving the centre port before the hold is complete, unforgiven (state `EarlyWithdrawal`) | hold break (that is the forgiven kind) |
+| view | a camera's name and file prefix: `sideview`, `topview` | camera name, cam1 |
+| camera clock | SpinCam's host clock: `HostTime_s`, `_events.csv`, `Data.CameraTime` | video time |
 
 Version 0.2 renamed states, data fields and settings accordingly; the full table is in
 `docs/naming-and-versions.md` and `docs/architecture.md` D8. **Rename by migration**: add the old → new
@@ -231,8 +253,39 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
 - **The training stage shapes the session (`lum.stageDefaults`).** Choosing *Habituation* in the
   setup dialog switches the light pattern off (`S.Session.UseOpto`, `S.GUI.OptoOn`) and the
   stimulus air on for the whole window; choosing *Training* or *Experiment* does the reverse.
-  Defaults, applied only on the dropdown's change, never during a session and never enforced by
-  validation — the operator may untick anything afterwards. `S.Task.Variant` (Familiar/Novel,
+  *Training* also switches automatic shaping on and *Experiment* off. Defaults, applied only on the
+  dropdown's change, never during a session and never enforced by validation — the operator may
+  untick anything afterwards — **except** automatic shaping in an Experiment session, which
+  `lum.validateSettings` refuses (`shapingInExperiment`).
+- **Automatic shaping (D6).** `S.Task.AutoShaping` (off by default) switches it; decide everything
+  through `lum.HoldShaping.activeMode(S)` / `growsHold(S)` / `hasGrace(S)`, never by reading
+  `S.Task.HoldShaping`, which has no *Off* any more (old files are migrated in `lum.mergeSettings`).
+  Grow hold starts at 0.1 s, targets 1 s, and steps back one growth step after
+  `S.GUI.HoldStepBackAfter` (10) early withdrawals at one hold; the count is
+  `history.withdrawalsAtHold`, kept by `lum.updateHistory`. Future difficulty shaping goes under the
+  same switch.
+- **Video (D14).** `devices.cameras` (`lum.dev.openCameras`): on the rig a session with
+  `S.Camera.Enabled` refuses to start without SpinCam or a ticked camera; in the emulator it uses
+  SpinCam's mock cameras or the null shim. `lum.dev.configureCameras` is the only place settings
+  become camera state (the session and the Cameras tab preview both use it). Recording starts
+  right after `lum.dev.open`, before the barcode; per trial only `devices.cameras.mark` runs. It
+  stops **after** the final save (and, in behaviour, after the trial manager is closed), through
+  `devices.cameras.finishRecording('SessionSaved', n)`, and a second small save adds the recording
+  summary to `Data.Session.Cameras` — so everything in the data file is on the video. Keep that
+  order in both teardowns. Only native formats (`lum.dev.Cameras.Formats`); `matlab-*` would be
+  starved by the trial loop. The default is `avi-mjpeg-mt` (SpinCam's multi-core MJPEG, engine
+  1.2.0): SpinVideo's `avi-mjpeg` has 4 % headroom at 100 Hz full frame and fell behind with the
+  camera window open, and `lum.dev.Cameras.formatNote` says so at validation. Never modify SpinCam
+  from this repository — it is outside the working folder; changes to it are made in its own
+  repository, under its own `CLAUDE.md`, only when the operator asks.
+- **Help line.** Every runtime parameter declares its help as the last argument of
+  `numericParam`/`checkboxParam`/`menuParam` (`GUIMeta.<name>.Help`); `lum.gui.HelpLine` shows it,
+  and any control's `Tooltip`, at the foot of the setup dialogs and the tabbed runtime window. Give
+  new controls a tooltip that explains them, not just names them; register the help line after the
+  window's callbacks are set (it chains them).
+- **Play buttons.** `lum.testSounds(S, which, nGroups)` turns the dialog's settings into
+  `TestHiFiSound` argument lists; the dialog's `'SoundPlayer'` option lets tests record them.
+  Group tone frequencies come from `lum.toneFrequencies`, shared with `lum.loadSounds`. `S.Task.Variant` (Familiar/Novel,
   Mixture, Sequence, Motifs; `lum.experimentChoices().TaskVariants`) names the task and is
   recorded; per-variant defaults will go in `lum.stageDefaults`'s neighbourhood when they exist.
 - **A failed session is torn down, not abandoned.** The trial loop in `LuminoseFM` is wrapped in
@@ -388,7 +441,7 @@ where it can be tested with no hardware.
 | `+lum/buildTrialSM.m` | The state graph (fixed names; outputs, timers and transitions vary) |
 | `+lum/cueTiming.m` | What each cue component does once the stimulus starts: continues, off, or timed (D12) |
 | `+lum/nextTrialSpec.m` | Trial policy: follow the order, run limit and bias correction by swapping, stage, hold |
-| `+lum/HoldShaping.m` | Centre-hold shaping: modes, next hold and grace, description; break modes (restart or end) |
+| `+lum/HoldShaping.m` | Automatic shaping of the centre hold: active mode, next hold and grace, step back after early withdrawals, description; break modes (restart or end) |
 | `+lum/triggerStates.m` | The states that open the prepare window, by break mode |
 | `+lum/scoreTrial.m` | Outcome classification from states and events, including hold breaks and attempts |
 | `+lum/punishmentFor.m` | Which mistakes are punished, and how |
@@ -396,6 +449,7 @@ where it can be tested with no hardware.
 | `+lum/SessionRunner.m` | TrialManager on the rig, blocking in the emulator (D3) |
 | `+lum/OnlinePlots.m` | The behaviour session's live figure: now and next, outcomes; performance, psychometric, evidence (u_A vs u_B: fraction of the window each channel is lit); by side, side bias, reaction time |
 | `+lum/loadSounds.m` | The session's sounds, loaded once |
+| `+lum/testSounds.m`, `toneFrequencies.m` | A session sound as `TestHiFiSound` arguments, for the Play buttons; group tone spacing |
 | `+lum/fiberBundles.m`, `experimentChoices.m` | Bundle cables and spot counts; the Experiment tab's lists |
 | `+lum/mergeActions.m`, `timerMaskAction.m` | Output-action assembly; see the gotchas below |
 | `+lum/trainingStageNote.m` | One line saying what the training stage does to rewards |
@@ -403,9 +457,9 @@ where it can be tested with no hardware.
 | `+lum/+stim/` | Components: `OptoPattern`, `TimedOutput` → `PortLight`, `Air`; `Sound`; `CueTone`; `build`; `isTimed`, `timerCost` |
 | `+lum/+sync/` | Session barcode: `barcode` (kinds), `sleepMarkerWidth`, `barcodeValue`, `barcodeTime`, `decodeBarcode`, `barcodeStateMachine` |
 | `+lum/+sleep/` | Sleep sessions: `run`; sync pulses `pulseSchedule`, `syncPulseTimes`; test pulses `testPulsePlan`, `stepChoices`, `epochShape`, `describeTestPulses`, `describeTrain`; blocks `nextBlock`, `blockStateMachine`; `validate`, `validateTestPulses`, `deviceSettings`; `Plots` |
-| `+lum/+dev/` | Device shims, real and null; `open.m` selects them. `openPulsePal` refuses a light session without PulsePal, stops its outputs on connecting and requires a handshake (`PulsePal.checkConnection`). `Flex` also sends the barcode, opens the analog viewer and realigns the analog stream (`alignAnalog`) |
-| `+lum/+gui/` | `SessionTypeDialog`, `SetupDialog`, `SleepSetupDialog`, `ExperimentForm`, `Form`, `StimulusDesigner`, `TestPulseDesigner`, `RuntimeWindow`, `PatternBrowser`, `drawTrialFlow`, `drawTestPulseSchedule`, `drawTestPulseEpoch`, `runtimeFields`, `relabelParameterGUI`, `parseNumbers`, `theme`, `logo` |
-| `tests/` | `runLuminoseTests` runs everything; `StubHiFi` and `StubPulsePal` (a PulsePal that can stop answering) are test doubles; see below |
+| `+lum/+dev/` | Device shims, real and null; `open.m` selects them. `Cameras`/`RealCameras`/`NullCameras`, `openCameras`, `configureCameras`: video through SpinCam (D14). `openPulsePal` refuses a light session without PulsePal, stops its outputs on connecting and requires a handshake (`PulsePal.checkConnection`). `Flex` also sends the barcode, opens the analog viewer and realigns the analog stream (`alignAnalog`) |
+| `+lum/+gui/` | `SessionTypeDialog`, `SetupDialog`, `SleepSetupDialog`, `CameraSetup` (Cameras tab, live preview), `CameraWindow` (during sessions), `HelpLine`, `ExperimentForm`, `Form`, `StimulusDesigner`, `TestPulseDesigner`, `RuntimeWindow`, `PatternBrowser`, `drawTrialFlow`, `drawTestPulseSchedule`, `drawTestPulseEpoch`, `runtimeFields`, `relabelParameterGUI`, `parseNumbers`, `theme`, `logo` |
+| `tests/` | `runLuminoseTests` runs everything; `StubHiFi`, `StubPulsePal` (a PulsePal that can stop answering) and `StubCameraManager` (SpinCam's manager, no cameras) are test doubles; see below |
 
 **Bpod gotchas that have already cost time.** Each is guarded in code; don't undo them.
 
@@ -460,6 +514,13 @@ where it can be tested with no hardware.
   trial-aligned copy (it reads the first option as that flag): pass `'Volts'` alone.
 - `BpodHiFi.load` reads `'LoopMode', 'LoopDuration'` by position too; `lum.dev.RealHiFi` passes
   them in that order. The cue tone loops for up to the hold window's upper limit.
+- SpinVideo MJPEG (`avi-mjpeg`) encodes one frame at a time at ≈ 104 fps per full frame. At the
+  100 Hz default a session with the camera window open grew its writer queue 1–2 frames/s (writer
+  drops after ~15 min), though a bare recording stayed flat. Record `avi-mjpeg-mt`; a queue peak in
+  `Session.Cameras.Summary.Cameras(k).QueuePeak` in the hundreds means the encoder fell behind.
+- MATLAB resolves a package function from the **current folder** before the path, so a copy of a
+  `+lum` file on the path does not override the repository's while MATLAB's current folder is the
+  repository (it cost a diagnostic run: a scratch opener meant to force real cameras was ignored).
 - A `GlobalTimer<k>_Start` / `_End` pair in the trial record proves the *timer* ran, not that
   the *channel* moved. If a line is dead while its timer's events are there, look for a state
   that writes the same channel, not at the timer.
@@ -489,7 +550,9 @@ any behaviour change; the pure functions (`+lum/*.m`, `+lum/+pattern/`, `+lum/+s
 the cheap place to do it. `windowsTest` builds windows invisibly (`'Visible', 'off'`, and
 `'Wait', false` for the modal ones) and skips the uifigure tests where MATLAB cannot make one.
 `emulatorSessionTest` runs a whole behaviour session headless, and `sleepSessionTest` two sleep
-sessions, with and without test pulses.
+sessions, with and without test pulses — both with video off. `cameraTest` covers video against
+`StubCameraManager` and runs a behaviour and a sleep session with SpinCam's simulated cameras
+(skipped without SpinCam).
 
 MATLAB and test gotchas that have already cost time:
 
@@ -497,6 +560,10 @@ MATLAB and test gotchas that have already cost time:
   helper called `testPulses()` breaks the whole file. Name helpers otherwise.
 - A `uitable`'s `Enable` wants `'on'`/`'off'` text, not the `OnOffSwitchState` that
   `lum.gui.Form.onOff` returns for other components.
+- An invisible uifigure lays a newly selected tab out some time later: `getpixelposition` of its
+  components reads the default 100 × 22 until then. Wait (drawnow and pause) before testing positions.
+- The saved MATLAB path on this machine includes SpinCam, so a `-batch` session run with
+  `S.Camera.Enabled` records simulated video; turn it off in tests that are not about video.
 - `exportgraphics` refuses a classic figure holding more than one `uipanel`, and `print` refuses
   any figure with UI components (both plot figures have both). `exportapp` captures them, and the
   uifigure windows, headless under `-batch`.
@@ -508,7 +575,7 @@ Keep documentation current in the same change that alters behaviour:
 - `README.md` — the operator's guide only: running a session, the task, the stimulus, the
   windows, the plots, sleep sessions, utilities. It links to `docs/` for everything else, so
   reference material added there does not go back into it.
-- `docs/hardware.md` — the box, the channel map, the light path, Flex I/O, the environment.
+- `docs/hardware.md` — the box, the channel map, the light path, Flex I/O, the cameras, the environment.
 - `docs/data-format.md` — the session file's every field, and reading older files.
 - `docs/sync-and-barcode.md` — the sync TTL and the session barcode.
 - `docs/naming-and-versions.md` — the glossary, and what changed between versions.
@@ -520,7 +587,7 @@ Keep documentation current in the same change that alters behaviour:
   D2 two-tier GUI, D3 runner, D4 sync, D5 stimulus set, D6 hold shaping, D7 barcode,
   D8 naming, D9 timed components, D10 restarting holds and the hold window, D11 behaviour and
   sleep sessions, D12 the cue until the stimulus starts, and its latency, D13 test pulses in
-  sleep sessions). Read it before changing the stimulus path, the state graph, sleep blocks or
+  sleep sessions, D14 video through SpinCam). Read it before changing the stimulus path, the state graph, sleep blocks or
   the GUI.
 - `docs/` — rig drawings, `BpodSystemInfo.png`, logo.
 

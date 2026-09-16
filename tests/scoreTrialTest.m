@@ -82,6 +82,7 @@ trial.States.WaitForCentrePoke = [0.1 0.45; 0.8 1.45];
 result = lum.scoreTrial(trial, spec(1), testCase.TestData.rig);
 verifyEqual(testCase, result.Outcome, lum.Outcome.Correct);
 verifyEqual(testCase, result.HoldAttempts, 2);
+verifyEqual(testCase, result.EarlyWithdrawals, 1);
 verifyEqual(testCase, result.ReactionTime, 0.3, 'AbsTol', 1e-9);
 end
 
@@ -92,6 +93,7 @@ trial.States.EarlyWithdrawal = [0.8 0.8; 1.7 1.7; 3.1 3.1];
 result = lum.scoreTrial(trial, spec(1), testCase.TestData.rig);
 verifyEqual(testCase, result.Outcome, lum.Outcome.HoldNotCompleted);
 verifyEqual(testCase, result.HoldAttempts, 3);
+verifyEqual(testCase, result.EarlyWithdrawals, 3, 'Every unforgiven break is an early withdrawal');
 verifyEqual(testCase, result.Rewarded, 0);
 end
 

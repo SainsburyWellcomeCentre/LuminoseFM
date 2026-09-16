@@ -11,6 +11,10 @@ function [S, accepted, app] = SleepSetupDialog(S, rig, varargin)
 % test pulses on, the recording lasts as long as their schedule, which the duration
 % field then shows.
 %
+% A Cameras tab sets up the session's video, with a live preview (lum.gui.CameraSetup),
+% and a help line at the foot of the window describes the field under the pointer
+% (lum.gui.HelpLine).
+%
 % Everything is validated on every edit by lum.sleep.validate, and Start stays
 % disabled while anything fails.
 %
@@ -27,7 +31,7 @@ function [S, accepted, app] = SleepSetupDialog(S, rig, varargin)
 %   S         The edited settings, with S.Session.Type 'Sleep'
 %   accepted  True if the operator started the session, false if they cancelled
 %   app       With 'Wait' false: .Figure, .collect(), .refresh(), .start(),
-%             .cancel(), .status() and .controls
+%             .cancel(), .status(), .controls, .helpLine and .cameras
 %
 % See also: lum.sleep.run, lum.sleep.validate, lum.gui.SessionTypeDialog,
 %           lum.gui.TestPulseDesigner
@@ -55,11 +59,14 @@ designedPlan = [];
 
 fig = uifigure('Name', 'LuminoseFM - sleep session setup', 'Position', [30 50 1580 800], ...
                'Color', t.Background, 'Visible', p.Results.Visible);
-outer = uigridlayout(fig, [4 1], 'RowHeight', {58, '1x', 'fit', 34}, ...
+outer = uigridlayout(fig, [5 1], 'RowHeight', {58, '1x', 46, 'fit', 34}, ...
                      'Padding', [14 10 14 12], 'RowSpacing', 8, 'BackgroundColor', t.Background);
 buildHeader(outer, S, rig, t);
 
-body = uigridlayout(outer, [1 3], 'ColumnWidth', {470, '1x', 480}, 'Padding', 0, ...
+tabGroup = uitabgroup(outer);
+sessionTab = uitab(tabGroup, 'Title', 'Sleep session', 'BackgroundColor', t.Background);
+cameraTab = uitab(tabGroup, 'Title', 'Cameras', 'BackgroundColor', t.Background);
+body = uigridlayout(sessionTab, [1 3], 'ColumnWidth', {470, '1x', 480}, 'Padding', 8, ...
                     'ColumnSpacing', 12, 'BackgroundColor', t.Background);
 height = @lum.gui.Form.panelHeight;
 left = uigridlayout(body, [4 1], 'RowHeight', {height(2), height(2), height(6) + 50, '1x'}, ...
@@ -139,6 +146,12 @@ lum.gui.Form.note(grid, ['Light goes out through PulsePal, programmed as for beh
                          'test pulses does not start unless PulsePal is connected and answers, and '...
                          'stops if it stops answering.'], t);
 
+cameras = lum.gui.CameraSetup(cameraTab, S.Camera, t, @refresh, 'Subject', S.Meta.Subject);
+controls.Tabs.Cameras = cameraTab;
+
+controls.Help = uilabel(outer, 'Text', '', 'WordWrap', 'on', 'FontSize', 11, ...
+                        'FontColor', t.Ink, 'BackgroundColor', t.AccentSoft, ...
+                        'VerticalAlignment', 'top');
 controls.Status = uilabel(outer, 'Text', '', 'WordWrap', 'on', 'FontSize', 12);
 footer = uigridlayout(outer, [1 3], 'ColumnWidth', {'1x', 110, 150}, 'Padding', 0, ...
                       'ColumnSpacing', 8, 'BackgroundColor', t.Background);
@@ -151,10 +164,13 @@ controls.Start = uibutton(footer, 'Text', 'Start recording', 'FontWeight', 'bold
                           'BackgroundColor', t.Accent, 'FontColor', [1 1 1], ...
                           'ButtonPushedFcn', @(~, ~) onStart());
 
+helpLine = lum.gui.HelpLine(fig, controls.Help, ...
+                            'Point at a field, or use it, to see what it does here.');
+helpLine.registerTooltips();
 refresh();
 app = struct('Figure', fig, 'collect', @collectSettings, 'refresh', @refresh, ...
              'start', @onStart, 'cancel', @onCancel, 'status', @statusText, ...
-             'controls', controls);
+             'controls', controls, 'helpLine', helpLine, 'cameras', cameras);
 if p.Results.Wait
     uiwait(fig);
 end
@@ -181,6 +197,7 @@ end
         S = candidate;
         accepted = true;
         ok = true;
+        cameras.close();  % The session opens the cameras itself
         delete(fig);
     end
 
@@ -238,6 +255,10 @@ end
             message = sprintf('%s  Test pulses: %d epoch(s) of light in %d step(s).', message, ...
                               size(designedPlan.Epochs, 1), numel(designedPlan.Steps));
         end
+        cameraNote = cameras.problem(candidate.Camera);
+        if ~isempty(cameraNote)
+            notes{end+1} = cameraNote;
+        end
         if ~isempty(notes)
             message = sprintf('%s  Note: %s', message, strjoin(notes, ' '));
         end
@@ -276,11 +297,13 @@ end
         candidate.Sync.Barcode.ZeroWidth = c.BarcodeZero.Value;
         candidate.Sync.Barcode.OneWidth = c.BarcodeOne.Value;
         candidate.Sync.Barcode.Gap = c.BarcodeGap.Value;
+        candidate.Camera = cameras.read(candidate.Camera);
     end
 
     function updateAppearance(candidate)
         c = controls;
         lum.gui.ExperimentForm.update(c, candidate.Meta);
+        cameras.update(candidate.Camera);
         mode = candidate.Sleep.Sync.Mode;
         lum.gui.Form.setEnable({c.FixedWidth}, mode == lum.SyncMode.FixedWidth);
         lum.gui.Form.setEnable({c.MeanWidth, c.WidthJitter}, mode == lum.SyncMode.JitteredWidth);

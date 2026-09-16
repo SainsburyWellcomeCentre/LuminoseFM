@@ -127,6 +127,25 @@ Module ports are high-speed communication channels for external Bpod hardware ex
   **one sound at a time**: a new play command replaces the sound playing.
 - Module ports 2 and 3 are unregistered.
 
+### 2.5 Cameras
+
+Two FLIR / Point Grey **Chameleon3 CM3-U3-13Y3M** USB3 cameras (1280 × 1024 mono, up to 150 Hz),
+both on one USB 3.0 controller, recorded by SpinCam (§3):
+
+| Serial | View (file prefix) |
+|--------|--------------------|
+| 24226887 | `sideview` |
+| 24226657 | `topview` |
+
+Each camera's opto-isolated input **Line0** is on the yellow (signal) and brown (ground) wires of
+its GPIO cable, logged with every frame (passive TTL logging, `S.Camera.TtlLine`). It accepts Bpod's
+5 V TTL directly. **The Bpod sync line (Flex2) is not yet wired to the cameras** — it goes to the
+oscilloscope — so `TTL_State` is 0 in every frame until it is. Two full-frame cameras deliver at
+most 120 Hz together on the one USB 3.0 controller (at 150 Hz the cameras skip frames; crop to
+960 × 720). SpinCam's multi-core MJPEG (`avi-mjpeg-mt`, the default) keeps up with both at 120 Hz;
+SpinVideo's `avi-mjpeg` only has 4 % headroom at 100 Hz full frame and falls behind in a session. Close SpinView before a session: a camera can be streamed by
+one program only.
+
 ---
 
 ## 3. Software environment
@@ -138,6 +157,7 @@ Module ports are high-speed communication channels for external Bpod hardware ex
 | Bpod protocol folder | `...\MATLAB\HarrisLabBpodProtocols\` (Bpod's `ProtocolFolder`) |
 | Data folder | `D:\luminoseData\` (Bpod's `DataFolder`) |
 | Bpod_Gen2, Bpod Local, PulsePal | cloned into `...\MATLAB\`; Bpod_Gen2 is on the MATLAB path, PulsePal must be added to the path before use |
+| SpinCam | `...\MATLAB\SpinCam` (its own repository); set up once with `spincam.setup`, then named in the Cameras tab (`S.Camera.SpinCamFolder`) or left on the MATLAB path. Needs Spinnaker with its .NET components (4.2.0.83 here) |
 | Protocol examples | `...\MATLAB\Bpod_Gen2\Examples\Protocols` |
 
 MATLAB R2025b, base MATLAB only; no toolboxes. Bpod_Gen2 v1.9.0.

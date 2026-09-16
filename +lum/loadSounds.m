@@ -66,7 +66,7 @@ end
 
 stimulusTone = S.Stimulus.Components(strcmp({S.Stimulus.Components.Type}, 'Tone'));
 if ~isempty(stimulusTone) && stimulusTone.Enabled
-    frequencies = spreadFrequencies(S.Stimulus.ToneFrequencyRange, stimulusSet.nGroups);
+    frequencies = lum.toneFrequencies(S.Stimulus.ToneFrequencyRange, stimulusSet.nGroups);
     for k = 1:stimulusSet.nGroups
         names{end+1} = sprintf('Group%d', k); %#ok<AGROW>
         waves{end+1} = tone(rate, frequencies(k), stimulusTone.Duration, amplitude, ...
@@ -126,15 +126,6 @@ nRampSamples = round(0.005 * rate);
 if nRampSamples >= 2 && nRampSamples < numel(wave)
     wave(end-nRampSamples+1:end) = wave(end-nRampSamples+1:end) .* linspace(1, 0, nRampSamples);
 end
-
-
-function frequencies = spreadFrequencies(range, n)
-% n frequencies spread logarithmically across range.
-if n == 1
-    frequencies = sqrt(range(1) * range(2));
-    return
-end
-frequencies = round(logspace(log10(range(1)), log10(range(2)), n));
 
 
 function wave = applyRamp(wave, rampDuration, rate)

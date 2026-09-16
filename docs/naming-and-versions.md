@@ -30,6 +30,12 @@ right — D8 in [`architecture.md`](architecture.md).
 | light segment | One gate on channel A or B: a probe pulse, or a burst PulsePal fills with pulses (`LightSegments`) |
 | task variant | Which variant of the task a session runs: Familiar/Novel, Mixture, Sequence, Motifs (`S.Task.Variant`) |
 | contingency reversal | Swapping which side every group pays, `P(left)` to `1 - P(left)` (`S.Task.ReverseContingency`) |
+| automatic shaping | Training the animal by its performance: now the centre hold (`S.Task.AutoShaping`, method `S.Task.HoldShaping`); later easier and harder trials. On for Training, never in an Experiment |
+| step back | Automatic shaping shortening the hold one growth step after `HoldStepBackAfter` early withdrawals at one hold |
+| early withdrawal | Leaving the centre port before the hold is complete, unforgiven (state `EarlyWithdrawal`; `Data.EarlyWithdrawals`) |
+| view | A camera's name, the prefix of its files: `sideview` (24226887), `topview` (24226657) |
+| camera clock | SpinCam's host clock: `HostTime_s` in the frame logs, `_events.csv`, `Data.CameraTime` |
+| help line | The strip at the foot of a setup or runtime window describing the field under the pointer |
 
 ---
 
@@ -93,3 +99,16 @@ names.
 | — | `S.Task.Variant`, `S.Task.ReverseContingency`, `Session.StoppedReason`, `StimulusSet.BasePLeft` / `.Reversed` |
 | habituation was set up by hand | `lum.stageDefaults`: air and no light, applied when the stage is chosen |
 | a session that lost the Bpod link froze the protocol | the trials so far are saved, the rig is released, the error is reported |
+
+### 0.5.1 → 0.6.0 — automatic shaping, video, sound checks, help
+
+| 0.5.1 | 0.6.0 |
+|-------|-------|
+| `S.Task.HoldShaping` Off / Grow hold / Shrink grace / Both | switch `S.Task.AutoShaping` (off by default) and method `S.Task.HoldShaping` (Grow hold / Shrink grace / Both); converted on load: *Off* becomes the switch off with *Grow hold*, any other keeps shaping |
+| stage defaults set light and air | also automatic shaping: on for Training, off for Experiment; an Experiment session refuses it |
+| a hold stopped growing while the animal withdrew | it steps back one growth step after `HoldStepBackAfter` (10) early withdrawals at one hold; `HoldStart` default 0.2 → 0.1 s (existing settings files keep theirs) |
+| — | per-trial `EarlyWithdrawals` and `CameraTime`; `Session.Cameras`, `DevicesAvailable.Cameras`, `DeviceLog.Cameras`; sleep `CameraTime` per block |
+| — | `S.Camera` and video through SpinCam into `Session Videos` (D14); Cameras tab with live preview in both setup dialogs; camera window during sessions |
+| — | the video stops after the final save (`SessionSaved` event), and a second save adds its summary; default format `avi-mjpeg-mt` (SpinCam 1.2.0 engine, multi-core MJPEG), with a note when a single-threaded format cannot keep up |
+| — | `GUIMeta.<name>.Help` for every runtime parameter; help line in the setup and runtime windows |
+| — | **▶ Play** buttons for the session's sounds in the setup dialog (`lum.testSounds`) |

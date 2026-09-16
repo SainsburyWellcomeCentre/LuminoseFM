@@ -5,7 +5,7 @@ function S = defaultSettings()
 % (architecture decision D2):
 %
 %   Pre-session tier — S.Meta, S.Session, S.Task, S.Cue, S.Stimulus, S.Left,
-%   S.Right, S.Light, S.Sound, S.Sync, S.Sleep. Chosen once in the setup dialog (or
+%   S.Right, S.Light, S.Sound, S.Camera, S.Sync, S.Sleep. Chosen once in the setup dialog (or
 %   the sleep setup dialog), frozen for the session, and stored once in the data
 %   file. Changing any of these mid-session would make the session's data
 %   uninterpretable, so nothing in the runtime window can touch them.
@@ -84,7 +84,12 @@ S.Task.ReverseContingency = false;
 % values in between a psychometric one.
 S.Task.GroupPLeft = [1 0];
 S.Task.MaxSameSide = 3;             % Cap on consecutive same-side trials; 0 = no cap
-S.Task.HoldShaping = 'Off';         % lum.HoldShaping.modes(); tuned by S.GUI.Hold*/Grace*
+% Automatic shaping (lum.HoldShaping): trains the centre hold from the animal's
+% performance. Off by default; choosing the Training stage switches it on and choosing
+% Experiment switches it off (lum.stageDefaults), and an Experiment session never runs
+% with it. HoldShaping says how, while it is on, tuned by S.GUI.Hold*/Grace*.
+S.Task.AutoShaping = false;
+S.Task.HoldShaping = 'Grow hold';   % lum.HoldShaping.modes()
 % What a hold broken beyond its grace does (lum.HoldShaping.breakModes): restart the
 % stimulus on the next poke, within S.GUI.HoldWindow of trial start, or end the trial.
 S.Task.OnHoldBreak = 'Restart stimulus';
@@ -149,6 +154,28 @@ S.Sound.SamplingRate = 192000;
 S.Sound.Amplitude = 0.5;            % Fraction of full scale, 0..1
 S.Sound.Attenuation_dB = -20;       % Digital volume, dB full scale, <= 0
 S.Sound.NoiseDuration = 0.5;        % White noise burst used as punishment, seconds
+
+%% Pre-session tier: cameras
+% Video of the session, recorded by spincam (lum.dev.Cameras) into 'Session Videos'
+% beside 'Session Data', every file named after the data file and prefixed with its
+% camera's view. spincam is a separate repository: SpinCamFolder is where it was cloned
+% ('' when it is already on the MATLAB path). Frames log the cameras' TTL input
+% passively (TtlLine), so the sync line shows up frame by frame once it is wired to it.
+S.Camera.Enabled = true;            % Record video
+S.Camera.SpinCamFolder = '';
+S.Camera.Format = 'avi-mjpeg-mt';   % lum.dev.Cameras.Formats; MJPEG encoded on several cores
+S.Camera.FrameRate = 100;           % Hz; avi-mjpeg-mt keeps up with two full frames up to 120
+S.Camera.ExposureAuto = true;
+S.Camera.ExposureTime = 5000;       % Microseconds, when not automatic
+S.Camera.GainAuto = true;
+S.Camera.Gain = 0;                  % dB, when not automatic
+S.Camera.TtlLine = 'Line0';         % Yellow (signal) and brown (ground) wires
+S.Camera.ShowWindow = true;         % Show the cameras during the session
+S.Camera.WindowRate = 5;            % Hz; frames copied into MATLAB for the window
+% One row per camera, by serial number. Name is the view, the prefix of its files; Roi
+% is its crop, [x y width height] in sensor pixels, or [] for the full frame.
+S.Camera.Cameras = struct('Serial', {'24226887', '24226657'}, 'Name', {'sideview', 'topview'}, ...
+                          'Record', {true, true}, 'Roi', {[], []});
 
 %% Pre-session tier: sync TTL
 % Switched on by S.Session.UseSync, and requires Flex2 configured as a digital
@@ -215,39 +242,72 @@ S.Sleep.TestPulses.Schedule = struct('Kind', {'Probe'}, 'Channels', {'A and B'},
 S.GUI = struct();
 S.GUIMeta = struct();
 
-S = numericParam(S, 'RewardAmount',     3,    'Reward amount (uL)',       [0 100]);
-S = numericParam(S, 'RewardDelay',      0,    'Reward delay (s)',         [0 60]);
-S = numericParam(S, 'DrinkingGrace',    0.5,  'Drinking grace (s)',       [0 60]);
+S = numericParam(S, 'RewardAmount',     3,    'Reward amount (uL)',       [0 100], ...
+    'Water per correct choice, in microlitres; the valve time comes from the calibration file.');
+S = numericParam(S, 'RewardDelay',      0,    'Reward delay (s)',         [0 60], ...
+    ['Seconds between the choice poke and the valve opening. Leaving the port within it '...
+     'forfeits the reward (CorrectNoReward).']);
+S = numericParam(S, 'DrinkingGrace',    0.5,  'Drinking grace (s)',       [0 60], ...
+    'How long the animal may leave the reward port and come back while drinking.');
 
 % From trial start, across every restart of the stimulus: the trial lapses if no hold
 % is completed in time. Was the initiation window before 0.3.
-S = numericParam(S, 'HoldWindow',       60,   'Hold window (s)',          [0.1 3600]);
-S = numericParam(S, 'PostStimulusHold', 0,    'Post-stimulus hold (s)',   [0 60]);
-S = numericParam(S, 'ResponseWindow',   10,   'Response window (s)',      [0.1 3600]);
-S = numericParam(S, 'ITI',              1,    'Inter-trial interval (s)', [0 3600]);
+S = numericParam(S, 'HoldWindow',       60,   'Hold window (s)',          [0.1 3600], ...
+    ['From trial start: the time the animal has to complete a hold, across every restart '...
+     'of the stimulus. The trial lapses when it runs out.']);
+S = numericParam(S, 'PostStimulusHold', 0,    'Post-stimulus hold (s)',   [0 60], ...
+    'Seconds the animal keeps holding the centre port after the stimulus window ends.');
+S = numericParam(S, 'ResponseWindow',   10,   'Response window (s)',      [0.1 3600], ...
+    'From leaving the centre port: the time the animal has to poke a side port.');
+S = numericParam(S, 'ITI',              1,    'Inter-trial interval (s)', [0 3600], ...
+    'Seconds between the end of one trial and the start of the next.');
 
 % Punishment is two independent choices: which mistakes are punished, and what the
 % punishment is. The codes are written into every trial record.
 S = menuParam(S, 'PunishCondition', 3, 'Punish on', ...
-              {'None', 'Early withdrawal', 'Incorrect choice', 'Both'});
+              {'None', 'Early withdrawal', 'Incorrect choice', 'Both'}, ...
+              'Which mistakes are punished: leaving the centre port early, choosing the wrong side, both or neither.');
 S = menuParam(S, 'PunishType', 3, 'Punishment', ...
-              {'Timeout', 'White noise', 'Timeout + noise'});
-S = numericParam(S, 'PunishTimeout', 2, 'Timeout (s)', [0 3600]);
+              {'Timeout', 'White noise', 'Timeout + noise'}, ...
+              'What a punished mistake costs: a timeout before the next trial, a white noise burst, or both.');
+S = numericParam(S, 'PunishTimeout', 2, 'Timeout (s)', [0 3600], ...
+    'Extra seconds before the next trial after a punished mistake, when the punishment includes a timeout.');
 
-S = numericParam(S, 'BiasCorrection', 0.5, 'Bias correction (0 = off)', [0 1]);
-S = numericParam(S, 'BiasWindow',     20,  'Bias window (trials)',      [1 1000]);
+S = numericParam(S, 'BiasCorrection', 0.5, 'Bias correction (0 = off)', [0 1], ...
+    ['Pushes trials towards the side the animal has been avoiding. If it chose left on a '...
+     'fraction f of its last choices (Bias window), the next trial pays left with chance '...
+     '0.5 + strength x (0.5 - f), kept within 0.1-0.9, by bringing forward a trial that pays '...
+     'that side. 0 = off; 1 = full compensation (an animal always going left gets right '...
+     'trials 90% of the time). Every group is still delivered as often; only the order changes.']);
+S = numericParam(S, 'BiasWindow',     20,  'Bias window (trials)',      [1 1000], ...
+    ['How many of the most recent choices bias correction looks at. Trials with no choice are '...
+     'skipped; nothing is corrected until there are 3 choices.']);
 
-% Hold shaping (lum.HoldShaping). Used only when S.Task.HoldShaping asks for it.
-S = numericParam(S, 'HoldStart',   0.2, 'Hold at start (s)',            [0 60]);
-S = numericParam(S, 'HoldGrowth',  5,   'Hold growth per trial (%)',    [0 100]);
-S = numericParam(S, 'HoldTarget',  1,   'Target hold (s)',              [0 60]);
-S = numericParam(S, 'GraceStart',  0.3, 'Break grace at start (s)',     [0 10]);
-S = numericParam(S, 'GraceShrink', 5,   'Grace shrink per trial (%)',   [0 100]);
-S = numericParam(S, 'GraceTarget', 0,   'Target break grace (s)',       [0 10]);
+% Hold shaping (lum.HoldShaping). Used only while S.Task.AutoShaping is on.
+S = numericParam(S, 'HoldStart',   0.1, 'Hold at start (s)',            [0 60], ...
+    'Automatic shaping: the centre hold asked for on the first trial.');
+S = numericParam(S, 'HoldGrowth',  5,   'Hold growth per trial (%)',    [0 100], ...
+    'Automatic shaping: how much longer the hold gets after each trial on which it was completed.');
+S = numericParam(S, 'HoldTarget',  1,   'Target hold (s)',              [0 60], ...
+    ['Automatic shaping: the hold stops growing here. Normally the stimulus window plus the '...
+     'post-stimulus hold; shorter cuts the light off where the hold ends.']);
+S = numericParam(S, 'HoldStepBackAfter', 10, 'Step back after N early withdrawals', [0 1000], ...
+    ['Automatic shaping: after this many early withdrawals at one hold, with no completed hold '...
+     'in between, the hold steps back one growth step so the animal can go on learning. '...
+     '0 = never step back.']);
+S = numericParam(S, 'GraceStart',  0.3, 'Break grace at start (s)',     [0 10], ...
+    'Automatic shaping: the longest break in the hold forgiven on the first trial.');
+S = numericParam(S, 'GraceShrink', 5,   'Grace shrink per trial (%)',   [0 100], ...
+    'Automatic shaping: how much shorter the forgiven break gets after each completed hold.');
+S = numericParam(S, 'GraceTarget', 0,   'Target break grace (s)',       [0 10], ...
+    'Automatic shaping: the grace stops shrinking here; 0 is an unbroken hold.');
 
-S = checkboxParam(S, 'OptoOn',  true, 'Deliver light');
-S = checkboxParam(S, 'SoundOn', true, 'Play sounds');
-S = numericParam(S, 'PortLightIntensity', 100, 'Port light brightness (0-255)', [0 255]);
+S = checkboxParam(S, 'OptoOn',  true, 'Deliver light', ...
+    'Untick to run trials without the light pattern, for as long as it stays unticked.');
+S = checkboxParam(S, 'SoundOn', true, 'Play sounds', ...
+    'Untick to run trials silently, for as long as it stays unticked.');
+S = numericParam(S, 'PortLightIntensity', 100, 'Port light brightness (0-255)', [0 255], ...
+    'PWM brightness of the port lights: centre cue, side lights and guide lights.');
 
 % Panel order is the order the windows lay them out in; tabs group panels in the
 % tabbed runtime window (Bpod's own window shows the panels on one page).
@@ -255,7 +315,7 @@ S.GUIPanels.Reward = {'RewardAmount', 'RewardDelay', 'DrinkingGrace'};
 S.GUIPanels.Timing = {'HoldWindow', 'PostStimulusHold', 'ResponseWindow', 'ITI'};
 S.GUIPanels.Punishment = {'PunishCondition', 'PunishType', 'PunishTimeout'};
 S.GUIPanels.Bias = {'BiasCorrection', 'BiasWindow'};
-S.GUIPanels.Shaping = {'HoldStart', 'HoldGrowth', 'HoldTarget', ...
+S.GUIPanels.Shaping = {'HoldStart', 'HoldGrowth', 'HoldTarget', 'HoldStepBackAfter', ...
                        'GraceStart', 'GraceShrink', 'GraceTarget'};
 S.GUIPanels.Delivery = {'OptoOn', 'SoundOn', 'PortLightIntensity'};
 
@@ -274,25 +334,29 @@ side.Tone = struct('Enabled', false, 'Frequency', toneFrequency, 'Onset', 0, 'Du
 side.GuideLight = 'Habituation only';   % 'Never', 'Habituation only' or 'Always'
 
 
-function S = numericParam(S, name, value, label, limits)
-% A number the operator types. Limits are enforced by both windows.
+function S = numericParam(S, name, value, label, limits, help)
+% A number the operator types. Limits are enforced by both windows. The help is the
+% sentence or two the windows show while the operator is on the field.
 S.GUI.(name) = value;
 S.GUIMeta.(name).Style = 'edit';
 S.GUIMeta.(name).Label = label;
 S.GUIMeta.(name).Limits = limits;
+S.GUIMeta.(name).Help = help;
 
 
-function S = checkboxParam(S, name, value, label)
+function S = checkboxParam(S, name, value, label, help)
 % An on/off switch. Stored as a double, because Bpod's parameter window reads the
 % checkbox's Value back as one and the trial builder compares it with == 1.
 S.GUI.(name) = double(value);
 S.GUIMeta.(name).Style = 'checkbox';
 S.GUIMeta.(name).Label = label;
+S.GUIMeta.(name).Help = help;
 
 
-function S = menuParam(S, name, value, label, items)
+function S = menuParam(S, name, value, label, items, help)
 % A choice from a fixed list, stored as the 1-based index of the chosen item.
 S.GUI.(name) = value;
 S.GUIMeta.(name).Style = 'popupmenu';
 S.GUIMeta.(name).String = items;
 S.GUIMeta.(name).Label = label;
+S.GUIMeta.(name).Help = help;

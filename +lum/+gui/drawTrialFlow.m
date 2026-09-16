@@ -93,8 +93,8 @@ if isfield(S.Task, 'OnHoldBreak') && strcmp(S.Task.OnHoldBreak, 'End trial')
 else
     breakText = 'leaving early stops the stimulus and the cue comes back; the next poke restarts it';
 end
-if lum.HoldShaping.growsHold(S.Task.HoldShaping) || lum.HoldShaping.hasGrace(S.Task.HoldShaping)
-    caption = sprintf('centre hold, shaped (%s): %s', lower(S.Task.HoldShaping), breakText);
+if lum.HoldShaping.growsHold(S) || lum.HoldShaping.hasGrace(S)
+    caption = sprintf('centre hold, shaped (%s): %s', lower(lum.HoldShaping.activeMode(S)), breakText);
 else
     caption = sprintf('centre hold: %s', breakText);
 end

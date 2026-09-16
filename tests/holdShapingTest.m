@@ -96,7 +96,7 @@ end
 
 function testOnlyGraceCostsAGlobalTimer(testCase)
 rig = struct('Limits', struct('GlobalTimers', 16), 'Available', struct('Sync', false));
-for mode = lum.HoldShaping.modes()
+for mode = [{'Off'}, lum.HoldShaping.modes()]
     S = shaped(mode{1});
     [~, reserved] = lum.timerBudget(S, rig);
     verifyEqual(testCase, reserved.HoldClock, double(lum.HoldShaping.hasGrace(mode{1})), mode{1});
@@ -132,9 +132,125 @@ verifySubstring(testCase, lum.HoldShaping.describe(shaped('Off')), 'whole stimul
 end
 
 
+function testShapingIsOffByDefaultAndGrowsTheHoldWhenSwitchedOn(testCase)
+S = lum.defaultSettings;
+verifyFalse(testCase, S.Task.AutoShaping, 'Automatic shaping is off by default');
+verifyEqual(testCase, lum.HoldShaping.activeMode(S), 'Off');
+verifyEqual(testCase, S.Task.HoldShaping, 'Grow hold', 'Grow hold is the default method');
+verifyEqual(testCase, [S.GUI.HoldStart, S.GUI.HoldTarget, S.GUI.HoldStepBackAfter], [0.1 1 10]);
+S.Task.AutoShaping = true;
+verifyEqual(testCase, lum.HoldShaping.activeMode(S), 'Grow hold');
+verifyEqual(testCase, lum.HoldShaping.next(S, lum.newHistory(5)), 0.1, 'AbsTol', 1e-12);
+end
+
+function testTheMethodIsIgnoredWhileShapingIsOff(testCase)
+S = lum.defaultSettings;
+S.Task.HoldShaping = 'Both';
+[holdDuration, grace] = lum.HoldShaping.next(S, lum.newHistory(5));
+verifyEqual(testCase, holdDuration, S.Stimulus.Duration + S.GUI.PostStimulusHold, 'AbsTol', 1e-12);
+verifyEqual(testCase, grace, 0);
+end
+
+function testTooManyEarlyWithdrawalsStepTheHoldBack(testCase)
+% Ten withdrawals at one hold, with no completed hold in between, step it back one
+% growth step; fewer hold it where it is.
+S = shaped('Grow hold');
+S.GUI.HoldGrowth = 10;
+history = withdrawals(0.55, 9);
+[holdDuration, ~, steppedBack] = lum.HoldShaping.next(S, history);
+verifyEqual(testCase, holdDuration, 0.55, 'AbsTol', 1e-9);
+verifyFalse(testCase, steppedBack);
+history = withdrawals(0.55, 10);
+[holdDuration, ~, steppedBack] = lum.HoldShaping.next(S, history);
+verifyEqual(testCase, holdDuration, 0.5, 'AbsTol', 1e-9, 'One growth step back');
+verifyTrue(testCase, steppedBack);
+S.GUI.HoldStepBackAfter = 0;
+verifyEqual(testCase, lum.HoldShaping.next(S, history), 0.55, 'AbsTol', 1e-9, '0 never steps back');
+end
+
+function testTheHoldNeverStepsBackBelowItsStart(testCase)
+S = shaped('Grow hold');
+[holdDuration, ~, steppedBack] = lum.HoldShaping.next(S, withdrawals(S.GUI.HoldStart, 50));
+verifyEqual(testCase, holdDuration, S.GUI.HoldStart, 'AbsTol', 1e-12);
+verifyFalse(testCase, steppedBack);
+end
+
+function testWithdrawalsAreCountedPerHoldAndForgivenByACompletedHold(testCase)
+% A restarted trial that ends in a completed hold clears the count; a new hold starts
+% it again; a trial that lapses adds every withdrawal in it.
+history = lum.newHistory(10);
+spec = struct('PatternIndex', 1, 'StimulusGroup', 1, 'CorrectSide', 1, 'HoldDuration', 0.5, ...
+              'HoldGrace', 0);
+lapsed = struct('Choice', NaN, 'Correct', NaN, 'Rewarded', 0, 'ReactionTime', NaN, ...
+                'Outcome', lum.Outcome.HoldNotCompleted, 'HoldBreaks', 0, 'HoldAttempts', 4, ...
+                'EarlyWithdrawals', 4);
+history = lum.updateHistory(history, 1, spec, lapsed);
+history = lum.updateHistory(history, 2, spec, lapsed);
+verifyEqual(testCase, history.withdrawalsAtHold, 8);
+completed = lapsed;
+completed.Outcome = lum.Outcome.Correct;
+completed.EarlyWithdrawals = 2;
+history = lum.updateHistory(history, 3, spec, completed);
+verifyEqual(testCase, history.withdrawalsAtHold, 0, 'A completed hold clears the count');
+history = lum.updateHistory(history, 4, spec, lapsed);
+spec.HoldDuration = 0.45;
+history = lum.updateHistory(history, 5, spec, lapsed);
+verifyEqual(testCase, history.withdrawalsAtHold, 4, 'A new hold starts the count again');
+end
+
+function testTheTrialStillRunningCannotStepTheHoldBackTwice(testCase)
+% Trial n+1 is prepared from trial n-1: when n+1 stepped back, n (still at the old hold)
+% can add withdrawals, but n+2 steps back from n's hold to the same value, not further.
+S = shaped('Grow hold');
+S.GUI.HoldGrowth = 10;
+history = withdrawals(0.55, 12);
+first = lum.HoldShaping.next(S, history);
+history.nTrials = 2;
+history.holdDuration(2) = 0.55;
+history.outcome(2) = lum.Outcome.EarlyWithdrawal;
+history.withdrawalsAtHold = 13;
+verifyEqual(testCase, lum.HoldShaping.next(S, history), first, 'AbsTol', 1e-12);
+end
+
+function testASettingsFileWithoutShapingMigratesToTheSwitch(testCase)
+old = lum.defaultSettings;
+old.Task = rmfield(old.Task, 'AutoShaping');
+old.Task.HoldShaping = 'Off';
+[S, changed] = lum.mergeSettings(lum.defaultSettings, old);
+verifyFalse(testCase, S.Task.AutoShaping);
+verifyEqual(testCase, S.Task.HoldShaping, 'Grow hold');
+verifyTrue(testCase, any(contains(changed, 'AutoShaping')));
+old.Task.HoldShaping = 'Shrink grace';
+S = lum.mergeSettings(lum.defaultSettings, old);
+verifyTrue(testCase, S.Task.AutoShaping, 'A file that shaped keeps shaping');
+verifyEqual(testCase, S.Task.HoldShaping, 'Shrink grace');
+end
+
+function testTrainingSwitchesShapingOnAndExperimentOff(testCase)
+S = lum.stageDefaults(lum.defaultSettings, 2);
+verifyTrue(testCase, S.Task.AutoShaping);
+S = lum.stageDefaults(S, 3);
+verifyFalse(testCase, S.Task.AutoShaping);
+S.Task.AutoShaping = true;
+S.Task.TrainingStage = 3;
+S.Session.MaxTrials = 20;
+verifyError(testCase, @() lum.validateSettings(S, RigConfig), ...
+            'lum:validateSettings:shapingInExperiment');
+end
+
+
 function S = shaped(mode)
 S = lum.defaultSettings;
-S.Task.HoldShaping = mode;
+S.Task.AutoShaping = ~strcmp(mode, 'Off');
+if ~strcmp(mode, 'Off')
+    S.Task.HoldShaping = mode;
+end
+end
+
+function history = withdrawals(holdDuration, n)
+% A history whose last trial lapsed at this hold, with n early withdrawals counted.
+history = afterOneTrial(holdDuration, 0, lum.Outcome.HoldNotCompleted);
+history.withdrawalsAtHold = n;
 end
 
 function history = afterOneTrial(holdDuration, grace, outcome)

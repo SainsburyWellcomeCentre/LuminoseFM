@@ -32,3 +32,16 @@ history.holdDuration(trialNumber) = spec.HoldDuration;
 history.holdGrace(trialNumber)    = spec.HoldGrace;
 history.holdBreaks(trialNumber)   = result.HoldBreaks;
 history.holdAttempts(trialNumber) = result.HoldAttempts;
+history.earlyWithdrawals(trialNumber) = result.EarlyWithdrawals;
+
+% Early withdrawals at the hold this trial asked for. A new hold starts the count again,
+% and so does a completed one: only withdrawals the animal has not yet made up for by
+% holding count towards stepping the hold back (lum.HoldShaping).
+if trialNumber > 1 && abs(spec.HoldDuration - history.holdDuration(trialNumber - 1)) > 5e-5
+    history.withdrawalsAtHold = 0;
+end
+if lum.HoldShaping.completedHold(result.Outcome)
+    history.withdrawalsAtHold = 0;
+else
+    history.withdrawalsAtHold = history.withdrawalsAtHold + result.EarlyWithdrawals;
+end

@@ -14,12 +14,12 @@ function [S, accepted, app] = SetupDialog(S, rig, varargin)
 %
 %   Experiment  The animal (subject, genotype), what else is recorded or given in
 %               this session (Neuropixels, EEG/EMG, a drug), length, devices, notes
-%   Task        Training stage, trial order, the centre hold and its shaping, which
-%               components make up the cue, the stimulus and each side, and the trial
-%               timeline
+%   Task        Training stage, trial order, the centre hold and its automatic
+%               shaping, which components make up the cue, the stimulus and each side,
+%               and the trial timeline
 %   Cue         Whether each cue component continues through the stimulus, or how
-%               long it stays on into it; the cue tone, sound output, and a timeline
-%               of the cue against the stimulus
+%               long it stays on into it; the cue tone, sound output (each with a Play
+%               button), and a timeline of the cue against the stimulus
 %   Stimulus    The stimulus window and its latency from the poke; the light patterns
 %               and trial order (the stimulus designer opens from
 %               here), P(left) per group, every trial of the session to scroll
@@ -27,7 +27,13 @@ function [S, accepted, app] = SetupDialog(S, rig, varargin)
 %   Light path  The fiber bundle and its cables, and each channel's carrier
 %   Left/Right  Side port light, side tone and guide light for each side
 %   Sync        Trial sync pulses and the session barcode
+%   Cameras     Video: SpinCam, cameras and views, image settings, with a live preview
+%               (lum.gui.CameraSetup)
 %   Runtime     Starting values of the runtime tier
+%
+% A help line at the foot of the window describes the field under the pointer, or the
+% one just used (lum.gui.HelpLine): the runtime tier's GUIMeta.Help, and every other
+% control's tooltip.
 %
 % Ticking a component on the Task tab is what switches it on: its rows light up on
 % the tab that times it, and that tab's title counts it. Everything is validated on
@@ -41,12 +47,15 @@ function [S, accepted, app] = SetupDialog(S, rig, varargin)
 %   'Subject'  The subject chosen in the launch manager
 %   'Wait'     false to return at once with the dialog open (for tests); default true
 %   'Visible'  'on' (default) or 'off'
+%   'SoundPlayer'  Function called with one TestHiFiSound argument list per sound a Play
+%              button plays; default TestHiFiSound itself (tests pass a recorder)
 %
 % Returns:
 %   S         The edited settings
 %   accepted  True if the operator started the session, false if they cancelled
 %   app       With 'Wait' false: .Figure, .collect(), .refresh(), .start(),
-%             .cancel(), .status() and .controls
+%             .cancel(), .status(), .playSound(which), .controls, .helpLine (the
+%             lum.gui.HelpLine) and .cameras (the lum.gui.CameraSetup)
 %
 % See also: lum.defaultSettings, lum.validateSettings, lum.gui.StimulusDesigner,
 %           lum.gui.RuntimeWindow
@@ -56,7 +65,10 @@ p.FunctionName = 'lum.gui.SetupDialog';
 addParameter(p, 'Subject', '', @(x) ischar(x) || isstring(x));
 addParameter(p, 'Wait', true, @(x) islogical(x) || isnumeric(x));
 addParameter(p, 'Visible', 'on');
+addParameter(p, 'SoundPlayer', @(varargin) TestHiFiSound(varargin{:}), ...
+             @(x) isa(x, 'function_handle'));
 parse(p, varargin{:});
+soundPlayer = p.Results.SoundPlayer;
 if strlength(string(p.Results.Subject)) > 0
     S.Meta.Subject = char(p.Results.Subject);
 end
@@ -75,7 +87,7 @@ drawnKeys = struct('Flow', {{}}, 'Cue', {{}}, 'Barcode', {{}}, 'Browser', {{}});
 
 fig = uifigure('Name', 'LuminoseFM - session setup', 'Position', [40 40 1280 850], ...
                'Color', t.Background, 'Visible', p.Results.Visible);
-outer = uigridlayout(fig, [4 1], 'RowHeight', {58, '1x', 'fit', 34}, ...
+outer = uigridlayout(fig, [5 1], 'RowHeight', {58, '1x', 46, 'fit', 34}, ...
                      'Padding', [14 10 14 12], 'RowSpacing', 8, 'BackgroundColor', t.Background);
 buildHeader(outer, S, rig, t);
 tabGroup = uitabgroup(outer);
@@ -83,14 +95,20 @@ tabGroup = uitabgroup(outer);
 controls = struct();
 controls = buildExperimentTab(tabGroup, S, controls, choices, t, @refresh);
 controls = buildTaskTab(tabGroup, S, controls, runtime, t, @refresh, @stageChosen);
-controls = buildCueTab(tabGroup, S, controls, t, @refresh);
-controls = buildStimulusTab(tabGroup, S, controls, t, @refresh, @openDesigner, @newTrialOrder);
+controls = buildCueTab(tabGroup, S, controls, t, @refresh, @playSound);
+controls = buildStimulusTab(tabGroup, S, controls, t, @refresh, @openDesigner, @newTrialOrder, @playSound);
 controls = buildLightPathTab(tabGroup, S, controls, t, @refresh);
-controls = buildSideTab(tabGroup, S, 'Left', controls, choices, t, @refresh);
-controls = buildSideTab(tabGroup, S, 'Right', controls, choices, t, @refresh);
+controls = buildSideTab(tabGroup, S, 'Left', controls, choices, t, @refresh, @playSound);
+controls = buildSideTab(tabGroup, S, 'Right', controls, choices, t, @refresh, @playSound);
 controls = buildSyncTab(tabGroup, S, controls, t, @refresh);
+cameraTab = uitab(tabGroup, 'Title', 'Cameras', 'BackgroundColor', t.Background);
+controls.Tabs.Cameras = cameraTab;
+cameras = lum.gui.CameraSetup(cameraTab, S.Camera, t, @refresh, 'Subject', S.Meta.Subject);
 controls = buildRuntimeTab(tabGroup, runtime, controls, t, @refresh);
 
+controls.Help = uilabel(outer, 'Text', '', 'WordWrap', 'on', 'FontSize', 11, ...
+                        'FontColor', t.Ink, 'BackgroundColor', t.AccentSoft, ...
+                        'VerticalAlignment', 'top');
 controls.Status = uilabel(outer, 'Text', '', 'WordWrap', 'on', 'FontSize', 12);
 footer = uigridlayout(outer, [1 3], 'ColumnWidth', {'1x', 110, 150}, 'Padding', 0, ...
                       'ColumnSpacing', 8, 'BackgroundColor', t.Background);
@@ -109,10 +127,13 @@ drawnow;
 fig.AutoResizeChildren = 'off';
 fig.SizeChangedFcn = @(~, ~) onResize();
 tabGroup.SelectionChangedFcn = @(~, ~) refresh();
+helpLine = lum.gui.HelpLine(fig, controls.Help, ...
+                            'Point at a field, or use it, to see what it does here.');
+helpLine.registerTooltips();
 refresh();
 app = struct('Figure', fig, 'collect', @collectSettings, 'refresh', @refresh, ...
              'start', @onStart, 'cancel', @onCancel, 'status', @statusText, ...
-             'controls', controls);
+             'playSound', @playSound, 'controls', controls, 'helpLine', helpLine, 'cameras', cameras);
 if p.Results.Wait
     uiwait(fig);
 end
@@ -144,6 +165,7 @@ end
         S = candidate;
         accepted = true;
         ok = true;
+        cameras.close();  % The session opens the cameras itself
         delete(fig);
     end
 
@@ -170,6 +192,24 @@ end
         refresh();
     end
 
+    function playSound(which)
+        % Play one of the session's sounds with the settings as they stand, through the
+        % HiFi module, or the PC's speakers where there is none (lum.testSounds).
+        try
+            candidate = collectSettings();
+            nGroups = 2;
+            if ~isempty(cachedSet)
+                nGroups = cachedSet.nGroups;
+            end
+            plays = lum.testSounds(candidate, which, nGroups);
+            for i = 1:numel(plays)
+                soundPlayer(plays{i}{:});
+            end
+        catch soundError
+            uialert(fig, soundError.message, 'Could not play the sound');
+        end
+    end
+
     function newTrialOrder()
         S.Stimulus.Generator.Seed = lum.pattern.newSeed();
         refresh();
@@ -192,6 +232,7 @@ end
             return
         end
         controls.UseOpto.Value = candidate.Session.UseOpto;
+        controls.AutoShaping.Value = logical(candidate.Task.AutoShaping);
         for k = 1:numel(candidate.Stimulus.Components)
             controls.StimulusEnabled(k).Value = candidate.Stimulus.Components(k).Enabled;
             controls.StimulusOnset(k).Value = candidate.Stimulus.Components(k).Onset;
@@ -235,6 +276,10 @@ end
             message = sprintf('%s  Contingency REVERSED: every group pays the other side.', ...
                               message);
         end
+        cameraNote = cameras.problem(candidate.Camera);
+        if ~isempty(cameraNote)
+            notes{end+1} = cameraNote;
+        end
         if ~isempty(notes)
             message = sprintf('%s  Note: %s', message, strjoin(notes, ' '));
         end
@@ -273,6 +318,7 @@ end
                                                    S.Task.TrainingStageNames), 1);
         candidate.Task.MaxSameSide = round(c.MaxSameSide.Value);
         candidate.Task.ReverseContingency = c.ReverseContingency.Value;
+        candidate.Task.AutoShaping = c.AutoShaping.Value;
         candidate.Task.HoldShaping = c.HoldShaping.Value;
         candidate.Task.OnHoldBreak = c.OnHoldBreak.Value;
         candidate.Task.GroupPLeft = readPLeft(c.GroupTable.Data);
@@ -329,6 +375,8 @@ end
             'ZeroWidth', c.BarcodeZero.Value, 'OneWidth', c.BarcodeOne.Value, ...
             'Gap', c.BarcodeGap.Value, 'SleepMarkerWidth', c.BarcodeSleepMarker.Value);
 
+        candidate.Camera = cameras.read(candidate.Camera);
+
         candidate.GUI = readRuntime(c.Runtime, runtime, candidate.GUI);
     end
 
@@ -339,10 +387,15 @@ end
         c.ShapingNote.Text = sprintf('%s %s', lum.HoldShaping.describeBreak(candidate), ...
                                      lum.HoldShaping.describe(candidate));
         c.HoldNote.Text = lum.HoldShaping.describeHold(candidate);
-        setEnable(runtimeHandles(c.Runtime, {'HoldStart', 'HoldGrowth', 'HoldTarget'}), ...
-                  lum.HoldShaping.growsHold(candidate.Task.HoldShaping));
+        setEnable({c.HoldShaping}, candidate.Task.AutoShaping);
+        setEnable(runtimeHandles(c.Runtime, {'HoldStart', 'HoldGrowth', 'HoldTarget', ...
+                                             'HoldStepBackAfter'}), ...
+                  lum.HoldShaping.growsHold(candidate));
         setEnable(runtimeHandles(c.Runtime, {'GraceStart', 'GraceShrink', 'GraceTarget'}), ...
-                  lum.HoldShaping.hasGrace(candidate.Task.HoldShaping));
+                  lum.HoldShaping.hasGrace(candidate));
+        cameras.update(candidate.Camera);
+        c.Tabs.Cameras.Title = countedTitle('Cameras', candidate.Camera.Enabled * ...
+            sum(arrayfun(@(r) logical(r.Record), candidate.Camera.Cameras)));
 
         lum.gui.ExperimentForm.update(c, candidate.Meta);
 
@@ -397,7 +450,7 @@ end
 
         flowKey = {candidate.Cue.Components, candidate.Stimulus.Duration, ...
                    candidate.Stimulus.Latency, candidate.GUI, ...
-                   candidate.Task.HoldShaping, candidate.Task.OnHoldBreak, ...
+                   candidate.Task.AutoShaping, candidate.Task.HoldShaping, candidate.Task.OnHoldBreak, ...
                    round(c.FlowAxes.InnerPosition(3))};
         if ~isequal(flowKey, drawnKeys.Flow)
             lum.gui.drawTrialFlow(c.FlowAxes, candidate);
@@ -576,8 +629,8 @@ controls.ReverseContingency = uicheckbox(form, 'Text', 'Reverse: swap the sides'
 
 panel = uipanel(left, 'Title', 'Centre hold', 'FontWeight', 'bold', ...
                 'BackgroundColor', t.Panel, 'ForegroundColor', t.Accent);
-form = uigridlayout(panel, [numel(shaping) + 4, 2], 'ColumnWidth', {170, '1x'}, ...
-                    'RowHeight', [{44, 26, 26, 72}, repmat({26}, 1, numel(shaping))], ...
+form = uigridlayout(panel, [numel(shaping) + 5, 2], 'ColumnWidth', {170, '1x'}, ...
+                    'RowHeight', [{44, 26, 26, 26, 72}, repmat({26}, 1, numel(shaping))], ...
                     'Padding', [10 8 10 8], 'RowSpacing', 6, 'ColumnSpacing', 10, ...
                     'BackgroundColor', t.Panel, 'Scrollable', 'on');
 label(form, 'Hold', t);
@@ -589,8 +642,23 @@ controls.OnHoldBreak = uidropdown(form, 'Items', lum.HoldShaping.breakModes(), .
     'Tooltip', ['Restart stimulus: the next poke starts it again, within the hold window. '...
                 'End trial: the break is an early withdrawal.']);
 label(form, 'Shaping', t);
+controls.AutoShaping = uicheckbox(form, 'Text', 'Automatic shaping', ...
+    'Value', logical(S.Task.AutoShaping), 'ValueChangedFcn', @(~, ~) onEdit(), ...
+    'Tooltip', ['Shape the centre hold from the animal''s performance: it grows after every '...
+                'completed hold and steps back after too many early withdrawals. Choosing the '...
+                'Training stage switches it on, Experiment switches it off; an Experiment '...
+                'session cannot run with it.']);
+label(form, 'Shaping method', t);
+method = S.Task.HoldShaping;
+if ~ismember(method, lum.HoldShaping.modes())
+    method = lum.HoldShaping.modes();
+    method = method{1};
+end
 controls.HoldShaping = uidropdown(form, 'Items', lum.HoldShaping.modes(), ...
-    'Value', S.Task.HoldShaping, 'ValueChangedFcn', @(~, ~) onEdit());
+    'Value', method, 'ValueChangedFcn', @(~, ~) onEdit(), ...
+    'Tooltip', ['Grow hold: the hold grows from its start to its target and steps back after '...
+                'repeated early withdrawals. Shrink grace: breaks in the hold are forgiven, less '...
+                'and less. Both: the two together.']);
 label(form, '', t);
 controls.ShapingNote = uilabel(form, 'Text', '', 'WordWrap', 'on', 'FontColor', t.Muted, ...
                                'FontSize', 11);
@@ -656,7 +724,7 @@ disableDefaultInteractivity(controls.FlowAxes);
 end
 
 
-function controls = buildCueTab(tabGroup, S, controls, t, onEdit)
+function controls = buildCueTab(tabGroup, S, controls, t, onEdit, onPlay)
 tab = uitab(tabGroup, 'Title', 'Cue', 'BackgroundColor', t.Background);
 controls.Tabs.Cue = tab;
 grid = uigridlayout(tab, [1 2], 'ColumnWidth', {520, '1x'}, 'Padding', 12, ...
@@ -683,15 +751,23 @@ end
 
 form = formPanel(left, 'Cue tone', 1, t, 190);
 label(form, 'Tone frequency (Hz)', t);
-controls.CueToneFrequency = numberField(form, S.Cue.ToneFrequency, [20 80000], onEdit, false);
+row = playRow(form, t);
+controls.CueToneFrequency = numberField(row, S.Cue.ToneFrequency, [20 80000], onEdit, false);
+controls.PlayCue = playButton(row, 'Play the cue tone (0.5 s) with the sound output below', ...
+                              @() onPlay('Cue'));
 
 form = formPanel(left, 'Sound output', 3, t, 190);
 label(form, 'Amplitude (0-1)', t);
 controls.SoundAmplitude = numberField(form, S.Sound.Amplitude, [0 1], onEdit, false);
+controls.SoundAmplitude.Tooltip = 'Every sound''s amplitude, as a fraction of full scale';
 label(form, 'Attenuation (dB FS)', t);
 controls.Attenuation = numberField(form, S.Sound.Attenuation_dB, [-120 0], onEdit, false);
+controls.Attenuation.Tooltip = 'The HiFi module''s digital volume, in dB below full scale';
 label(form, 'Punishment noise (s)', t);
-controls.NoiseDuration = numberField(form, S.Sound.NoiseDuration, [0.001 10], onEdit, false);
+row = playRow(form, t);
+controls.NoiseDuration = numberField(row, S.Sound.NoiseDuration, [0.001 10], onEdit, false);
+controls.PlayNoise = playButton(row, 'Play the punishment noise with these settings', ...
+                                @() onPlay('Noise'));
 
 note(left, ['The cue asks the animal to start a trial. Every ticked part comes on at trial '...
             'start and stays on until the stimulus starts — through the wait for the poke, '...
@@ -714,7 +790,7 @@ disableDefaultInteractivity(controls.CueAxes);
 end
 
 
-function controls = buildStimulusTab(tabGroup, S, controls, t, onEdit, onDesign, onNewOrder)
+function controls = buildStimulusTab(tabGroup, S, controls, t, onEdit, onDesign, onNewOrder, onPlay)
 tab = uitab(tabGroup, 'Title', 'Stimulus', 'BackgroundColor', t.Background);
 controls.Tabs.Stimulus = tab;
 grid = uigridlayout(tab, [1 2], 'ColumnWidth', {520, '1x'}, 'Padding', 12, ...
@@ -770,9 +846,15 @@ uilabel(table, 'Text', 'Tone range (Hz)', 'FontColor', t.Ink);
 controls.ToneLow = numberField(table, S.Stimulus.ToneFrequencyRange(1), [20 80000], onEdit, false);
 controls.ToneHigh = numberField(table, S.Stimulus.ToneFrequencyRange(2), [20 80000], onEdit, false);
 
-note(left, ['Timed from stimulus onset. A component on for the whole window is free; one '...
-            'that starts late or ends early uses a global timer. The stimulus tone has a '...
-            'frequency of its own for each group, spread across the range.'], t);
+row = uigridlayout(left, [1 2], 'ColumnWidth', {'1x', 130}, 'Padding', 0, 'ColumnSpacing', 8, ...
+                   'BackgroundColor', t.Background);
+note(row, ['Timed from stimulus onset. A component on for the whole window is free; one '...
+           'that starts late or ends early uses a global timer. The stimulus tone has a '...
+           'frequency of its own for each group, spread across the range.'], t);
+controls.PlayStimulusTones = uibutton(row, 'Text', [char(9654) ' Play tones'], ...
+    'ButtonPushedFcn', @(~, ~) onPlay('Stimulus'), ...
+    'Tooltip', ['Play each group''s stimulus tone in turn, lowest first, with the tone duration '...
+                'and the sound output set on the Cue tab']);
 
 panel = uipanel(grid, 'Title', 'Every trial of the session', 'FontWeight', 'bold', ...
                 'BackgroundColor', t.Panel, 'ForegroundColor', t.Accent);
@@ -836,7 +918,7 @@ note(grid, sprintf(['Channel A:  Bpod BNC1 -> PulsePal IN1 -> OUT1 -> Doric LED 
 end
 
 
-function controls = buildSideTab(tabGroup, S, side, controls, choices, t, onEdit)
+function controls = buildSideTab(tabGroup, S, side, controls, choices, t, onEdit, onPlay)
 tab = uitab(tabGroup, 'Title', side, 'BackgroundColor', t.Background);
 controls.Tabs.(side) = tab;
 grid = uigridlayout(tab, [1 2], 'ColumnWidth', {560, '1x'}, 'Padding', 12, ...
@@ -858,14 +940,17 @@ controls.(side).LightDuration = numberField(row, settings.Light.Duration, [0 60]
 
 panel = uipanel(left, 'Title', sprintf('%s tone', side), 'FontWeight', 'bold', ...
                 'BackgroundColor', t.Panel, 'ForegroundColor', t.Accent);
-row = uigridlayout(panel, [2 4], 'ColumnWidth', {60, '1x', '1x', '1x'}, 'RowHeight', {20, 26}, ...
+row = uigridlayout(panel, [2 5], 'ColumnWidth', {60, '1x', '1x', '1x', 80}, 'RowHeight', {20, 26}, ...
                    'Padding', [10 8 10 8], 'RowSpacing', 4, 'ColumnSpacing', 10, ...
                    'BackgroundColor', t.Panel);
-headings(row, {'', 'Frequency (Hz)', 'Onset (s)', 'Duration (s)'}, t);
+headings(row, {'', 'Frequency (Hz)', 'Onset (s)', 'Duration (s)', ''}, t);
 controls.(side).ToneChip = makeChip(row, t);
 controls.(side).ToneFrequency = numberField(row, settings.Tone.Frequency, [20 80000], onEdit, false);
 controls.(side).ToneOnset = numberField(row, settings.Tone.Onset, [0 60], onEdit, false);
 controls.(side).ToneDuration = numberField(row, settings.Tone.Duration, [0 60], onEdit, false);
+controls.(side).PlayTone = uibutton(row, 'Text', [char(9654) ' Play'], ...
+    'ButtonPushedFcn', @(~, ~) onPlay(side), ...
+    'Tooltip', sprintf('Play the %s tone with the sound output set on the Cue tab', lower(side)));
 
 form = formPanel(left, 'Guide light', 1, t, 220);
 label(form, 'Light the port while choosing', t);
@@ -1219,6 +1304,23 @@ switch field.Style
         % A read-only display or an in-session action: nothing to act on before a session.
         control = uilabel(parent, 'Text', '(set during the session)', 'FontSize', 11);
 end
+if ~isempty(field.Help)
+    control.Tooltip = field.Help;
+end
+end
+
+
+function row = playRow(parent, t)
+% A form field with a Play button beside it.
+row = uigridlayout(parent, [1 2], 'ColumnWidth', {'1x', 80}, 'Padding', 0, 'ColumnSpacing', 6, ...
+                   'BackgroundColor', t.Panel);
+end
+
+
+function button = playButton(parent, tooltip, onPlay)
+% A button that plays a sound of the session.
+button = uibutton(parent, 'Text', [char(9654) ' Play'], 'Tooltip', tooltip, ...
+                  'ButtonPushedFcn', @(~, ~) onPlay());
 end
 
 

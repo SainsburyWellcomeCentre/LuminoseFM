@@ -11,12 +11,12 @@ function run(S, rig, subject, headless)
 % early if the operator stops it from the console, or if PulsePal stops answering.
 %
 %   setup      sleep setup dialog, validation, the whole timeline laid out, devices
-%              (PulsePal refused as for behaviour), plots, barcode
+%              (PulsePal and cameras refused as for behaviour), video, plots, barcode
 %   blocks     the timeline in state machines of about 10 s (lum.sleep.nextBlock), each
 %              cut where every line is low and no epoch is split; PulsePal is given each
 %              step's carrier between blocks; onsets read back from the states
-%   teardown   the pulse and light records, the analog stream, the final file, devices
-%              released
+%   teardown   the pulse and light records, the analog stream, the final file, then the
+%              video stopped and its summary added to the file, devices released
 %
 % Blocks run on blocking RunStateMachine calls, on the rig as in the emulator: with
 % nothing to prepare between blocks there is no use for BpodTrialManager, and every
@@ -28,12 +28,16 @@ function run(S, rig, subject, headless)
 %   Data.Session        Type, Subject, Settings, Rig, Emulated, DevicesAvailable,
 %                       SyncSent, StartTime, EndTime, Barcode (Value, Hex, Kind, Sent,
 %                       Params), TestPulses (Enabled, Steps, Duration, Completed,
-%                       StoppedReason), ProtocolVersion, DeviceLog (PulsePal, FlexIO)
+%                       StoppedReason), Cameras (lum.dev.Cameras.sessionRecord),
+%                       ProtocolVersion, DeviceLog (PulsePal, FlexIO, Cameras)
 %   Data.SyncPulses     .Onset (s, state machine clock), .Width (s) and .Block, one value
 %                       per pulse sent
 %   Data.LightSegments  With test pulses: .Onset (s, state machine clock), .Duration (s),
 %                       .Channel (1 A, 2 B), .Step, .Epoch and .Block, one value per gate
 %                       of light sent (lum.sleep.epochShape gives the pulses in it)
+%   Data.CameraTime     Seconds on the camera host clock when each block's events arrived,
+%                       one value per block (NaN without video): pairs TrialEndTimestamp
+%                       with the frame logs' HostTime_s
 %   Data.RawEvents      Bpod's own record, one "trial" per block
 %
 % Arguments:
@@ -88,6 +92,14 @@ catch openError
     BpodSystem.Status.BeingUsed = 0;
     rethrow(openError);
 end
+% Video first, so the barcode is on it.
+try
+    devices.cameras.startRecording(BpodSystem.Path.CurrentDataFile);
+catch recordError
+    closeDevices(devices);
+    BpodSystem.Status.BeingUsed = 0;
+    rethrow(recordError);
+end
 
 syncChannel = '';
 if S.Session.UseSync && devices.flex.hasSync()
@@ -99,6 +111,10 @@ if testPulses.Enabled
 end
 
 plots = lum.sleep.Plots(S, 'Subject', subject, 'MaxPulses', size(syncPulses, 1), 'Plan', plan);
+cameraWindow = [];
+if S.Camera.ShowWindow && devices.cameras.canPreview()
+    cameraWindow = lum.gui.CameraWindow(devices.cameras, S.Camera, 'Subject', subject);
+end
 
 %% Session barcode
 startTime = datetime('now');
@@ -127,6 +143,9 @@ segmentBlocks = NaN(1, nSegments);
 nSyncSent = 0;
 nSegmentsSent = 0;
 nBlocks = 0;
+% Blocks last about 10 s and are never shorter than their shortest span, so one mark a
+% second of recording is room enough.
+cameraTimes = NaN(1, max(100, ceil(durationSeconds)));
 saveEveryNBlocks = 6;   % About a minute of 10 s blocks
 stoppedReason = '';
 cursor = struct('Time', 0, 'End', round(durationSeconds / cycle), 'NextSync', 1, 'NextEpoch', 1);
@@ -155,6 +174,9 @@ while BpodSystem.Status.BeingUsed == 1 && cursor.Time < cursor.End
 
     BpodSystem.Data = AddTrialEvents(BpodSystem.Data, rawEvents);
     nBlocks = nBlocks + 1;
+    if nBlocks <= numel(cameraTimes)
+        cameraTimes(nBlocks) = devices.cameras.mark('BlockEnd', nBlocks);
+    end
     if nBlocks == 1
         % AddTrialEvents builds Data.Info on the first block, so session-level
         % annotations go in after it.
@@ -184,6 +206,7 @@ while BpodSystem.Status.BeingUsed == 1 && cursor.Time < cursor.End
         end
         BpodSystem.Data = publishPulses(BpodSystem.Data, syncOnsets, syncWidths, syncBlocks, ...
             nSyncSent, plan, segmentOnsets, segmentBlocks, nSegmentsSent, testPulses.Enabled);
+        BpodSystem.Data.CameraTime = cameraTimes(1:min(nBlocks, numel(cameraTimes)));
         SaveBpodSessionData;
         if ~isempty(stoppedReason)
             break
@@ -200,12 +223,19 @@ end
 %% Teardown
 % Everything is released here, before LuminoseFM hands the rig back with
 % RunProtocol('Stop'), which removes +lum from the path.
+if ~isempty(cameraWindow)
+    cameraWindow.close();
+end
+saved = false;
 try
     BpodSystem.Data = publishPulses(BpodSystem.Data, syncOnsets, syncWidths, syncBlocks, ...
         nSyncSent, plan, segmentOnsets, segmentBlocks, nSegmentsSent, testPulses.Enabled);
+    BpodSystem.Data.CameraTime = cameraTimes(1:min(nBlocks, numel(cameraTimes)));
     if isfield(BpodSystem.Data, 'Session')
         BpodSystem.Data.Session.DeviceLog = struct('PulsePal', {devices.pulsePal.log()}, ...
-                                                   'FlexIO', {devices.flex.log()});
+                                                   'FlexIO', {devices.flex.log()}, ...
+                                                   'Cameras', {devices.cameras.log()});
+        BpodSystem.Data.Session.Cameras = devices.cameras.sessionRecord();
         BpodSystem.Data.Session.EndTime = char(datetime('now'), 'yyyy-MM-dd HH:mm:ss');
         BpodSystem.Data.Session.TestPulses.Completed = testPulses.Enabled && completed;
         BpodSystem.Data.Session.TestPulses.StoppedReason = stoppedReason;
@@ -213,21 +243,34 @@ try
     BpodSystem.Data = devices.flex.mergeAnalogData(BpodSystem.Data);
     if nBlocks > 0
         SaveBpodSessionData;
+        saved = true;
     end
 catch teardownError
     warning('lum:sleep:run:teardownFailed', 'Saving the sleep session failed: %s', ...
             teardownError.message);
 end
 
-for name = {'pulsePal', 'hifi', 'flex'}
+% The video stops only once the data are saved, so everything the file holds is on it
+% (D14); the recording summary is then added with a second, small save.
+try
+    devices.cameras.finishRecording('SessionSaved', nBlocks);
+catch cameraError
+    warning('lum:sleep:run:videoStopFailed', 'Stopping the video failed: %s', cameraError.message);
+end
+if saved && isfield(BpodSystem.Data, 'Session') && devices.cameras.sessionRecord().Recorded
     try
-        devices.(name{1}).close();
-    catch closeError
-        warning('lum:sleep:run:closeFailed', 'Could not close %s cleanly: %s', name{1}, ...
-                closeError.message);
+        BpodSystem.Data.Session.Cameras = devices.cameras.sessionRecord();
+        BpodSystem.Data.Session.DeviceLog.Cameras = devices.cameras.log();
+        SaveBpodSessionData;
+    catch saveError
+        warning('lum:sleep:run:videoSummaryNotSaved', ...
+                'The session is saved, but the video summary could not be added to it: %s', ...
+                saveError.message);
     end
 end
-clear devices plots  % No lum.* object may outlive RunProtocol('Stop')
+
+closeDevices(devices);
+clear devices plots cameraWindow  % No lum.* object may outlive RunProtocol('Stop')
 
 fprintf('LuminoseFM: sleep session ended after %d sync pulse(s) in %d block(s).\n', nSyncSent, nBlocks);
 if testPulses.Enabled
@@ -236,6 +279,18 @@ if testPulses.Enabled
 end
 if nBlocks > 0
     fprintf('  Data: %s\n', BpodSystem.Path.CurrentDataFile);
+end
+
+
+function closeDevices(devices)
+% Release every device, whatever happened to the session.
+for name = {'cameras', 'pulsePal', 'hifi', 'flex'}
+    try
+        devices.(name{1}).close();
+    catch closeError
+        warning('lum:sleep:run:closeFailed', 'Could not close %s cleanly: %s', name{1}, ...
+                closeError.message);
+    end
 end
 
 
@@ -278,7 +333,9 @@ record.Rig = rig;
 record.Emulated = devices.emulated;
 record.DevicesAvailable = struct('PulsePal', devices.pulsePal.Available, ...
                                  'FlexAnalog', devices.flex.hasAnalog(), ...
-                                 'FlexSync', devices.flex.hasSync());
+                                 'FlexSync', devices.flex.hasSync(), ...
+                                 'Cameras', devices.cameras.Available);
+record.Cameras = devices.cameras.sessionRecord();  % Brought up to date at teardown
 record.SyncSent = ~isempty(syncChannel);
 record.StartTime = char(startTime, 'yyyy-MM-dd HH:mm:ss');
 record.Barcode = struct('Value', barcode.Value, 'Hex', barcode.Hex, 'Kind', barcode.Kind, ...

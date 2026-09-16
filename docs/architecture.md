@@ -1,7 +1,7 @@
 # LuminoseFM — Architecture
 
 Design record for the LuminoseFM protocol. Status: **implemented** (version 0.5); decisions
-D1–D13 confirmed. Update this file whenever the architecture changes.
+D1–D14 confirmed. Update this file whenever the architecture changes.
 
 ---
 
@@ -247,12 +247,24 @@ sync widths use — independent of when the set was built.
 
 ### D6 — Hold shaping without changing the state graph
 
-**Decision.** Two ways to train the centre hold, chosen before the session
-(`S.Task.HoldShaping`: Off, Grow hold, Shrink grace, Both) and tuned during it
-(`S.GUI.Hold*`, `S.GUI.Grace*`), implemented by `lum.HoldShaping`:
+**Decision.** Two ways to train the centre hold, under one switch, **automatic shaping**
+(`S.Task.AutoShaping`, off by default; since 0.6.0), with the way chosen before the session
+(`S.Task.HoldShaping`: Grow hold, Shrink grace, Both) and tuned during it (`S.GUI.Hold*`,
+`S.GUI.Grace*`), implemented by `lum.HoldShaping`. Every decision goes through
+`lum.HoldShaping.activeMode(S)`, which is `'Off'` while the switch is off. Choosing *Training*
+switches it on and *Experiment* off (`lum.stageDefaults`), and `lum.validateSettings` refuses it in
+an Experiment session — the one stage default that is enforced, because an experiment's trials
+must not vary with the animal's performance.
 
-- **Grow hold** sets the `CentreHold` state timer per trial: from `HoldStart`, grown by
-  `HoldGrowth` percent after each trial whose hold was completed, up to `HoldTarget`.
+- **Grow hold** sets the `CentreHold` state timer per trial: from `HoldStart` (0.1 s), grown by
+  `HoldGrowth` percent after each trial whose hold was completed, up to `HoldTarget` (1 s). After
+  `HoldStepBackAfter` (10) early withdrawals at one hold with no completed hold since, it **steps
+  back** one growth step (`lastHold / (1 + growth)`, never below `HoldStart`).
+  `lum.updateHistory` keeps the count (`history.withdrawalsAtHold`, O(1)): visits to
+  `EarlyWithdrawal` are added, a completed hold clears it, a hold different from the previous
+  trial's starts it again. Because trial *n+1* is prepared from trial *n-1*, the step is computed
+  from the last recorded trial's hold, so the trial still running when it is decided cannot make
+  the hold step back twice.
 - **Shrink grace** lets the animal leave during the hold and return within `HoldGrace`
   seconds. The graph always contains `HoldBreak` and `CentreHoldResumed`:
 
@@ -280,8 +292,11 @@ withdrawing is not asked for more.
 **Consequences.**
 
 - Grace costs one global timer, reserved by `lum.timerBudget`; growth costs none.
-- Values follow trial *n-1* when preparing *n+1* (D3). `HoldDuration`, `HoldGrace` and
-  `HoldBreaks` (visits to `HoldBreak`) are recorded per trial.
+- Values follow trial *n-1* when preparing *n+1* (D3). `HoldDuration`, `HoldGrace`,
+  `HoldBreaks` (visits to `HoldBreak`) and `EarlyWithdrawals` (visits to `EarlyWithdrawal`) are
+  recorded per trial; a step back shows as a shorter `HoldDuration`.
+- Automatic shaping is meant to grow: choosing easier or harder trial types by performance belongs
+  under the same switch.
 - A shaped hold shorter than the stimulus window cuts the light off at the hold's end; the
   setup dialog notes it when the target is shorter than the window.
 
@@ -588,6 +603,63 @@ pulse, and with the train's pulses for a burst.
 - The designer (`lum.gui.TestPulseDesigner`) and the sleep setup dialog run the same compilation
   and validation as the session.
 
+### D14 — Video through SpinCam, recorded off the MATLAB thread
+
+**Decision.** Every session is recorded on video by SpinCam, the lab's multi-camera package — a
+repository of its own, named by `S.Camera.SpinCamFolder` or found on the path, never copied in.
+`lum.dev.open` gives a `lum.dev.Cameras` shim like any other device: `RealCameras` wrapping a
+`spincam.CameraManager` (Spinnaker cameras on the rig; SpinCam's `mock` cameras in the emulator,
+which run the same native engine) or `NullCameras`. `lum.dev.configureCameras` is the one
+definition of how `S.Camera` becomes camera state — used by the session and by the setup dialogs'
+live preview (`lum.gui.CameraSetup`), so the preview is what will be recorded. Recording starts
+right after the devices open, before the barcode, and stops only after the final save (and, in a
+behaviour session, after the trial manager is closed): `Cameras.finishRecording` marks
+`SessionSaved` on the camera clock and stops, and a second small save adds the recording summary
+to `Data.Session.Cameras`. Everything the data file holds is therefore on the video. The default
+format is `avi-mjpeg-mt`, SpinCam's multi-core MJPEG encoder. Files go to
+`Session Videos` beside `Session Data`, each named `<view>_<data file name>` (spincam's
+`<camera>_<fileName>` with no date appended). Frames log the cameras' TTL input passively. Once per
+trial (per block in sleep) MATLAB marks the host clock (`Cameras.mark`: one `hostTime` read and one
+`_events.csv` line), stored as `Data.CameraTime`. The session's camera window
+(`lum.gui.CameraWindow`) reads one preview frame per camera at `S.Camera.WindowRate` (5 Hz) from a
+timer, and SpinCam keeps preview snapshots at that rate only (`PreviewMaxHz`, 0 when the window is
+off). On the rig a session asking for video refuses to start without SpinCam or a ticked camera.
+
+**Why.** MATLAB is single-threaded and blocks in `RunStateMachine` in the emulator; copying a
+frame into MATLAB costs ~0.7 ms. SpinCam grabs, decodes the embedded TTL, queues and encodes on
+native threads, so the video costs the trial loop nothing but the per-trial mark, and a slow
+encoder never delays a trial (overflow is flagged per frame, never silent). A second MATLAB process
+would isolate the cameras further but adds start-up, IPC and failure modes for no gain in the
+recording, which is already off-thread. Passive logging keeps the cameras free-running, so a
+missing or unwired sync line costs alignment precision, not frames. The per-trial mark gives an
+alignment to within a few ms (the time a trial's events take to reach MATLAB, averaged by a fit)
+until Flex2 is wired to the cameras' Line0, when the barcode and trial pulses mark frames directly.
+A session that silently records no video is found only afterwards, hence the refusal (as for
+PulsePal, D1).
+
+**Consequences.**
+
+- The camera window's timer runs in MATLAB and may delay a prepare window by a few ms; it is
+  optional, closable, and never touches the recording. Its frame copies and drawing do cost CPU:
+  with SpinVideo's single-threaded `avi-mjpeg`, which is only 4 % faster than 100 Hz full frame,
+  that was enough for the writer queue to grow 1–2 frames/s (writer drops after ~15 min). With
+  `avi-mjpeg-mt` (several encoder threads per camera) the queue stays at 1–2 frames at 100 and
+  120 Hz; `lum.dev.Cameras.formatNote` warns when a single-threaded format is chosen above its
+  rate.
+- The video stops after the save, so the final save's `Session.Cameras` has no summary yet; the
+  second save adds it. A session whose second save fails keeps a file without the summary, and
+  SpinCam's `_session.json` still has it.
+- In a session that failed, the state machine may run the trial it was in until
+  `RunProtocol('Stop')`, which comes after the video has stopped (nothing from `+lum` may run
+  after Stop). That trial is not in the data file either.
+- `matlab-*` formats are refused: they drain from a MATLAB timer the trial loop would starve.
+- The emulator's timing stretches further with simulated video, so the timing tests run without
+  it and `cameraTest` runs its own sessions with it.
+- Crops are part of the settings (`Roi`, `[]` = full frame): a crop left in a camera by another
+  program is reset, not silently recorded.
+- `lum.dev.Cameras.sessionRecord` is `Data.Session.Cameras`; SpinCam's own `_session.json` holds the
+  full camera state.
+
 ---
 
 ## What is built, and where
@@ -599,7 +671,8 @@ pulse, and with the train's pulses for a burst.
   real and a null implementation, selected once by `lum.dev.open`. The HiFi module falls back
   to its null shim when unreachable; PulsePal does not, in a session that delivers light
   (`lum.dev.openPulsePal`, see D1), and must answer a handshake (`checkConnection`) before it is
-  used. `Flex` also sends the barcode and opens Bpod's analog viewer.
+  used. `Flex` also sends the barcode and opens Bpod's analog viewer. `Cameras` (D14) records
+  video through SpinCam: `openCameras`, `configureCameras`, `RealCameras`, `NullCameras`.
 - `hardware/CheckRig.m` — preflight report, hardware-only checks skipped in emulator mode.
 
 ### Trial engine
@@ -638,7 +711,8 @@ Around it:
 
 - `+lum/nextTrialSpec.m` — pure: the queue, run limit and bias correction by swapping,
   contingency, stage, sync width, hold and grace.
-- `+lum/HoldShaping.m` — pure: modes and the next hold and grace (D6), break modes (D10).
+- `+lum/HoldShaping.m` — pure: automatic shaping's active mode, the next hold and grace and when
+  the hold steps back (D6), break modes (D10).
 - `+lum/triggerStates.m` — pure: where the next trial may be prepared (D3, D10).
 - `+lum/scoreTrial.m` — pure: outcome, choice, correctness, reward, reaction time, hold
   breaks and hold attempts from the fixed state names and port events.
@@ -712,7 +786,12 @@ on the Task tab),
 `lum.gui.SleepSetupDialog` (with the test-pulse panel), `lum.gui.StimulusDesigner` (every generator
 parameter, groups table, browser), `lum.gui.TestPulseDesigner` (probe, LED drive, trains, schedule
 table and presets; previews through `drawTestPulseSchedule` and `drawTestPulseEpoch`),
-`lum.gui.RuntimeWindow` (tabbed or compact). Both setup dialogs build the experiment
+`lum.gui.RuntimeWindow` (tabbed or compact), `lum.gui.CameraSetup` (both dialogs' Cameras tab, with
+live preview) and `lum.gui.CameraWindow` (D14). `lum.gui.HelpLine` puts a description of the field
+under the pointer at the foot of both setup dialogs and the tabbed runtime window, from
+`GUIMeta.<name>.Help` (declared with each runtime parameter, D2) and every other control's tooltip;
+Bpod's compact window gets the help as tooltips. The setup dialog's Play buttons play the session's
+sounds through `TestHiFiSound` (`lum.testSounds`). Both setup dialogs build the experiment
 record through `lum.gui.ExperimentForm` and lay out forms with `lum.gui.Form`; all draw with
 `lum.gui.theme` and a small `lum.gui.logo`.
 
@@ -731,7 +810,8 @@ lines (sync, A, B), the latest epoch, sync widths and epochs by step; without, l
 Per [`data-format.md`](data-format.md). The stimulus set (without preview states), settings, rig map, barcode, session
 type and device logs are stored once in `Data.Session`; each trial holds scalars and indices.
 Per-trial series live outside `BpodSystem.Data` during the session and are copied in trimmed at
-each save. Sleep sessions store `Data.SyncPulses` instead of trial series, and with test pulses
+each save. Video is SpinCam's files in `Session Videos`, with `Data.Session.Cameras` and
+`Data.CameraTime` (D14). Sleep sessions store `Data.SyncPulses` instead of trial series, and with test pulses
 `Data.LightSegments` and `Data.Session.TestPulses` (D13).
 
 ### Tests
@@ -814,6 +894,11 @@ These are properties of Bpod v1.9.0 that shaped the code and are easy to redisco
   timer train arrives too, the diagnosis stands anyway — the state write one cycle later is what
   truncated the pulse — but it is worth recording which.
 - Whether sleep sessions should drive the house light (port 5).
+- Wire Flex2 to the cameras' Line0 (yellow/brown) as well as the scope, then confirm with
+  `spincam.tools.verifyTtlInput` and a session that the barcode decodes from `TTL_State` (D14).
+- Confirm on the rig that the camera window at 5 Hz leaves `Data.Timing.prepare` unchanged, and
+  that a multi-hour session records with 0 missed frames and 0 writer drops.
+- Whether stepping the hold back should also grow the grace back when *Shrink grace* is in force (D6).
 - Confirm on the rig, with a scope downstream of PulsePal, that a sleep session's probes are 10 ms of
   light 50 ms apart, that a theta-burst gate holds exactly four pulses, and that PulsePal changes
   carrier between steps with nothing emitted.

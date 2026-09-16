@@ -18,10 +18,12 @@ function LuminoseFM
 % would have done. The data file records which kind it was, in Data.Session.Type.
 %
 % This file is deliberately thin. It sequences a session and owns nothing else:
-%   setup      settings, preflight, session type, stimulus set, devices, sounds,
-%              windows, barcode
-%   trial loop generate, build, upload, run, score, record, plot, save
-%   teardown   merge the analog stream, write the final file, release devices
+%   setup      settings, preflight, session type, stimulus set, devices, video,
+%              sounds, windows, barcode
+%   trial loop generate, build, upload, run, mark the camera clock, score, record,
+%              plot, save
+%   teardown   merge the analog stream, write the final file, stop the video and add
+%              its summary to the file, release devices
 %
 % Everything with logic in it lives in the +lum package, where it can be tested
 % without hardware. See lum.buildTrialSM for the state graph, lum.nextTrialSpec for
@@ -106,6 +108,16 @@ catch openError
     rethrow(openError);
 end
 
+% Video starts before anything is sent to the rig, so the barcode is on it. spincam
+% records on threads of its own; the trial loop only marks each trial's end on its clock.
+try
+    devices.cameras.startRecording(BpodSystem.Path.CurrentDataFile);
+catch recordError
+    closeDevices(devices);
+    BpodSystem.Status.BeingUsed = 0;
+    rethrow(recordError);
+end
+
 fprintf('LuminoseFM: %s\n', lum.trainingStageNote(S));
 fprintf('LuminoseFM: %s\n', lum.HoldShaping.describe(S));
 fprintf('LuminoseFM: %s\n', lum.HoldShaping.describeBreak(S));
@@ -137,6 +149,10 @@ runtime = lum.gui.RuntimeWindow(S, 'Mode', windowMode, 'Subject', subject);
 plots = lum.OnlinePlots(S, stimulusSet, 'Subject', subject);
 if S.Session.ShowAnalogViewer
     devices.flex.openAnalogViewer();  % Airflow, from the flow meter on Flex1
+end
+cameraWindow = [];
+if S.Camera.ShowWindow && devices.cameras.canPreview()
+    cameraWindow = lum.gui.CameraWindow(devices.cameras, S.Camera, 'Subject', subject);
 end
 
 %% Session barcode
@@ -207,6 +223,12 @@ try
         sendSeconds = toc(sendTimer);
 
         rawEvents = runner.awaitTrialData();
+        cameraTime = NaN;
+        if ~isempty(fieldnames(rawEvents))
+            % As soon as the trial's events arrive: pairs the trial's end with the video's
+            % clock (Data.CameraTime against TrialEndTimestamp).
+            cameraTime = devices.cameras.mark('TrialEnd', currentTrial);
+        end
         if BpodSystem.Status.BeingUsed == 0; break; end
         HandlePauseCondition;
         if currentTrial < maxTrials
@@ -230,6 +252,7 @@ try
         result = lum.scoreTrial(BpodSystem.Data.RawEvents.Trial{currentTrial}, spec, rig);
         history = lum.updateHistory(history, currentTrial, spec, result);
         data = recordTrial(data, currentTrial, spec, result, S);
+        data.CameraTime(currentTrial) = cameraTime;
 
         plotTimer = tic;
         plots.update(currentTrial, spec, result, nextSpec, queue, S.GUI.RewardAmount);
@@ -264,16 +287,22 @@ end
 % session is torn down explicitly, in order, and only then handed back to Bpod.
 nCompleted = history.nTrials;
 summary = 'no trials completed';
+if ~isempty(cameraWindow)
+    cameraWindow.close();
+end
+saved = false;
 try
     BpodSystem.Data = publishTrialFields(BpodSystem.Data, data, nCompleted);
     if isfield(BpodSystem.Data, 'Session')
         BpodSystem.Data.Session.DeviceLog = deviceLogs(devices);
+        BpodSystem.Data.Session.Cameras = devices.cameras.sessionRecord();
         BpodSystem.Data.Session.EndTime = char(datetime('now'), 'yyyy-MM-dd HH:mm:ss');
         BpodSystem.Data.Session.StoppedReason = stoppedReason;
     end
     BpodSystem.Data = devices.flex.mergeAnalogData(BpodSystem.Data);
     if nCompleted > 0
         SaveBpodSessionData;
+        saved = true;
         summary = plots.summaryText(nCompleted);
     end
 catch teardownError
@@ -281,11 +310,16 @@ catch teardownError
     warning('lum:LuminoseFM:teardownFailed', ...
             'Saving the session data failed: %s', teardownError.message);
 end
-
 runner.close();
+
+% The video stops only once the data are saved and the trial manager is closed, so
+% everything the data file holds is on it (D14). What the recording summary says is
+% then added to the file with a second, small save.
+finishVideo(devices, nCompleted, saved);
+
 runtime.close();
 closeDevices(devices);
-clear runner runtime devices plots cueComponents stimulusComponents  % No lum.* object may outlive Stop
+clear runner runtime devices plots cueComponents stimulusComponents cameraWindow  % No lum.* object may outlive Stop
 
 fprintf('LuminoseFM: session ended after %d trial(s).\n', nCompleted);
 if nCompleted > 0
@@ -359,6 +393,9 @@ end
 sides = {'left', 'right'};
 text = sprintf('running %d: %s, pays %s, hold %.2f s', spec.TrialNumber, label, ...
                sides{spec.CorrectSide}, spec.HoldDuration);
+if spec.HoldSteppedBack
+    text = sprintf('%s (stepped back after early withdrawals)', text);
+end
 
 
 function subject = currentSubject()
@@ -389,7 +426,7 @@ function names = trialSeriesNames()
 names = {'StimulusGroup', 'PatternIndex', 'CorrectSide', 'Choice', 'Correct', 'Rewarded', ...
          'Outcome', 'ReactionTime', 'OptoOn', 'SoundOn', 'SyncMode', 'SyncPulseWidth', ...
          'BiasTargetPLeft', 'TrainingStage', 'HoldDuration', 'HoldGrace', 'HoldBreaks', ...
-         'HoldAttempts'};
+         'HoldAttempts', 'EarlyWithdrawals', 'CameraTime'};
 
 
 function data = recordTrial(data, trialNumber, spec, result, S)
@@ -414,6 +451,7 @@ data.HoldDuration(trialNumber) = spec.HoldDuration;
 data.HoldGrace(trialNumber) = spec.HoldGrace;
 data.HoldBreaks(trialNumber) = result.HoldBreaks;
 data.HoldAttempts(trialNumber) = result.HoldAttempts;
+data.EarlyWithdrawals(trialNumber) = result.EarlyWithdrawals;
 data.RuntimeSettings{trialNumber} = S.GUI;
 
 
@@ -453,7 +491,9 @@ record.Emulated = devices.emulated;
 record.DevicesAvailable = struct('PulsePal', devices.pulsePal.Available, ...
                                  'HiFi', devices.hifi.Available, ...
                                  'FlexAnalog', devices.flex.hasAnalog(), ...
-                                 'FlexSync', devices.flex.hasSync());
+                                 'FlexSync', devices.flex.hasSync(), ...
+                                 'Cameras', devices.cameras.Available);
+record.Cameras = devices.cameras.sessionRecord();  % Brought up to date at teardown
 record.StartTime = char(startTime, 'yyyy-MM-dd HH:mm:ss');
 record.StoppedReason = '';  % Filled in at teardown if the session ended in an error
 record.Barcode = struct('Value', barcode.Value, 'Hex', barcode.Hex, 'Kind', barcode.Kind, ...
@@ -466,13 +506,36 @@ function logs = deviceLogs(devices)
 % session's hardware intent.
 logs = struct('PulsePal', {devices.pulsePal.log()}, ...
               'HiFi', {devices.hifi.log()}, ...
-              'FlexIO', {devices.flex.log()});
+              'FlexIO', {devices.flex.log()}, ...
+              'Cameras', {devices.cameras.log()});
+
+
+function finishVideo(devices, nCompleted, saved)
+% Stop the video after the final save, then add its summary to the saved file.
+global BpodSystem %#ok<GVMIS>
+try
+    devices.cameras.finishRecording('SessionSaved', nCompleted);
+catch cameraError
+    warning('lum:LuminoseFM:videoStopFailed', 'Stopping the video failed: %s', cameraError.message);
+end
+if ~saved || ~isfield(BpodSystem.Data, 'Session') || ~devices.cameras.sessionRecord().Recorded
+    return
+end
+try
+    BpodSystem.Data.Session.Cameras = devices.cameras.sessionRecord();
+    BpodSystem.Data.Session.DeviceLog.Cameras = devices.cameras.log();
+    SaveBpodSessionData;
+catch saveError
+    warning('lum:LuminoseFM:videoSummaryNotSaved', ...
+            'The session is saved, but the video summary could not be added to it: %s', ...
+            saveError.message);
+end
 
 
 function closeDevices(devices)
 % Release every device, whatever happened to the session. Safe to call twice: the
 % shims' close methods are idempotent.
-names = {'pulsePal', 'hifi', 'flex'};
+names = {'cameras', 'pulsePal', 'hifi', 'flex'};
 for i = 1:numel(names)
     try
         devices.(names{i}).close();

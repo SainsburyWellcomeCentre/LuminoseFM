@@ -110,7 +110,7 @@ nextTimer = 1;
 stimulusTimers = [timerGrants{:}];
 cueTimers = [cueGrants{:}];
 
-hasGrace = lum.HoldShaping.hasGrace(S.Task.HoldShaping);
+hasGrace = lum.HoldShaping.hasGrace(S);
 holdClock = [];
 holdEnded = '';
 if hasGrace

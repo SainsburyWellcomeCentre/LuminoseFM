@@ -15,13 +15,16 @@ function devices = open(rig, S)
 %   .pulsePal  lum.dev.PulsePal subclass — optogenetic carrier waveform
 %   .hifi      lum.dev.HiFi subclass — sound
 %   .flex      lum.dev.Flex subclass — flow meter stream and sync TTL
+%   .cameras   lum.dev.Cameras subclass — video, through spincam (lum.dev.openCameras)
 %
 % The HiFi module, when it is asked for but unreachable, degrades to its null shim
 % with a warning rather than ending the session: a rig with a loose HiFi cable can
 % still run a silent session. PulsePal does not: a session that delivers light
 % refuses to start without it, because Bpod would still gate channels A and B into a
-% PulsePal this session never programmed (lum.dev.openPulsePal). PulsePal is opened
-% first, so a refusal leaves nothing else open.
+% PulsePal this session never programmed (lum.dev.openPulsePal). Cameras refuse the
+% same way when video is asked for and cannot be recorded (lum.dev.openCameras). PulsePal
+% is opened first and the cameras second, and a camera refusal closes PulsePal, so a
+% refusal leaves nothing open.
 %
 % See also: RigConfig, CheckRig, lum.dev.Device, lum.dev.openPulsePal
 
@@ -37,6 +40,12 @@ if devices.emulated
 end
 
 devices.pulsePal = lum.dev.openPulsePal(devices.emulated, S);
+try
+    devices.cameras = lum.dev.openCameras(devices.emulated, S);
+catch cameraError
+    devices.pulsePal.close();
+    rethrow(cameraError);
+end
 devices.hifi     = openHiFi(devices.emulated, rig, S);
 devices.flex     = openFlex(devices.emulated, rig);
 

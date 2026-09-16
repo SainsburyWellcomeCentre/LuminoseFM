@@ -27,6 +27,8 @@ function fields = runtimeFields(S)
 %   .Items   Choices, for 'dropdown'; empty otherwise
 %   .Limits  [min max] for 'numeric', from GUIMeta.Limits; empty when unbounded
 %   .Value   The current value
+%   .Help    What the parameter does, from GUIMeta.Help; '' when there is none. Shown
+%            as the field's tooltip and on the windows' help line (lum.gui.HelpLine)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
@@ -72,7 +74,7 @@ for i = 1:numel(tabNames)
 end
 
 fields = struct('Name', order, 'Panel', [], 'Tab', [], 'Label', [], 'Style', [], ...
-                'Items', [], 'Limits', [], 'Value', []);
+                'Items', [], 'Limits', [], 'Value', [], 'Help', []);
 for i = 1:numel(order)
     name = order{i};
     entry = structOrEmpty(meta, name);
@@ -82,6 +84,7 @@ for i = 1:numel(order)
     fields(i).Label = fieldOr(entry, 'Label', name);
     fields(i).Items = cellstr(fieldOr(entry, 'String', {}));
     fields(i).Limits = fieldOr(entry, 'Limits', []);
+    fields(i).Help = char(fieldOr(entry, 'Help', ''));
     fields(i).Style = styleOf(fieldOr(entry, 'Style', 'edit'), fields(i).Value);
 end
 

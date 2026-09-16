@@ -134,7 +134,17 @@ if S.Session.UseSound
 end
 
 %% Hold shaping
-if lum.HoldShaping.growsHold(S.Task.HoldShaping)
+autoShaping = S.Task.AutoShaping;
+if ~(isscalar(autoShaping) && (islogical(autoShaping) || (isnumeric(autoShaping) && ismember(autoShaping, [0 1]))))
+    fail('badAutoShaping', 'Automatic shaping must be on or off.');
+end
+experimentStage = find(strcmp(S.Task.TrainingStageNames, 'Experiment'), 1);
+if logical(autoShaping) && isequal(S.Task.TrainingStage, experimentStage)
+    fail('shapingInExperiment', ...
+         ['An Experiment session runs without shaping, so every trial asks for the same hold. '...
+          'Untick automatic shaping on the Task tab, or choose the Training stage.']);
+end
+if lum.HoldShaping.growsHold(S)
     if S.GUI.HoldTarget <= 0
         fail('badHoldTarget', 'The target hold must be longer than 0 s.');
     end
@@ -155,7 +165,7 @@ if ~ismember(S.Task.OnHoldBreak, lum.HoldShaping.breakModes())
 end
 % The hold window runs from trial start, so it has to be longer than the latency and
 % the first hold the session asks for, or no trial could ever be completed.
-if lum.HoldShaping.growsHold(S.Task.HoldShaping)
+if lum.HoldShaping.growsHold(S)
     firstHold = min(S.GUI.HoldStart, S.GUI.HoldTarget);
 else
     firstHold = window + S.GUI.PostStimulusHold;
@@ -223,6 +233,13 @@ end
 carrier = S.Light.Carrier;
 [carrier.MaxDuration] = deal(window + lum.stim.OptoPattern.TrainMargin);
 lum.dev.PulsePal.validateCarrier(carrier);
+
+%% Video
+lum.dev.Cameras.validateSettings(S.Camera);
+videoNote = lum.dev.Cameras.formatNote(S.Camera);
+if ~isempty(videoNote)
+    notes{end+1} = videoNote;
+end
 
 %% Experiment record
 if S.Meta.Drug.Enabled && isempty(strtrim(S.Meta.Drug.Name))

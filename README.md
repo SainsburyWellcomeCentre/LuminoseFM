@@ -6,7 +6,7 @@ forced-choice (2-AFC)** task for the Luminose project.
 The task drives a custom behaviour box with three nose ports and delivers patterned
 optogenetic stimulation to the olfactory bulb of OSN-ChR mice (channelrhodopsin in olfactory
 sensory neurons) through a custom fiber bundle. It also records home-cage sleep, with optional
-test pulses of light.
+test pulses of light, and records every session on video (§8).
 
 This file is the **operator's guide**: how to run a session and what everything on the screen
 means. The rig, the data format and the design live in [`docs/`](docs):
@@ -18,7 +18,7 @@ means. The rig, the data format and the design live in [`docs/`](docs):
 | [`docs/sync-and-barcode.md`](docs/sync-and-barcode.md) | The sync TTL and the session barcode, for aligning other recordings |
 | [`docs/naming-and-versions.md`](docs/naming-and-versions.md) | Glossary, and what changed between versions |
 | [`docs/emulator.md`](docs/emulator.md) | Running the whole protocol with no hardware attached |
-| [`docs/architecture.md`](docs/architecture.md) | Design decisions (D1–D13) and the map from design to code |
+| [`docs/architecture.md`](docs/architecture.md) | Design decisions (D1–D14) and the map from design to code |
 | [`docs/repository.md`](docs/repository.md) | Where the code lives, and what the test suite covers |
 
 ---
@@ -130,14 +130,17 @@ lit during the response window in habituation (the *guide light*, set per side).
 Choosing a stage also sets the session up the way that stage is normally run, the moment it is
 chosen:
 
-| Stage | Light pattern | Stimulus air |
-|-------|---------------|--------------|
-| Habituation | **off** (no PulsePal needed) | **on**, for the whole stimulus window |
-| Training, Experiment | on | off |
+| Stage | Light pattern | Stimulus air | Automatic shaping |
+|-------|---------------|--------------|-------------------|
+| Habituation | **off** (no PulsePal needed) | **on**, for the whole stimulus window | left as it is |
+| Training | on | off | **on** |
+| Experiment | on | off | **off** |
 
 Habituation therefore delivers **air alone**: the hold is exactly as long and as salient as it
-will be later, and carries nothing to discriminate. These are defaults, not a lock — untick or
-tick anything afterwards and the session runs as you leave it.
+will be later, and carries nothing to discriminate. Training shapes the centre hold from the
+animal's performance; an experiment asks every animal for the same trial. These are defaults, not
+a lock — untick or tick anything afterwards and the session runs as you leave it — with one
+exception: **an Experiment session cannot start with automatic shaping on.**
 
 ### Reversing the contingency
 
@@ -149,14 +152,21 @@ the set, the online plots and every trial record agree on the contingency the an
 meets: `Session.StimulusSet.GroupPLeft` is the reversed contingency, `BasePLeft` the typed one,
 and `Reversed` says which happened.
 
-### Centre-hold shaping
+### Automatic shaping of the centre hold
 
-A naive animal cannot hold its nose in the centre port for a whole stimulus, so the hold can be
-trained up in two ways, alone or together (Task tab):
+A naive animal cannot hold its nose in the centre port for a whole stimulus, so the hold is trained
+up following the animal's performance. **Automatic shaping** is a tick on the Task tab (*Centre
+hold* panel): off by default, switched on by choosing *Training* and off by choosing *Experiment*.
+While it is on, the *shaping method* says how:
 
-- *Grow hold* — the hold starts short (`HoldStart`) and grows by `HoldGrowth` percent after
-  every trial on which the animal completed it, up to `HoldTarget`, normally the stimulus
-  window plus the post-stimulus hold. Light is cut off where a shaped hold ends.
+- *Grow hold* (the default) — the hold starts short (`HoldStart`, **0.1 s**) and grows by
+  `HoldGrowth` percent after every trial on which the animal completed it, up to `HoldTarget`
+  (**1 s**), normally the stimulus window plus the post-stimulus hold. Light is cut off where a
+  shaped hold ends. When the animal **withdraws early `HoldStepBackAfter` times (10) at one hold
+  without completing it**, the hold **steps back** one growth step — to the hold it last
+  managed — so it can go on learning; withdrawals it makes up for with a completed hold are
+  forgiven, and a new hold starts the count again. `HoldStepBackAfter` 0 never steps back. The
+  runtime window's header says when a trial's hold stepped back.
 - *Shrink grace* — the animal may leave the centre port during the hold and come back within
   a grace period without the break counting. The hold keeps timing while it is out, and the
   stimulus carries on. The grace starts at `GraceStart` and shrinks by `GraceShrink` percent
@@ -164,8 +174,12 @@ trained up in two ways, alone or together (Task tab):
   is treated as *When the hold breaks* says. Grace is timed from stimulus onset, so a break
   during the latency is never forgiven.
 
-Both are tuned during the session from the runtime window. The hold each trial required, its grace
-and the number of forgiven breaks are recorded per trial.
+- *Both* — the two together.
+
+With automatic shaping off, the animal holds for the whole stimulus window on every trial. The
+shaping parameters are tuned during the session from the runtime window. The hold each trial
+required, its grace, the number of forgiven breaks and the number of early withdrawals are
+recorded per trial. Later, automatic shaping will also choose easier or harder trial types.
 
 ---
 
@@ -233,15 +247,24 @@ says what is wrong, and **Start session** stays disabled until nothing is.
 |-----|---------------|
 | Experiment | Subject (from the launch manager); genotype (OSN-ChR or wild type offered, any other typed into the box); *Neuropixels recording* (probe, implant, target, coordinates, serial), *EEG/EMG recording* (channel counts), *Drug administration* (name, delivery route, dose and unit, vehicle, time given); session length, devices, runtime window, notes |
 | Task | Which task (Familiar/Novel, Mixture, Sequence, Motifs); training stage and what it does to rewards — choosing one sets the session up the way that stage is normally run; trial order, including the contingency reversal; centre hold — how long it is, what a broken hold does, and hold shaping; which components make up the cue, the stimulus and each side; a timeline of one trial, with the hold window |
-| Cue | For each cue component (centre light, tone, air): whether it continues through the stimulus, and if not, how long it stays on into it; the cue tone's frequency; sound output; a timeline of the cue against the latency and the stimulus, one row per component |
-| Stimulus | The stimulus window and its latency from the poke; a summary of the stimulus set with **Design stimuli…** and **New trial order**; P(left) per group; every trial of the session to scroll through; timing of air, centre light and tone |
+| Cue | For each cue component (centre light, tone, air): whether it continues through the stimulus, and if not, how long it stays on into it; the cue tone's frequency and sound output, each sound with a **▶ Play** button; a timeline of the cue against the latency and the stimulus, one row per component |
+| Stimulus | The stimulus window and its latency from the poke; a summary of the stimulus set with **Design stimuli…** and **New trial order**; P(left) per group; every trial of the session to scroll through; timing of air, centre light and tone, with **▶ Play tones** |
 | Light path | The fiber bundle and which cables are on A and B; the carrier for each channel (frequency, pulse width, LED drive voltage) |
-| Left, Right | That side's port light and tone, each timed from stimulus onset; its guide light; which groups pay that side |
+| Left, Right | That side's port light and tone (with **▶ Play**), each timed from stimulus onset; its guide light; which groups pay that side |
 | Sync | Trial sync pulse mode and widths — every mode is driven by states, and a pulsed one is the trial's first state, so the cue follows it; the session barcode (behaviour and sleep marker widths), with a preview |
+| Cameras | Video (§8): record or not, the SpinCam folder, format, cameras and their views, frame rate, exposure, gain, TTL input, the camera window — with a **live preview** |
 | Runtime | Starting values of the parameters that stay editable during the session |
 
 Ticking a component on the Task tab switches it on: its rows light up on the tab that times it,
-and that tab's title counts the components on. The small logo in the header is from
+and that tab's title counts the components on.
+
+**The help line** at the foot of the window says what the field under the pointer does — or the
+one you just used — so a setting such as bias correction is explained where it is set.
+
+**Play buttons** play a sound of the session with the settings as they stand in the dialog —
+sampling rate, amplitude, attenuation, and the sound's own frequency and duration — through the
+HiFi module, or the PC's speakers when there is none (the emulator). The cue tone plays for 0.5 s;
+*Play tones* plays each group's stimulus tone in turn. The small logo in the header is from
 [`docs/logo`](docs/logo).
 
 ### Runtime window
@@ -255,7 +278,13 @@ window, relabelled. `Runtime window` on the Experiment tab can force either.
 
 - *Punishment* is two choices: which mistakes are punished (none / early withdrawal / incorrect
   choice / both) and how (timeout / white noise / both).
-- *Bias correction* is a strength (0 disables it) and the window of choices it is estimated over.
+- *Bias correction* pushes trials towards the side the animal has been avoiding. If it chose left
+  on a fraction *f* of its last `BiasWindow` choices, the next trial pays left with chance
+  0.5 + strength × (0.5 − *f*), kept within 0.1–0.9, by bringing forward a trial that pays that side:
+  0 is off, 1 full compensation. Every group is still delivered as often; only the order changes.
+
+Every parameter describes itself on the help line at the foot of the window (a tooltip in the
+compact window).
 
 Bpod's notebook plugin is also initialised, for manual annotation during the session.
 
@@ -371,7 +400,67 @@ never cut inside an epoch, is D13 in [`docs/architecture.md`](docs/architecture.
 
 ---
 
-## 8. Aligning other recordings
+## 8. Video
+
+Every session — behaviour or sleep — is recorded on the box's cameras by
+**SpinCam**, the lab's multi-camera package for FLIR cameras (a repository of its own, cloned anywhere). It is on by
+default and set up on the setup dialog's **Cameras** tab.
+
+**Once per computer:** clone SpinCam and run `spincam.setup` in it (it finds Spinnaker and builds its
+engine). Then, on the Cameras tab, set **SpinCam folder** to where it was cloned (**Browse…**), or
+leave it empty if SpinCam is on the MATLAB path. The tab says whether it found it.
+
+| Field | Default | What it does |
+|-------|---------|--------------|
+| Record video | on | Record every camera ticked below for the whole session. Untick to run without video |
+| Video format | `avi-mjpeg-mt` | `avi-mjpeg-mt` is MJPEG encoded on several cores: two full-frame cameras at 100 Hz for hours (≈ 27 GB/h), and up to 120 Hz. `avi-mjpeg` is SpinVideo's one-core encoder, which falls behind at 100 Hz full frame (the dialog says so); `raw` is lossless (≈ 0.9 TB/h); `mp4-h264`, `avi-raw` |
+| Cameras | 24226887 *sideview*, 24226657 *topview* | One row per camera: serial, view (the file prefix), record, crop. **Find attached** adds attached cameras; **Full frame** clears the crops |
+| Frame rate | 100 Hz | For every camera; up to 120 Hz at full frame, above that crop (full viewer) |
+| Exposure, gain | Auto | Or a manual value (µs, dB) |
+| TTL input | Line0 | The camera input logged with every frame (yellow signal, brown ground) |
+| Camera window | shown, 5 Hz | A window with every camera during the session |
+
+**Preview** connects the ticked cameras exactly as the session will and shows them; frame rate,
+exposure and gain apply live. **Simulated cameras** previews SpinCam's synthetic cameras on a
+computer without cameras. **Full viewer…** opens SpinCam's own viewer on the same cameras, for
+cropping and the finer controls; what it leaves (crop, names, frame rate, exposure, gain) is read
+back when it closes. Preview releases the cameras when stopped and when the dialog closes, and
+**SpinView must be closed**: a camera can be streamed by only one program.
+
+**During the session** recording starts before the session barcode and stops only once the session's
+data are saved, so every trial in the data file is on the video (the recording summary is then added
+to the file).
+SpinCam grabs, encodes and logs every frame on threads of its own, so the video never waits for
+Bpod and Bpod never waits for the video. The **camera window** shows each camera with its frame
+rate, missed frames, frames written, writer drops and TTL input; closing it does not stop the
+recording. On the rig, a session that asks for video **does not start** when SpinCam or a ticked
+camera is missing — untick *Record video* or the camera to run without it.
+
+**Files**, beside the session's data, named after it:
+
+```
+D:\luminoseData\<subject>\LuminoseFM\Session Videos\sideview_<subject>_LuminoseFM_<YYYYMMDD_HHMMSS>.avi
+D:\luminoseData\<subject>\LuminoseFM\Session Videos\sideview_<subject>_LuminoseFM_<YYYYMMDD_HHMMSS>.csv
+D:\luminoseData\<subject>\LuminoseFM\Session Videos\topview_<...>.avi / .csv
+D:\luminoseData\<subject>\LuminoseFM\Session Videos\<subject>_LuminoseFM_<YYYYMMDD_HHMMSS>_events.csv
+D:\luminoseData\<subject>\LuminoseFM\Session Videos\<subject>_LuminoseFM_<YYYYMMDD_HHMMSS>_session.json
+```
+
+Each `.csv` has one row per frame: `HostTime_s` (seconds on the host clock), `HardwareTimestamp_us`
+(the camera's clock — use it for intervals), `TTL_State`, `VideoFrameIndex` and drop flags. Every
+trial (every block, in a sleep session) is marked on the same host clock: a `TrialEnd` row in
+`_events.csv`, and `SessionData.CameraTime`, so `CameraTime` against `TrialEndTimestamp` maps
+Bpod's clock onto the video to within a few milliseconds. **The Bpod sync line is not yet wired to
+the cameras**, so `TTL_State` stays 0; once it is, the barcode and the trial pulses mark the video
+frame by frame. `SessionData.Session.Cameras` records the files, the settings and, per camera,
+the frames logged, written, missed and dropped.
+
+In the emulator the session records SpinCam's simulated cameras (synthetic video, real files) when
+SpinCam is found, and no video otherwise.
+
+---
+
+## 9. Aligning other recordings
 
 The sync TTL on Flex2 marks the session for every other device that records the animal:
 
@@ -389,7 +478,9 @@ To read the barcode back:
 startTime = lum.sync.barcodeTime(value);   % kind is 'Behaviour' or 'Sleep'
 ```
 
-To see what actually reaches the line, put a scope on it and run `TestSyncLine` (§10).
+To see what actually reaches the line, put a scope on it and run `TestSyncLine` (§11). Video is
+aligned the same way once the sync line reaches the cameras, and by `SessionData.CameraTime` until
+then (§8).
 
 **Sessions before 0.5.1 have no usable trial pulses** — align them by the barcode and
 `Data.TrialStartTimestamp`. The full specification, and that story, are in
@@ -397,11 +488,12 @@ To see what actually reaches the line, put a scope on it and run `TestSyncLine` 
 
 ---
 
-## 9. Your data
+## 10. Your data
 
 ```
 D:\luminoseData\<subject>\LuminoseFM\Session Data\<subject>_LuminoseFM_<YYYYMMDD_HHMMSS>.mat
 D:\luminoseData\<subject>\LuminoseFM\Session Settings\<settings name>.mat
+D:\luminoseData\<subject>\LuminoseFM\Session Videos\<view>_<subject>_LuminoseFM_<YYYYMMDD_HHMMSS>.avi / .csv
 ```
 
 The `.mat` holds one variable, `SessionData`, saved every few trials, so a crash costs at most a
@@ -425,7 +517,7 @@ Every field, and what to watch for in files from older versions, is in
 
 ---
 
-## 10. Utilities
+## 11. Utilities
 
 Helpers for working with the rig outside a session live in `hardware/`. All of them refuse to run
 while a protocol is in progress unless `'Force', true` is passed.
@@ -436,7 +528,8 @@ See §1. Checks that cannot mean anything without hardware are reported as skipp
 
 ### `TestHiFiSound` — play a test sound
 
-The Bpod console can exercise ports, valves, LEDs and BNC lines by hand, but not sound.
+The setup dialog's **▶ Play** buttons play the session's own sounds (§5). The Bpod console can
+exercise ports, valves, LEDs and BNC lines by hand, but not sound.
 `TestHiFiSound` connects to the HiFi module, plays a waveform and disconnects, without launching
 a protocol:
 
@@ -472,14 +565,15 @@ no valve, no LED, no optical channel.
 
 ---
 
-## 11. Working away from the rig
+## 12. Working away from the rig
 
 The protocol runs **end to end on a machine with no hardware attached**. Start Bpod with
 `Bpod('EMU')` and launch `LuminoseFM` as usual; the port buttons on the Bpod console are how you
 poke the ports (centre to initiate, centre again to withdraw, then a side port). No light and no
 sound are delivered, there is no sync line, and the emulator has only five global timers, so a
 pattern with more than four stretches of light is refused there and accepted on the rig. Emulated
-sessions still write a complete data file, flagged `Data.Info.EmulatorMode = 1`.
+sessions still write a complete data file, flagged `Data.Info.EmulatorMode = 1`, and record video
+from SpinCam's simulated cameras when SpinCam is found.
 
 The differences that matter, and how to read the console when it disagrees with the rig, are in
 [`docs/emulator.md`](docs/emulator.md).

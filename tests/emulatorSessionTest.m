@@ -59,7 +59,7 @@ sessionData = testCase.TestData.sessionData;
 series = {'StimulusGroup', 'PatternIndex', 'CorrectSide', 'Choice', 'Correct', 'Rewarded', ...
           'Outcome', 'ReactionTime', 'OptoOn', 'SoundOn', 'SyncMode', 'SyncPulseWidth', ...
           'BiasTargetPLeft', 'TrainingStage', 'HoldDuration', 'HoldGrace', 'HoldBreaks', ...
-          'HoldAttempts'};
+          'HoldAttempts', 'EarlyWithdrawals', 'CameraTime'};
 for i = 1:numel(series)
     verifyTrue(testCase, isfield(sessionData, series{i}), sprintf('Data.%s is missing', series{i}));
     verifyLength(testCase, sessionData.(series{i}), sessionData.nTrials, ...
@@ -116,6 +116,13 @@ verifyNotEmpty(testCase, testCase.TestData.sessionData.Session.DeviceLog.PulsePa
                'The PulsePal shim should have logged the carrier it would have sent');
 end
 
+function testASessionWithoutVideoSaysSo(testCase)
+sessionData = testCase.TestData.sessionData;
+verifyFalse(testCase, sessionData.Session.Cameras.Recorded);
+verifyEqual(testCase, sessionData.Session.Cameras.Backend, 'none');
+verifyTrue(testCase, all(isnan(sessionData.CameraTime)), 'No video, no camera clock');
+end
+
 function testTheEmulatorGetsTheRunnerAndWindowItCanRun(testCase)
 session = testCase.TestData.sessionData.Session;
 verifyEqual(testCase, session.RunnerMode, 'blocking');
@@ -158,6 +165,7 @@ S.GUI.DrinkingGrace = 0.05;
 S.GUI.PunishTimeout = 0.05;
 S.GUI.ITI = 0.05;
 S.GUI.RewardAmount = 1;
+S.Camera.Enabled = false;  % cameraTest runs a session with simulated cameras
 
 BpodSystem.ProtocolSettings = S;
 BpodSystem.Data = struct;

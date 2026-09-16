@@ -670,6 +670,7 @@ names = {'TrialStart', 'WaitForCentrePoke', 'PreStimulusHold', 'CentreHold', ...
 end
 
 function S = withShaping(S, mode)
+S.Task.AutoShaping = true;
 S.Task.HoldShaping = mode;
 end
 

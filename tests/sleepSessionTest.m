@@ -141,6 +141,9 @@ S = lum.defaultSettings;
 S.Session.Type = 'Sleep';
 S.Sleep.Sync.Interval = testCase.TestData.interval;
 S.Sleep.Sync.IntervalJitter = 0.05;
+% Video would load the emulator loop these timings are checked against; cameraTest runs
+% a sleep session with simulated cameras.
+S.Camera.Enabled = false;
 end
 
 function S = withTestPulses(S)

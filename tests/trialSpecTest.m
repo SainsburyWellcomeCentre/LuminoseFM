@@ -173,6 +173,7 @@ end
 
 function testTheHoldComesFromHoldShaping(testCase)
 [S, stimulusSet] = fixture(testCase);
+S.Task.AutoShaping = true;
 S.Task.HoldShaping = 'Both';
 spec = lum.nextTrialSpec(S, stimulusSet, stimulusSet.TrialPattern, lum.newHistory(10), 1);
 verifyEqual(testCase, spec.HoldDuration, S.GUI.HoldStart, 'AbsTol', 1e-12);
@@ -234,7 +235,7 @@ history = lum.newHistory(10);
 spec = struct('PatternIndex', 2, 'StimulusGroup', 2, 'CorrectSide', 1, ...
               'HoldDuration', 0.6, 'HoldGrace', 0.1);
 result = struct('Choice', 1, 'Correct', 1, 'Rewarded', 1, 'Outcome', lum.Outcome.Correct, ...
-                'ReactionTime', 0.4, 'HoldBreaks', 2, 'HoldAttempts', 3);
+                'ReactionTime', 0.4, 'HoldBreaks', 2, 'HoldAttempts', 3, 'EarlyWithdrawals', 2);
 history = lum.updateHistory(history, 1, spec, result);
 verifyEqual(testCase, history.nTrials, 1);
 verifyEqual(testCase, [history.choice(1), history.correct(1), history.reactionTime(1)], [1 1 0.4]);
@@ -248,7 +249,7 @@ history = lum.newHistory(2);
 spec = struct('PatternIndex', 1, 'StimulusGroup', 1, 'CorrectSide', 1, 'HoldDuration', 1, ...
               'HoldGrace', 0);
 result = struct('Choice', 1, 'Correct', 1, 'Rewarded', 1, 'Outcome', 3, 'ReactionTime', 0, ...
-                'HoldBreaks', 0, 'HoldAttempts', 1);
+                'HoldBreaks', 0, 'HoldAttempts', 1, 'EarlyWithdrawals', 0);
 verifyError(testCase, @() lum.updateHistory(history, 3, spec, result), ...
             'lum:updateHistory:overCapacity');
 end

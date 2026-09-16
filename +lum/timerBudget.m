@@ -40,7 +40,7 @@ function [budget, reserved] = timerBudget(S, rig)
 reserved = struct();
 reserved.HoldWindow = 1;
 reserved.Sync = 0;  % States, not timers, drive the sync line in every mode (D4)
-reserved.HoldClock = double(lum.HoldShaping.hasGrace(S.Task.HoldShaping));
+reserved.HoldClock = double(lum.HoldShaping.hasGrace(S));
 reserved.Components = lum.stim.timerCost(S);
 budget = rig.Limits.GlobalTimers - reserved.HoldWindow - reserved.Sync ...
          - reserved.HoldClock - reserved.Components;

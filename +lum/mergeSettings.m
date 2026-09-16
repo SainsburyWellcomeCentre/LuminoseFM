@@ -191,6 +191,22 @@ if hasPath(loaded, 'Cue.CentreLightDuringHold')
     migrated{end+1} = 'Cue.CentreLightDuringHold (retired: each cue row says how long it stays on)';
 end
 
+%% Reshaped (version 0.6): automatic shaping is a switch of its own
+% Hold shaping was one choice, Off or a way of shaping. It is now a switch,
+% Task.AutoShaping, and the way it shapes, Task.HoldShaping, which has no Off. A file
+% that shaped keeps shaping the same way; one that did not gets the switch off and the
+% default way, ready for when it is switched on.
+if hasPath(loaded, 'Task.HoldShaping') && ~hasPath(loaded, 'Task.AutoShaping')
+    old = loaded.Task.HoldShaping;
+    shaped = ischar(old) && ismember(old, lum.HoldShaping.modes());
+    loaded.Task.AutoShaping = shaped;
+    if ~shaped
+        loaded.Task.HoldShaping = defaults.Task.HoldShaping;
+    end
+    migrated{end+1} = sprintf('Task.AutoShaping (%s, from hold shaping ''%s'')', ...
+                              onOffText(shaped), char(string(old)));
+end
+
 %% Retired (version 0.2, and 0.4)
 % The hand-written stimulus table was replaced by the stimulus generator; its rows
 % cannot be converted into generator parameters, so the defaults are used instead.
@@ -203,6 +219,15 @@ for i = 1:numel(retired)
         loaded = removePath(loaded, retired{i});
         migrated{end+1} = sprintf('%s (retired)', retired{i}); %#ok<AGROW>
     end
+end
+
+
+function text = onOffText(tf)
+% 'on' or 'off'.
+if tf
+    text = 'on';
+else
+    text = 'off';
 end
 
 

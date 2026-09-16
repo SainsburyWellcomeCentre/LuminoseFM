@@ -258,7 +258,7 @@ cleanup = onCleanup(@() closeIfOpen(app.Figure));
 verifyFalse(testCase, accepted);
 candidate = app.collect();
 for group = {'Meta', 'Session', 'Task', 'Cue', 'Stimulus', 'Left', 'Right', 'Light', 'Sound', ...
-             'Sync', 'Sleep', 'GUI'}
+             'Sync', 'Sleep', 'Camera', 'GUI'}
     verifyEqual(testCase, candidate.(group{1}), S.(group{1}), group{1});
 end
 verifySubstring(testCase, app.status(), 'Ready to start');
@@ -292,6 +292,111 @@ candidate = app.collect();
 verifyTrue(testCase, candidate.Session.UseOpto);
 air = candidate.Stimulus.Components(strcmp({candidate.Stimulus.Components.Type}, 'Air'));
 verifyFalse(testCase, air.Enabled);
+delete(cleanup);
+end
+
+function testTrainingSwitchesAutomaticShapingOnAndExperimentOff(testCase)
+assumeUIFigures(testCase);
+S = testCase.TestData.S;
+S.Task.TrainingStage = 1;
+[~, ~, app] = lum.gui.SetupDialog(S, testCase.TestData.rig, 'Wait', false, 'Visible', 'off');
+cleanup = onCleanup(@() closeIfOpen(app.Figure));
+verifyFalse(testCase, app.controls.AutoShaping.Value);
+verifyEqual(testCase, app.controls.HoldShaping.Enable, matlab.lang.OnOffSwitchState('off'));
+app.controls.TrainingStage.Value = 'Training';
+app.controls.TrainingStage.ValueChangedFcn([], []);
+verifyTrue(testCase, app.controls.AutoShaping.Value, 'Training shapes the hold');
+verifyTrue(testCase, app.collect().Task.AutoShaping);
+verifyEqual(testCase, app.controls.HoldShaping.Enable, matlab.lang.OnOffSwitchState('on'));
+verifyEqual(testCase, app.controls.Runtime.HoldStepBackAfter.Enable, matlab.lang.OnOffSwitchState('on'));
+app.controls.TrainingStage.Value = 'Experiment';
+app.controls.TrainingStage.ValueChangedFcn([], []);
+verifyFalse(testCase, app.collect().Task.AutoShaping, 'An experiment has no shaping');
+app.controls.AutoShaping.Value = true;
+app.refresh();
+verifySubstring(testCase, app.status(), 'Experiment session runs without shaping');
+verifyEqual(testCase, app.controls.Start.Enable, matlab.lang.OnOffSwitchState('off'));
+delete(cleanup);
+end
+
+function testPlayButtonsPlayTheSoundsAsSet(testCase)
+assumeUIFigures(testCase);
+S = testCase.TestData.S;
+played = {};
+    function record(varargin)
+        played{end+1} = varargin;
+    end
+[~, ~, app] = lum.gui.SetupDialog(S, testCase.TestData.rig, 'Wait', false, 'Visible', 'off', ...
+                                  'SoundPlayer', @record);
+cleanup = onCleanup(@() closeIfOpen(app.Figure));
+app.controls.CueToneFrequency.Value = 5000;
+app.controls.Attenuation.Value = -30;
+app.controls.PlayCue.ButtonPushedFcn([], []);
+verifyNumElements(testCase, played, 1);
+args = struct(played{1}{:});
+verifyEqual(testCase, [args.Frequency, args.Attenuation, args.SamplingRate], [5000 -30 S.Sound.SamplingRate]);
+verifyTrue(testCase, args.Force);
+app.controls.PlayNoise.ButtonPushedFcn([], []);
+verifyEqual(testCase, played{2}{2}, 'noise');
+app.controls.PlayStimulusTones.ButtonPushedFcn([], []);
+verifyNumElements(testCase, played, 4, 'One tone per group');
+app.controls.Left.PlayTone.ButtonPushedFcn([], []);
+verifyEqual(testCase, struct(played{5}{:}).Frequency, S.Left.Tone.Frequency);
+delete(cleanup);
+end
+
+function testTheHelpLineDescribesTheFieldUnderThePointer(testCase)
+assumeUIFigures(testCase);
+S = testCase.TestData.S;
+[~, ~, app] = lum.gui.SetupDialog(S, testCase.TestData.rig, 'Wait', false, 'Visible', 'off');
+cleanup = onCleanup(@() closeIfOpen(app.Figure));
+groups = findobj(app.Figure, 'Type', 'uitabgroup');
+groups(1).SelectedTab = findobj(app.Figure, 'Type', 'uitab', 'Title', 'Runtime');
+field = app.controls.Runtime.BiasCorrection;
+for attempt = 1:20  % An invisible uifigure lays a tab out some time after it is selected
+    drawnow;
+    pause(0.25);
+    if ~isequal(field.Position(3:4), [100 22])
+        break
+    end
+end
+position = getpixelposition(field, true);
+app.helpLine.describeAt(position(1:2) + position(3:4) / 2);
+verifySubstring(testCase, app.helpLine.Text, 'side the animal has been avoiding');
+app.controls.Runtime.BiasWindow.ValueChangedFcn(app.controls.Runtime.BiasWindow, []);
+verifySubstring(testCase, app.helpLine.Text, 'most recent choices', 'Using a field describes it');
+delete(cleanup);
+end
+
+function testTheRuntimeWindowExplainsBiasCorrection(testCase)
+window = lum.gui.RuntimeWindow(testCase.TestData.S, 'Mode', 'Tabbed', 'Visible', 'off');
+cleanup = onCleanup(@() window.close());
+control = findobj(window.Figure, 'Tag', 'BiasCorrection');
+verifySubstring(testCase, control.Tooltip, 'avoiding');
+delete(cleanup);
+end
+
+function testTheCamerasTabReadsBackAndPreviewsSimulatedCameras(testCase)
+assumeUIFigures(testCase);
+S = testCase.TestData.S;
+[~, ~, app] = lum.gui.SetupDialog(S, testCase.TestData.rig, 'Wait', false, 'Visible', 'off');
+cleanup = onCleanup(@() closeIfOpen(app.Figure));
+c = app.cameras.Controls;
+verifyEqual(testCase, c.Table.Data(:, 2)', {'sideview', 'topview'});
+c.Table.Data{2, 3} = false;
+c.FrameRate.Value = 60;
+candidate = app.collect();
+verifyEqual(testCase, [candidate.Camera.Cameras.Record], [true false]);
+verifyEqual(testCase, candidate.Camera.FrameRate, 60);
+assumeNotEmpty(testCase, lum.dev.Cameras.locateSpinCam(''), 'spincam is not on the path');
+c.Simulated.Value = true;
+app.cameras.startPreview();
+verifyEqual(testCase, {app.cameras.Connected.Name}, {'sideview'});
+pause(1);
+app.cameras.refreshPreview();
+verifyGreaterThan(testCase, numel(findobj(c.Tiles, 'Type', 'image')), 0);
+app.cameras.stopPreview();
+verifyEmpty(testCase, app.cameras.Manager, 'Stopping releases the cameras');
 delete(cleanup);
 end
 
@@ -398,6 +503,7 @@ assumeUIFigures(testCase);
 S = testCase.TestData.S;
 S.GUI.ITI = 0.2;
 S.GUI.PostStimulusHold = 0.3;
+S.Task.AutoShaping = true;
 S.Task.HoldShaping = 'Both';
 S.Stimulus.Latency = 0.3;
 for width = [1150 760 520]
@@ -438,7 +544,7 @@ cleanup = onCleanup(@() closeIfOpen(app.Figure));
 verifyFalse(testCase, accepted);
 candidate = app.collect();
 verifyEqual(testCase, candidate.Session.Type, 'Sleep');
-for group = {'Meta', 'Sleep', 'Task', 'Stimulus', 'GUI'}
+for group = {'Meta', 'Sleep', 'Task', 'Stimulus', 'Camera', 'GUI'}
     verifyEqual(testCase, candidate.(group{1}), S.(group{1}), group{1});
 end
 verifyEqual(testCase, candidate.Sync.Barcode, S.Sync.Barcode);
@@ -557,7 +663,8 @@ for trial = 1:nTrials
     outcome = outcomes(mod(trial, 4) + 1);
     result = struct('Outcome', outcome, 'Choice', NaN, 'Correct', NaN, ...
                     'Rewarded', double(outcome == lum.Outcome.Correct), ...
-                    'ReactionTime', NaN, 'HoldBreaks', 0, 'HoldAttempts', 1);
+                    'ReactionTime', NaN, 'HoldBreaks', 0, 'HoldAttempts', 1, ...
+                    'EarlyWithdrawals', double(outcome == lum.Outcome.EarlyWithdrawal));
     if outcome == lum.Outcome.Correct || outcome == lum.Outcome.Incorrect
         result.Correct = double(outcome == lum.Outcome.Correct);
         result.Choice = spec.CorrectSide;

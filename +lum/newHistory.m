@@ -22,6 +22,12 @@ function history = newHistory(capacity)
 %   .holdGrace     Longest forgiven break in the hold, seconds
 %   .holdBreaks    Times the animal left and came back during the hold
 %   .holdAttempts  Times the stimulus started; more than 1 when breaks restarted it
+%   .earlyWithdrawals  Unforgiven breaks of the hold (visits to EarlyWithdrawal)
+%
+% and one running count, a scalar:
+%   .withdrawalsAtHold  Early withdrawals since the hold last changed or was last
+%                  completed; automatic shaping steps the hold back when it reaches
+%                  S.GUI.HoldStepBackAfter (lum.HoldShaping)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
@@ -32,4 +38,5 @@ history = struct('capacity', capacity, 'nTrials', 0, ...
                  'pattern', blank, 'group', blank, 'correctSide', blank, ...
                  'choice', blank, 'correct', blank, 'rewarded', blank, ...
                  'outcome', blank, 'reactionTime', blank, 'holdDuration', blank, ...
-                 'holdGrace', blank, 'holdBreaks', blank, 'holdAttempts', blank);
+                 'holdGrace', blank, 'holdBreaks', blank, 'holdAttempts', blank, ...
+                 'earlyWithdrawals', blank, 'withdrawalsAtHold', 0);

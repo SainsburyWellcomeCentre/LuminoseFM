@@ -43,4 +43,13 @@ for i = 1:min(numel(handles), numel(names))
     % Right-aligned, so each label sits against the field it names rather than
     % floating in the middle of a 200-pixel column.
     set(handles(i), 'String', S.GUIMeta.(name).Label, 'HorizontalAlignment', 'right');
+    % Bpod's window has no room for a help line, so what a parameter does is its tooltip.
+    if isfield(S.GUIMeta.(name), 'Help') && ~isempty(S.GUIMeta.(name).Help)
+        set(handles(i), 'Tooltip', S.GUIMeta.(name).Help);
+        try
+            set(BpodSystem.GUIHandles.ParameterGUI.Params(i), 'Tooltip', S.GUIMeta.(name).Help);
+        catch
+            % A control Bpod laid out differently keeps no tooltip
+        end
+    end
 end

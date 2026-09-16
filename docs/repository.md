@@ -21,7 +21,7 @@ LuminoseFM/
 │   ├── cueTiming.m               what each cue component does once the stimulus starts
 │   ├── triggerStates.m           where the next trial may be prepared
 │   ├── nextTrialSpec.m           trial policy: order, contingency, bias, run limit, stage
-│   ├── HoldShaping.m             centre-hold shaping and what a broken hold does
+│   ├── HoldShaping.m             automatic shaping of the centre hold, and what a broken hold does
 │   ├── scoreTrial.m              outcome classification
 │   ├── punishmentFor.m           which mistakes are punished, and how
 │   ├── validateSettings.m        everything that must hold before a session starts
@@ -31,21 +31,24 @@ LuminoseFM/
 │   ├── SessionRunner.m           TrialManager on the rig, blocking in the emulator
 │   ├── OnlinePlots.m             the live figure
 │   ├── loadSounds.m              the session's sounds, loaded once
+│   ├── testSounds.m              a sound of the session as a test, for the setup dialog's Play buttons
+│   ├── toneFrequencies.m         stimulus tone frequencies, shared by the two above
 │   ├── defaultSettings.m         the two-tier settings struct
 │   ├── mergeSettings.m           old settings files converted (renames, reshapes, retirements)
 │   ├── +pattern/                 stimulus generator, stimulus set, light patterns
 │   ├── +stim/                    cue and stimulus components
 │   ├── +sync/                    session barcode
 │   ├── +sleep/                   sleep sessions: run, sync and test pulses, blocks, validation, plots
-│   ├── +dev/                     device shims, real and null
-│   └── +gui/                     session type, setup dialogs, stimulus and test-pulse designers, runtime window, theme
+│   ├── +dev/                     device shims, real and null; cameras through SpinCam
+│   └── +gui/                     session type, setup dialogs, camera tab and window, help line, designers, runtime window, theme
 ├── hardware/
 │   ├── RigConfig.m               the channel map — the single source of truth
 │   ├── CheckRig.m                preflight report
 │   ├── TestHiFiSound.m           play a test sound through the HiFi module
 │   └── TestSyncLine.m            drive the sync TTL, from states and from a global timer
 ├── tests/
-│   └── runLuminoseTests.m        the whole suite; needs no hardware
+│   ├── runLuminoseTests.m        the whole suite; needs no hardware
+│   └── Stub*.m                   test doubles: HiFi, PulsePal, SpinCam's CameraManager
 └── docs/
     ├── architecture.md           design decisions and the map from design to code
     ├── hardware.md               the rig: box, ports, light path, Flex I/O, environment
@@ -89,7 +92,15 @@ What it covers:
   schedule, the test-pulse plan and how a sleep session is cut into blocks.
 - `stateMachineTest` — the state graph itself, restarts and the hold window included.
 - `windowsTest` — the runtime window, both plot figures, the session type chooser, both setup
-  dialogs and both designers, built invisibly.
+  dialogs (automatic shaping by stage, Play buttons, the help line, the Cameras tab and its preview
+  of simulated cameras) and both designers, built invisibly.
+- `cameraTest` — camera settings, the format note for single-threaded encoders, where videos go,
+  how settings become camera state and what a recording records, against `StubCameraManager`;
+  finishing a recording (the save marked before the stop); the camera window; and a whole behaviour
+  and a sleep session under `Bpod('EMU')` recording SpinCam's simulated cameras, checking that the
+  video stops after the final save and the file still carries the recording summary (skipped without SpinCam:
+  on the path, in `SPINCAM_FOLDER`, or beside the MATLAB folder). The other session tests run
+  without video, whose load would stretch the emulator's timings they check.
 - `emulatorSessionTest`, `sleepSessionTest` — a whole behaviour session and two sleep sessions
   (with and without test pulses) under `Bpod('EMU')`, checking the files they produce.
 - `lintTest` — keeps the repository at zero MATLAB Code Analyzer messages.

@@ -77,6 +77,12 @@ if S.Meta.Drug.Enabled && isempty(strtrim(S.Meta.Drug.Name))
     fail('noDrugName', 'A drug session needs the drug''s name.');
 end
 
+lum.dev.Cameras.validateSettings(S.Camera);
+videoNote = lum.dev.Cameras.formatNote(S.Camera);
+if ~isempty(videoNote)
+    notes{end+1} = videoNote;
+end
+
 if ~S.Session.UseSync
     notes{end+1} = ['The sync output is off: no barcode and no pulses are sent, and the '...
                     'session records only the times they would have had.'];

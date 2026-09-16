@@ -8,6 +8,11 @@ function [S, changed] = stageDefaults(S, stage)
 % so that the hold is exactly as long and as salient as it will be later while
 % carrying no information. Training and Experiment deliver the light pattern.
 %
+% Automatic shaping follows the stage too: Training switches it on, so the centre hold
+% is grown from S.GUI.HoldStart as the animal learns (lum.HoldShaping), and Experiment
+% switches it off, because an experiment asks every animal for the same trial. Habituation
+% leaves it as it is.
+%
 % These are defaults, not a lock. The setup dialog applies them the moment the stage
 % is chosen and the operator may change anything afterwards — a habituation session
 % with light, or a training session without, is a tick away. Nothing applies them
@@ -62,6 +67,15 @@ if any(air)
     if habituation
         S.Stimulus.Components(k).Onset = 0;
         S.Stimulus.Components(k).Duration = S.Stimulus.Duration;
+    end
+end
+
+% Shaping: on while training (stage 2), never in an experiment (stage 3).
+if isscalar(stage) && ismember(stage, 2:3)
+    wantShaping = stage == 2;
+    if ~isequal(logical(S.Task.AutoShaping), wantShaping)
+        S.Task.AutoShaping = wantShaping;
+        changed{end+1} = describe('automatic shaping', wantShaping);
     end
 end
 
