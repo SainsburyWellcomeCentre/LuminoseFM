@@ -12,7 +12,7 @@ classdef OnlinePlots < handle
     % Axis limits follow the data: the per-trial panels scroll with the session and
     % rescale to what is on screen, so they stay legible at trial 5 and at trial 900.
     %
-    % Panels (README §4.7), laid out in the order the operator reads them:
+    % Panels (README §6), laid out in the order the operator reads them:
     %   Top row
     %     Now and next  The pattern of the running trial and the next three queued,
     %                   shown from the start of the session (showNext)

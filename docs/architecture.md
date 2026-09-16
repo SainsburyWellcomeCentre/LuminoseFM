@@ -324,7 +324,8 @@ of the trial record, and states cost no timers.
 
 ### D8 — Names say what things are
 
-**Decision.** One vocabulary across code, windows, plots and data (README §5): channels A
+**Decision.** One vocabulary across code, windows, plots and data
+(see [`naming-and-versions.md`](naming-and-versions.md)): channels A
 and B; light pattern; joint state; group; stimulus set; stimulus window; hold, hold break,
 grace; carrier; British *centre* in identifiers too. Version 0.2 applied it:
 
@@ -727,7 +728,7 @@ per-trial panels scroll and rescale to what is on screen; one `drawnow limitrate
 lines (sync, A, B), the latest epoch, sync widths and epochs by step; without, lines and widths.
 
 ### Data
-Per README §4.6. The stimulus set (without preview states), settings, rig map, barcode, session
+Per [`data-format.md`](data-format.md). The stimulus set (without preview states), settings, rig map, barcode, session
 type and device logs are stored once in `Data.Session`; each trial holds scalars and indices.
 Per-trial series live outside `BpodSystem.Data` during the session and are copied in trimmed at
 each save. Sleep sessions store `Data.SyncPulses` instead of trial series, and with test pulses

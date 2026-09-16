@@ -69,7 +69,7 @@ verifyLength(testCase, sessionData.TrialSettings, sessionData.nTrials);
 end
 
 function testTheStimulusSetIsStoredOnceAndIndexed(testCase)
-% README §4.6: patterns live at session level and trials hold indices into them, so
+% docs/data-format.md: patterns live at session level and trials hold indices into them, so
 % rewriting the file on an interval stays cheap.
 sessionData = testCase.TestData.sessionData;
 stimulusSet = sessionData.Session.StimulusSet;

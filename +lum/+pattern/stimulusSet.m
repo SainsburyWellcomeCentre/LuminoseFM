@@ -4,7 +4,7 @@ function result = stimulusSet(S, timerBudget, nChannels)
 % The stimulus set is the session-level store of every light pattern the session
 % can deliver, which group each belongs to, which side each group pays, and the
 % order the trials come in. It is built once, validated once and written to the
-% data file once; each trial records only indices into it (README §4.4).
+% data file once; each trial records only indices into it (docs/data-format.md).
 %
 % Patterns are held compactly, as one segment table with a row per light segment,
 % so that a continuous session of a thousand distinct patterns still costs only a

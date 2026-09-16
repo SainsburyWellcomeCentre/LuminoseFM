@@ -33,7 +33,7 @@ function rig = RigConfig()
 
 global BpodSystem %#ok<GVMIS> % Imported to read the connected machine's channel list
 
-%% Fixed wiring (see README §2 and the hardware map in CLAUDE.md)
+%% Fixed wiring (see docs/hardware.md and the hardware map in CLAUDE.md)
 % Ports 1-3 are the behaviour ports proper: each has a photogate, an LED and a
 % water valve. Reward is delivered at the left and right ports only; the centre
 % port's valve is wired but the task does not use it. Ports 4 and 5 carry one

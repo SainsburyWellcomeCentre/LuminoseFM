@@ -1,8 +1,8 @@
 # LuminoseFM — Agent Instructions
 
 Bpod protocol + helpers for a freely-moving 2-AFC olfactory-bulb optogenetics task
-(OSN-ChR mice, patterned light via fiber bundle). See `README.md` for the scientific
-and hardware description — read it before changing anything.
+(OSN-ChR mice, patterned light via fiber bundle). `README.md` is the operator's guide and
+`docs/hardware.md` the rig description — read both before changing anything.
 
 `AGENTS.md` is a symlink to this file (for Codex / antigravity / OpenCode). If your
 platform did not resolve the symlink, read `CLAUDE.md`.
@@ -37,7 +37,7 @@ agent cannot fix it without sudo. Ask the operator to run, in a WSL terminal:
 `sudo sh -c 'echo :WSLInterop:M::MZ::/init:PF > /proc/sys/fs/binfmt_misc/register'`.
 
 The operator restarts MATLAB and power-cycles the state machine and PulsePal between sessions,
-and always after a session that ended in an error (README §3). Assume a fresh process when
+and always after a session that ended in an error (`docs/hardware.md` §3). Assume a fresh process when
 reasoning about device state; do not add code that tries to recover a stale COM port.
 
 Never open COM ports, call `Bpod`, `PulsePal`, or run the protocol against real hardware
@@ -141,8 +141,8 @@ stops the session part way through as though the End button had been pressed.
   `S.Task.ReverseContingency` swapped them.
 - Trial pulses in sessions from 0.2 to 0.5.0 are ~100 us glitches, not the recorded widths
   (D4); align those sessions by the barcode and `Data.TrialStartTimestamp`.
-- Per-trial series are listed once, in `trialSeriesNames` in `LuminoseFM.m`; the README and
-  `emulatorSessionTest` list them too — keep all three in step.
+- Per-trial series are listed once, in `trialSeriesNames` in `LuminoseFM.m`; `docs/data-format.md`
+  and `emulatorSessionTest` list them too — keep all three in step.
 
 ## Hardware map (Bpod FSM r2+, firmware 23, FSM `COM3`, App `COM4`)
 
@@ -201,7 +201,7 @@ doc that does not:
 | light segment | one gate on A or B; a probe pulse, or a burst PulsePal fills (`LightSegments`) | pulse, when it is a burst |
 
 Version 0.2 renamed states, data fields and settings accordingly; the full table is in
-`README.md` §5 and `docs/architecture.md` D8. **Rename by migration**: add the old → new
+`docs/naming-and-versions.md` and `docs/architecture.md` D8. **Rename by migration**: add the old → new
 path to the rename table in `lum.mergeSettings` so existing settings files keep their
 values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishment codes).
 
@@ -505,7 +505,15 @@ MATLAB and test gotchas that have already cost time:
 
 Keep documentation current in the same change that alters behaviour:
 
-- `README.md` — hardware, wiring, task description, windows, data fields, names, workflow.
+- `README.md` — the operator's guide only: running a session, the task, the stimulus, the
+  windows, the plots, sleep sessions, utilities. It links to `docs/` for everything else, so
+  reference material added there does not go back into it.
+- `docs/hardware.md` — the box, the channel map, the light path, Flex I/O, the environment.
+- `docs/data-format.md` — the session file's every field, and reading older files.
+- `docs/sync-and-barcode.md` — the sync TTL and the session barcode.
+- `docs/naming-and-versions.md` — the glossary, and what changed between versions.
+- `docs/emulator.md` — what the emulator does and does not reproduce.
+- `docs/repository.md` — the repository layout and what the test suite covers.
 - `CLAUDE.md` (= `AGENTS.md`) — anything an agent needs: paths, conventions, hardware map,
   naming, new APIs or architectural decisions.
 - `docs/architecture.md` — the confirmed architecture decisions (D1 envelope/carrier split,

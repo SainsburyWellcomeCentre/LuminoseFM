@@ -3,8 +3,8 @@ function LuminoseFM
 %
 % A two-alternative forced-choice task for OSN-ChR mice, in which the stimulus is a
 % two-channel spatiotemporal pattern of light delivered to the olfactory bulb
-% through a fiber bundle. See README.md for the rig and the science, and
-% docs/architecture.md for the design decisions this file assumes.
+% through a fiber bundle. See README.md for how a session is run, docs/hardware.md for
+% the rig, and docs/architecture.md for the design decisions this file assumes.
 %
 % Launch it from the Bpod console's launch manager. The first window asks what kind
 % of session this is (D11):
@@ -384,8 +384,8 @@ data.RuntimeSettings = cell(1, maxTrials);
 
 
 function names = trialSeriesNames()
-% Every per-trial series written to the data file, one value per trial. The README
-% (§4.6) and emulatorSessionTest list them too; keep all three in step.
+% Every per-trial series written to the data file, one value per trial. docs/data-format.md
+% and emulatorSessionTest list them too; keep all three in step.
 names = {'StimulusGroup', 'PatternIndex', 'CorrectSide', 'Choice', 'Correct', 'Rewarded', ...
          'Outcome', 'ReactionTime', 'OptoOn', 'SoundOn', 'SyncMode', 'SyncPulseWidth', ...
          'BiasTargetPLeft', 'TrainingStage', 'HoldDuration', 'HoldGrace', 'HoldBreaks', ...
@@ -395,7 +395,7 @@ names = {'StimulusGroup', 'PatternIndex', 'CorrectSide', 'Choice', 'Correct', 'R
 function data = recordTrial(data, trialNumber, spec, result, S)
 % Store one trial. Only scalars and the runtime settings tier: the stimulus set, the
 % rig map and the frozen settings are stored once per session, and each trial holds
-% indices into them (README §4.6).
+% indices into them (docs/data-format.md).
 data.StimulusGroup(trialNumber) = spec.StimulusGroup;
 data.PatternIndex(trialNumber) = spec.PatternIndex;
 data.CorrectSide(trialNumber) = spec.CorrectSide;
