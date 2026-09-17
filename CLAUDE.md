@@ -20,7 +20,8 @@ platform did not resolve the symlink, read `CLAUDE.md`.
 | PulsePal | `../../PulsePal` — **not** on the saved MATLAB path; add it explicitly |
 | Examples | `../../Bpod_Gen2/Examples/Protocols`, and `../FreelyMoving2AFC` (lab's prior 2-AFC) |
 | Stimulus generator origin | `../../generatePattern` (`generateStimuli.m`), ported into `+lum/+pattern/generate.m` |
-| SpinCam | `../../SpinCam` — the lab's camera package, its own repository (read its `CLAUDE.md` before touching the camera path). On this machine's saved MATLAB path; sessions name it by `S.Camera.SpinCamFolder` |
+| SpinCam | `../../SpinCam` — the lab's camera package, its own repository (read its `CLAUDE.md` before touching the camera path). On this machine's saved MATLAB path; sessions name it by `S.Camera.SpinCamFolder`. Engine 1.2.0; `spincam.version()` still returns 1.1.0 (SpinCam's to bump, not ours) |
+| Spinnaker SDK | `C:\Program Files\Teledyne\Spinnaker` 4.2.0.83, .NET assemblies incl. `SpinVideoNET` in `bin64\vs2015`. SpinCam compiles its engine against them with Windows' `csc.exe` (.NET Framework 4.8) |
 | GUI inspiration | `../../luminose_hf` (head-fixed Luminose protocols) — structure only, not its colours |
 | Bpod `ProtocolFolder` | `C:\Users\harrislab\Documents\MATLAB\HarrisLabBpodProtocols\` |
 | Bpod `DataFolder` | `D:\luminoseData\` = `/mnt/d/luminoseData` — session data live **outside** the repo |
@@ -44,6 +45,15 @@ reasoning about device state; do not add code that tries to recover a stale COM 
 Never open COM ports, call `Bpod`, `PulsePal`, or run the protocol against real hardware
 from an agent session — the rig may be running an animal. Use `Bpod('EMU')` (emulator) or
 pure-function tests instead, and hand hardware runs to the operator.
+
+**Rig checks.** The operator may give one-time permission to run the hardware (no animal in the
+box). Permission covers that request only. Close nothing of theirs: if the MATLAB desktop holds COM3
+(`serialportlist('available')` lacks it), ask them to close it. Record every result in
+`docs/rig-checks.md`, and add to its *Pending* list anything that needs someone at the rig: seeing
+light, hearing sound, poking, moving a cable. The operator works remotely at times, so run those checks
+the next time they say they are at the rig. That doc also says how to run a headless session on the
+rig: do what `RunProtocol` does, open `_ANLG.dat` and reset the session clock. **Pending now: P1, the
+house light loopback — PulsePal switches, no BNC1 edge arrives.**
 
 ## Stay inside the working folder
 
@@ -79,9 +89,10 @@ the r2+. Design around this:
   `S.Camera.Enabled = false`; `cameraTest` runs its own sessions with video.
 - **5 global timers, 5 counters, 5 conditions** — against the rig's 16/8/16. Always read
   `rig.Limits.GlobalTimers` from `RigConfig`; never hard-code 16. The trial uses conditions
-  1–4 (left, right, centre port clear; hold window over) and always one timer for the hold
+  1–4 (left, right, centre port clear; hold window over) and always one timer, the hold
   window, so the emulator has four left for light — fewer when a cue light or cue air goes off
-  part way through the stimulus, which takes one each. The sync line takes none, in any mode.
+  part way through the stimulus, which takes one each. The sync line and the house light take
+  none, in any mode.
 - **No Flex I/O at all**: no `Flex1` analog stream, no `Flex2DO`, so no airflow viewer, no
   sync pulses and no session barcode (it is recorded with `Sent = false`).
 - `BpodSystem.assertModule` **errors** in EMU, as does `BpodTrialManager`'s constructor
@@ -125,7 +136,8 @@ stops the session part way through as though the End button had been pressed.
   `SaveBpodSessionData` (full overwrite each call — keep the struct small, save on an
   interval, never inside the stimulus-critical window).
 - Settings file: `.../LuminoseFM/Session Settings/<name>.mat`, per subject, chosen in the
-  launch manager. `lum.mergeSettings` converts old files (renames, reshapes, retirements).
+  launch manager. `lum.mergeSettings` converts old files (renames, reshapes, retirements). It holds
+  the *last* session's settings: written on Start and again at teardown (D16).
 - `Data.Session.Type` is `'Behaviour'` or `'Sleep'`. Sleep sessions store `Data.SyncPulses`
   (`Onset`, `Width`, `Block`) instead of trial series; each block is one Bpod trial. With test
   pulses they also store `Data.LightSegments` (`Onset`, `Duration`, `Channel`, `Step`, `Epoch`,
@@ -149,7 +161,16 @@ stops the session part way through as though the End button had been pressed.
 - Per-trial series are listed once, in `trialSeriesNames` in `LuminoseFM.m`; `docs/data-format.md`
   and `emulatorSessionTest` list them too — keep all three in step. Since 0.6.0 they include
   `EarlyWithdrawals` (visits to `EarlyWithdrawal`) and `CameraTime` (seconds on SpinCam's host clock
-  when the trial's events arrived; sleep sessions store one per block).
+  when the trial's events arrived; sleep sessions store one per block); since 0.6.1 `HouseLight`
+  (the level the trial started at; sleep sessions store one per block too; switches are
+  `Data.Session.HouseLight` and `BNC1High`/`BNC1Low` events).
+- `..._ANLG.dat` is Bpod's raw stream of the Flex analog input (flow meter), opened by the launch
+  manager and written as samples arrive; the `.mat` gets it as `Data.Analog` at teardown. Kept as
+  the raw copy; see `docs/data-format.md`.
+- Teardown (D16) saves the plot figure as `<data file name>_plots.png` beside the data file
+  (`lum.gui.savePlotsImage`, path in `Data.Session.PlotsImage`) before the final save, and after it
+  writes the settings back to the settings file captured at session start (`settingsFile`), runtime
+  changes included; headless sessions write no settings. Keep both in both teardowns.
 - Video (D14): `...\LuminoseFM\Session Videos\<view>_<data file name>.avi` + `.csv` per camera,
   `<data file name>_events.csv` and `_session.json`, written by SpinCam; `Data.Session.Cameras`
   (`lum.dev.Cameras.sessionRecord`) records settings, plan and per-camera summary (the summary is
@@ -159,9 +180,9 @@ stops the session part way through as though the End button had been pressed.
 
 ## Hardware map (Bpod FSM r2+, firmware 23, FSM `COM3`, App `COM4`)
 
-- Behavior ports: 1 = Left, 2 = Centre, 3 = Right, 4 = Air valve, 5 = House light.
-  Port `n` → `PWMn` (LED), `Valven` (solenoid), `PortnIn`/`PortnOut` (IR gate).
-  Ports 4 and 5 use the valve/LED line only; their IR gates are unused.
+- Behavior ports: 1 = Left, 2 = Centre, 3 = Right, 4 = Air valve, 5 = unused (the house light's
+  until it moved to PulsePal). Port `n` → `PWMn` (LED), `Valven` (solenoid), `PortnIn`/`PortnOut`
+  (IR gate). Port 4 uses the valve line only; its IR gate is unused.
 - Optical channels **A** and **B**: `BNC1` → PulsePal `IN1` → `OUT1` → Doric LED ch1 is
   channel A; `BNC2` → `IN2` → `OUT2` → LED ch2 is channel B (`rig.Opto.Channels`,
   `rig.Opto.Labels`). A light pattern is the ON/OFF sequence of A and B over the stimulus
@@ -180,10 +201,23 @@ stops the session part way through as though the End button had been pressed.
 - Cameras: 2 × Chameleon3 CM3-U3-13Y3M on one USB 3.0 controller, recorded through SpinCam.
   **24226887 = sideview, 24226657 = topview** (`S.Camera.Cameras`). Default 100 Hz full frame,
   `avi-mjpeg-mt`; both cameras on one USB 3.0 controller deliver at most 120 Hz full frame together.
-  Line0 (yellow/brown) is logged per frame; **Flex2 is not yet wired to the cameras** (it goes to the scope), so `TTL_State` is 0.
+  Line0 (yellow/brown) is logged per frame; **Flex2 is wired to both cameras' Line0** (through the splitter,
+  3.3 V TTL, since 2026-09-17), so `TTL_State` carries the barcode and trial pulses. The first wired session
+  (`FakeSubject_LuminoseFM_20260917_082143`) logged all 79 pulses on both cameras and decoded the barcode from each;
+  0.6.1 rig sessions `..._20260917_111703` (behaviour) and `..._112004` (sleep with test pulses) did the same.
+  A frame samples the line once, so with video the session fits the line to the cameras
+  (`lum.sync.fitToCameras`): barcode elements and sync pulses ≥ 2 frames, bit/marker widths ≥ 3 frames
+  apart. Typed widths are minimums and stay in the settings file; sessions send and record the fitted
+  ones (`Session.SyncFit`). Anything new put on the sync line must go through it.
+- House light: **PulsePal OUT3** (5 V on, held as its resting voltage) → BNC splitter → LED driver,
+  and → **Bpod BNC input 1** (`BNC1High`/`BNC1Low`), `rig.HouseLight` (D15). BNC input 1 must be
+  enabled in the console's port settings (`CheckRig`). **The loopback does not work yet**: on
+  2026-09-17, PulsePal confirmed every switch but no BNC1 edge arrived, though BNC1 is enabled.
+  The cabling is unchecked (`docs/rig-checks.md` P1). If the wiring turns out different, change
+  `RigConfig`, not the code. PulsePal OUT1/OUT2 are channels A/B; OUT4 is free.
 - Budget: 16 global timers, 8 global counters, 16 conditions **on the rig**; the emulator
   has 5/5/5. Read `rig.Limits` rather than assuming either. The hold window always takes one
-  timer (`lum.timerBudget`).
+  timer (`lum.timerBudget`); the house light takes none.
 - `docs/BpodSystemInfo.png` is the authoritative event/output list. Regenerate it
   (`BpodSystem.StateMachineInfo`) if the rig wiring or Flex config changes.
 
@@ -221,6 +255,7 @@ doc that does not:
 | early withdrawal | leaving the centre port before the hold is complete, unforgiven (state `EarlyWithdrawal`) | hold break (that is the forgiven kind) |
 | view | a camera's name and file prefix: `sideview`, `topview` | camera name, cam1 |
 | camera clock | SpinCam's host clock: `HostTime_s`, `_events.csv`, `Data.CameraTime` | video time |
+| house light | the white light in the box, on PulsePal OUT3, looped back into BNC input 1 (`S.Session.HouseLight`, `S.Sleep.HouseLight`, `Data.HouseLight`, `Session.HouseLight`) | room light, port 5 light |
 
 Version 0.2 renamed states, data fields and settings accordingly; the full table is in
 `docs/naming-and-versions.md` and `docs/architecture.md` D8. **Rename by migration**: add the old → new
@@ -264,6 +299,52 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   `S.GUI.HoldStepBackAfter` (10) early withdrawals at one hold; the count is
   `history.withdrawalsAtHold`, kept by `lum.updateHistory`. Future difficulty shaping goes under the
   same switch.
+- **House light (D15).** PulsePal's, not Bpod's: **PulsePal OUT3** → BNC splitter → the light's LED
+  driver, and the copy into **Bpod BNC input 1** (`rig.HouseLight`: `PulsePalChannel` 3, `Voltage` 5,
+  `Input` `'BNC1'`, `OnEvent` `'BNC1High'`, `OffEvent` `'BNC1Low'`). Switched at once, mid-trial and
+  mid-block, by `devices.houseLight` (`lum.dev.HouseLight`: `RealHouseLight` on the rig,
+  `NullHouseLight` in the emulator). Where it starts: `S.Session.HouseLight` (setup dialog, Experiment
+  tab) and `S.Sleep.HouseLight` (sleep setup dialog); during a session the only switch is the
+  **House light** box in the live figure's header (`lum.gui.houseLightSwitch`, in `lum.OnlinePlots` and
+  `lum.sleep.Plots`). It is not a runtime-tier parameter (a 0.6.1 settings file's `GUI.HouseLight` is
+  renamed on load).
+  - **Holding it**: `lum.dev.PulsePal.holdVoltage(3, 5|0, done)` sets OUT3's *resting voltage*
+    (parameter 17), which the firmware writes at once and returns to after every stop, abort and
+    disconnect (`PulsePal_2_0_1.ino`, `killChannel`); it also unlinks OUT3 from both trigger inputs.
+    Only outputs 3–4 may be held. Set when `lum.dev.open` builds the device; 0 V when it is closed,
+    which `closeDevices` does **before** PulsePal. **The state machine has no part in it**: no timer,
+    no output, no state — never add one, and nothing else may use OUT3 or BNC input 1.
+  - **Every session on the rig opens PulsePal** (`lum.dev.openPulsePal`, behaviour or sleep). One
+    with light refuses to start without it. One without light (`S.Session.UseOpto` off; sleep sets it
+    from test pulses) runs on the null shim with a warning, and `lum.dev.openHouseLight` gives it
+    `lum.dev.DisabledHouseLight` — also when a connected PulsePal refuses the light's level: off,
+    `Switchable` false, the box greyed out (`lum.gui.houseLightSwitch`), and both teardowns keep the
+    settings' level rather than writing `On` back. Choose the light only through `openHouseLight`.
+    Port 5 is unused.
+  - **Checking it on the rig**: `hardware/TestHouseLight` — soft codes from a state machine call
+    `houseLight.set` (restoring Bpod's `SoftCodeHandlerFunction` after), and each switch must come
+    back as a BNC1 edge; it prints latencies. It runs under `Bpod('EMU')` too (`houseLightTest`).
+    Hand the rig run to the operator.
+  - **Sharing the port**: a click's callback runs inside any `pause`/`drawnow`, including PulsePal's
+    handshake (0.1 s) and serial code. `lum.dev.PulsePal` counts commands under way (`enter`/`leave`
+    around `configure`, `stopOutputs`, `checkConnection`); `holdVoltage` during one is sent when it
+    finishes (latest per output wins). Any new PulsePal command must go through the same guard. The
+    light, the camera mark, the record and the windows change when PulsePal takes it (`done`), not at
+    the click; a refusal warns and puts the boxes back.
+  - **Timing it**: a switch during a state machine is a `BNC1High`/`BNC1Low` event on Bpod's clock
+    (the loopback wire). In the emulator `NullHouseLight.echo` puts that edge into the running
+    emulated state machine (`VirtualManualOverrideBytes` `'V'`, as the console's BNC input button). A
+    switch between state machines has no Bpod event. Every switch is also `cameras.mark('HouseLight')`.
+  - **Recorded**: `Data.HouseLight` per trial/block is `lum.dev.HouseLight.levelAtStart(events, rig
+    .HouseLight, fallback)` — the first edge decides; with no edge, `houseLight.levelAt(arrival time −
+    trial length)` on MATLAB's clock (`sessionTime`). `Data.Session.HouseLight = houseLight.record(
+    BpodSystem.Data)`: wiring, `OnAtStart`/`OnAtEnd`, `Switches` (camera and wall time) and `Edges`
+    (Bpod clock, trial). `DeviceLog.HouseLight`, and PulsePal's log has `ch3 param 17` lines. The
+    level at the end is saved to the settings file.
+- **Subject.** `LuminoseFM` takes it from `lum.launchSubject(BpodSystem.GUIData.SubjectName,
+  BpodSystem.Status.CurrentSubjectName, BpodSystem.Path.CurrentDataFile)`: the launch manager's
+  Launch button always sets `GUIData.SubjectName`, but `Status.CurrentSubjectName` only when the
+  subject list's selection changes, which left sessions up to 0.6.1 with an empty subject.
 - **Video (D14).** `devices.cameras` (`lum.dev.openCameras`): on the rig a session with
   `S.Camera.Enabled` refuses to start without SpinCam or a ticked camera; in the emulator it uses
   SpinCam's mock cameras or the null shim. `lum.dev.configureCameras` is the only place settings
@@ -275,7 +356,15 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   order in both teardowns. Only native formats (`lum.dev.Cameras.Formats`); `matlab-*` would be
   starved by the trial loop. The default is `avi-mjpeg-mt` (SpinCam's multi-core MJPEG, engine
   1.2.0): SpinVideo's `avi-mjpeg` has 4 % headroom at 100 Hz full frame and fell behind with the
-  camera window open, and `lum.dev.Cameras.formatNote` says so at validation. Never modify SpinCam
+  camera window open, and `lum.dev.Cameras.formatNote` says so at validation. Each offered format has one sentence in
+  `lum.dev.Cameras.FormatDescriptions` (same order as `Formats`; `cameraTest` checks one sentence
+  each): it is the dropdown's tooltip and, through `CameraSetup.useHelpLine` (called by both setup
+  dialogs after `registerTooltips`), the help line, updated on every change. Add a format to both
+  lists together. `lum.dev.openCameras` refuses a SpinVideo format (`needsSpinVideo`) when the
+  engine lacks SpinVideo (`SpinCam.Engine.HasSpinVideo`), before recording starts;
+  `Session.Cameras.EngineVersion` records `SpinCam.Engine.Version`. Use only SpinCam's public API
+  (`spincam.CameraManager`, `VideoRecorder`, `SpinCam.Engine`), never `spincam.internal.*`. The
+  dependency list is `docs/hardware.md` §3. Never modify SpinCam
   from this repository — it is outside the working folder; changes to it are made in its own
   repository, under its own `CLAUDE.md`, only when the operator asks.
 - **Help line.** Every runtime parameter declares its help as the last argument of
@@ -386,8 +475,11 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
     test pulses (D13). Global timers are for what happens inside the hold, where leaving the port
     must end it at any instant: light segments (D1), the grace hold clock (D6), stimulus
     components switched on late or off early (D9), and cue components switched off part way
-    through the stimulus (D12). A timer's `Channel` only holds a line while no state writes it:
-    the state wins on every state entry, so a timer can never carry a level across a state change.
+    through the stimulus (D12). What a timer's `Channel` does across state entries depends on the
+    line (firmware 23): a BNC, Wire, PWM or valve line is marked overridden while the timer runs,
+    and a state entry skips it; a **Flex** output has no such check, and the state wins on every
+    entry — which is what broke the Flex2DO sync pulse (D4). Never rely on a timer holding a Flex
+    line.
   - **Output actions do not persist across states.** Bpod writes *every* output channel from the
     entered state's own row, so a level a state switched on is dropped by the next state unless
     that state writes it again. `lum.stim.Component.sustainActions` / `sustainOnsetActions` are
@@ -434,6 +526,7 @@ where it can be tested with no hardware.
 | `hardware/CheckRig.m` | Preflight report |
 | `hardware/TestHiFiSound.m` | Play a test sound outside a session |
 | `hardware/TestSyncLine.m` | Drive the sync TTL outside a session, from states and from a global timer |
+| `hardware/TestHouseLight.m` | Switch the house light through PulsePal outside a session and check each switch reaches BNC input 1 |
 | `+lum/defaultSettings.m`, `mergeSettings.m` | The two-tier settings struct; old settings files converted (renames, reshapes, retirements) |
 | `+lum/validateSettings.m` | Everything that must hold before a session starts; returns the stimulus set |
 | `+lum/stageDefaults.m` | The session a training stage assumes: habituation is air and no light |
@@ -452,13 +545,14 @@ where it can be tested with no hardware.
 | `+lum/testSounds.m`, `toneFrequencies.m` | A session sound as `TestHiFiSound` arguments, for the Play buttons; group tone spacing |
 | `+lum/fiberBundles.m`, `experimentChoices.m` | Bundle cables and spot counts; the Experiment tab's lists |
 | `+lum/mergeActions.m`, `timerMaskAction.m` | Output-action assembly; see the gotchas below |
+| `+lum/launchSubject.m` | The subject the session was launched for, from wherever Bpod kept it |
 | `+lum/trainingStageNote.m` | One line saying what the training stage does to rewards |
 | `+lum/+pattern/` | `generate` (families, groups, order) → `stimulusSet` (segments, contingency, checks) → `patternAt`; `fromStates`, `canonicalise`, `check`, `validate`, `describe`; `families`, `withGeneratorDefaults`, `defaultPLeft`, `newSeed`, `prepareSeed` |
 | `+lum/+stim/` | Components: `OptoPattern`, `TimedOutput` → `PortLight`, `Air`; `Sound`; `CueTone`; `build`; `isTimed`, `timerCost` |
-| `+lum/+sync/` | Session barcode: `barcode` (kinds), `sleepMarkerWidth`, `barcodeValue`, `barcodeTime`, `decodeBarcode`, `barcodeStateMachine` |
+| `+lum/+sync/` | Session barcode: `barcode` (kinds), `sleepMarkerWidth`, `barcodeValue`, `barcodeTime`, `decodeBarcode`, `barcodeStateMachine`; `fitToCameras` (widths the cameras can read) |
 | `+lum/+sleep/` | Sleep sessions: `run`; sync pulses `pulseSchedule`, `syncPulseTimes`; test pulses `testPulsePlan`, `stepChoices`, `epochShape`, `describeTestPulses`, `describeTrain`; blocks `nextBlock`, `blockStateMachine`; `validate`, `validateTestPulses`, `deviceSettings`; `Plots` |
-| `+lum/+dev/` | Device shims, real and null; `open.m` selects them. `Cameras`/`RealCameras`/`NullCameras`, `openCameras`, `configureCameras`: video through SpinCam (D14). `openPulsePal` refuses a light session without PulsePal, stops its outputs on connecting and requires a handshake (`PulsePal.checkConnection`). `Flex` also sends the barcode, opens the analog viewer and realigns the analog stream (`alignAnalog`) |
-| `+lum/+gui/` | `SessionTypeDialog`, `SetupDialog`, `SleepSetupDialog`, `CameraSetup` (Cameras tab, live preview), `CameraWindow` (during sessions), `HelpLine`, `ExperimentForm`, `Form`, `StimulusDesigner`, `TestPulseDesigner`, `RuntimeWindow`, `PatternBrowser`, `drawTrialFlow`, `drawTestPulseSchedule`, `drawTestPulseEpoch`, `runtimeFields`, `relabelParameterGUI`, `parseNumbers`, `theme`, `logo` |
+| `+lum/+dev/` | Device shims, real and null; `open.m` selects them. `HouseLight`/`RealHouseLight`/`NullHouseLight`/`DisabledHouseLight`, chosen by `openHouseLight`: the house light on PulsePal OUT3, switched at once, its level per trial and edges read from the BNC1 loopback (D15). `PulsePal.holdVoltage` holds an untriggered output, guarded against a click mid-command. `Cameras`/`RealCameras`/`NullCameras`, `openCameras`, `configureCameras`: video through SpinCam (D14). `openPulsePal` refuses a light session without PulsePal, stops its outputs on connecting and requires a handshake (`PulsePal.checkConnection`). `Flex` also sends the barcode, opens the analog viewer and realigns the analog stream (`alignAnalog`) |
+| `+lum/+gui/` | `SessionTypeDialog`, `SetupDialog`, `SleepSetupDialog`, `CameraSetup` (Cameras tab, live preview), `CameraWindow` (during sessions), `HelpLine`, `ExperimentForm`, `Form`, `StimulusDesigner`, `TestPulseDesigner`, `RuntimeWindow`, `PatternBrowser`, `savePlotsImage`, `houseLightSwitch`, `drawTrialFlow`, `drawTestPulseSchedule`, `drawTestPulseEpoch`, `runtimeFields`, `relabelParameterGUI`, `parseNumbers`, `theme`, `logo` |
 | `tests/` | `runLuminoseTests` runs everything; `StubHiFi`, `StubPulsePal` (a PulsePal that can stop answering) and `StubCameraManager` (SpinCam's manager, no cameras) are test doubles; see below |
 
 **Bpod gotchas that have already cost time.** Each is guarded in code; don't undo them.
@@ -470,7 +564,19 @@ where it can be tested with no hardware.
   wrote it low one 100 us cycle later. Bpod's own example protocols repeat `stimulusOutput` in
   consecutive states for the same reason, and `SetGlobalTimer`'s help says "State output events
   can still manipulate the linked channel while the timer is running". Serial (module) channels
-  are the exception: no action in a row means nothing is sent, so a sound plays on.
+  are the exception: no action in a row means nothing is sent, so a sound plays on. The other
+  exception is an **overridden** BNC/Wire/PWM/valve line — linked to a running global timer, or
+  set by the output override command — which firmware 23 skips on state entry (it does not
+  skip Flex lines, hence D4). Every override is cleared when a state machine ends. The firmware
+  source is sanworks/Bpod_StateMachine_Firmware tag v23, `setStateOutputs`, `setGlobalTimerChannel`,
+  `resetOutputs` and the `'O'` command. (0.6.1 first held the house light on `PWM5` this way; D15
+  explains why it moved to PulsePal.)
+- **`RunStateMachine` leaves `Status.BeingUsed` at 1** when it runs outside a protocol, so the next
+  rig utility refuses ("A protocol is running"). `TestHouseLight` and `TestSyncLine` restore
+  `BeingUsed` and `InStateMatrix`; a new utility that runs a state machine must do the same.
+- **The subject is not always in `Status.CurrentSubjectName`.** The launch manager sets it only
+  when the subject list's selection changes; its Launch button sets `GUIData.SubjectName` every
+  time. Use `lum.launchSubject`.
 - `AddState` rejects a repeated output channel in one state, so lists that switch something
   off and something else on must go through `lum.mergeActions` first. Timer trigger and
   cancel masks from several components are built once by `buildTrialSM`, never merged — a
@@ -487,13 +593,22 @@ where it can be tested with no hardware.
 - `RunProtocol('Stop')` removes the protocol folder from the MATLAB path. Nothing needing
   `+lum` may run after it, object destructors included — release devices, close the runtime
   window and clear handles first, as `LuminoseFM` does.
+- **The console's End button runs `RunProtocol('Stop')` *before* the protocol's teardown**, from its
+  callback while the loop waits: it closes every figure in `BpodSystem.ProtocolFigures` and clears
+  `BpodSystem.Path.Settings`. The teardown still resolves `+lum` only because the launch manager
+  runs the protocol with MATLAB's `run`, which makes the repository the current folder until the
+  protocol returns (a function removed from the path is otherwise gone, loaded or not). Hence the
+  plot figures' `CloseRequestFcn` only hides them (their `close()` deletes), and the settings file
+  is captured before the loop, not read from `Path.Settings` at teardown (D16).
 - `ProgramPulsePalParam`'s header says trigger mode `1/2/3`; the firmware uses `0/1/2`, and
   the function sends the value unchanged. Gated is **2** (`lum.dev.PulsePal.GatedTriggerMode`).
 - **A light session must never run with PulsePal unprogrammed.** Bpod gates BNC1/BNC2 anyway,
   and PulsePal answers with its last program (edge trigger, train delay, both LEDs on one input,
   continuous loop). The session file then looks perfect while the LEDs fire at the wrong times.
   `lum.dev.openPulsePal` refuses to start instead of falling back to the null shim, and stops
-  every output (`stopOutputs`) on connecting. Do not reintroduce a fallback.
+  every output (`stopOutputs`) on connecting. Do not reintroduce a fallback. Since the house light
+  moved to PulsePal (D15), a session without light also opens it, but runs without it — and
+  without the house light — rather than refusing.
 - PulsePal's own connection code: `PulsePal()` only prints "already open" and returns when a
   `PulsePalSystem` is left in the base workspace, even a dead one. Its scan lists only free
   ports, so a port a previous session did not release is never found, and it writes a handshake
@@ -501,7 +616,12 @@ where it can be tested with no hardware.
   always false. `ProgramPulsePalParam` returns `[]` on a timeout, and `[] ~= 1` is false: compare
   with `isequal`. `lum.dev.RealPulsePal` handles all of these. `SetPulsePalVersion`, the
   handshake behind `checkConnection`, pauses 0.1 s: call it between blocks or trials, never in a
-  loop.
+  loop. A house light click can run inside that pause — the reason for the command guard in
+  `lum.dev.PulsePal` (D15).
+- PulsePal's `SetPulsePalVoltage` (op 79) is **not** how the house light is held: every stop, abort
+  and disconnect (`killChannel`) puts an output back to its *resting voltage*, so a level written with
+  op 79 is lost at the next `stopOutputs`. `holdVoltage` sets the resting voltage (parameter 17), which
+  the firmware also writes to the output at once.
 - A sleep session with test pulses must **never** cut a block inside an epoch or put two steps'
   light in one block: Bpod drops every line at the end of a state machine, so a gate split across
   runs becomes two gates with an upload between them, and PulsePal is only reprogrammed between
@@ -514,6 +634,9 @@ where it can be tested with no hardware.
   trial-aligned copy (it reads the first option as that flag): pass `'Volts'` alone.
 - `BpodHiFi.load` reads `'LoopMode', 'LoopDuration'` by position too; `lum.dev.RealHiFi` passes
   them in that order. The cue tone loops for up to the hold window's upper limit.
+- The Chameleon3 quantizes `AcquisitionFrameRate`, and writing a read-back value lands one step
+  higher (100.058 → 100.12). Keep what the operator typed: `CameraSetup` takes a frame rate back
+  from SpinCam's viewer only when it differs by more than 0.2 Hz, rounded to 0.1 Hz.
 - SpinVideo MJPEG (`avi-mjpeg`) encodes one frame at a time at ≈ 104 fps per full frame. At the
   100 Hz default a session with the camera window open grew its writer queue 1–2 frames/s (writer
   drops after ~15 min), though a bare recording stayed flat. Record `avi-mjpeg-mt`; a queue peak in
@@ -580,6 +703,8 @@ Keep documentation current in the same change that alters behaviour:
 - `docs/sync-and-barcode.md` — the sync TTL and the session barcode.
 - `docs/naming-and-versions.md` — the glossary, and what changed between versions.
 - `docs/emulator.md` — what the emulator does and does not reproduce.
+- `docs/rig-checks.md` — what has been checked on the rig, with session names, and the checks
+  pending until the operator is at the rig.
 - `docs/repository.md` — the repository layout and what the test suite covers.
 - `CLAUDE.md` (= `AGENTS.md`) — anything an agent needs: paths, conventions, hardware map,
   naming, new APIs or architectural decisions.
@@ -587,7 +712,8 @@ Keep documentation current in the same change that alters behaviour:
   D2 two-tier GUI, D3 runner, D4 sync, D5 stimulus set, D6 hold shaping, D7 barcode,
   D8 naming, D9 timed components, D10 restarting holds and the hold window, D11 behaviour and
   sleep sessions, D12 the cue until the stimulus starts, and its latency, D13 test pulses in
-  sleep sessions, D14 video through SpinCam). Read it before changing the stimulus path, the state graph, sleep blocks or
+  sleep sessions, D14 video through SpinCam, D15 the house light on PulsePal, looped back into Bpod, D16 the plots
+  image and settings kept at teardown). Read it before changing the stimulus path, the state graph, sleep blocks or
   the GUI.
 - `docs/` — rig drawings, `BpodSystemInfo.png`, logo.
 

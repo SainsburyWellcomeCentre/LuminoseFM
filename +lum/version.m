@@ -27,11 +27,17 @@ function text = version()
 % release writes the cue's levels again in PreStimulusHold and the stimulus's in
 % HoldBreak and CentreHoldResumed, adds S.Task.Variant and S.Task.ReverseContingency,
 % gives habituation its own session shape (lum.stageDefaults) and tears a failed session
-% down instead of leaving the protocol frozen.
+% down instead of leaving the protocol frozen. 0.6.0 adds automatic shaping, video through
+% SpinCam (Session.Cameras, Data.CameraTime) and per-trial EarlyWithdrawals. 0.6.1 drives the
+% house light (Data.HouseLight), saves the plots as an image (Session.PlotsImage) and writes
+% the settings file again at the end of a session, fits the sync line to the cameras' frame
+% rate (Session.SyncFit), switches the house light at once from PulsePal's output 3, looped
+% back into BNC1 so each switch is a BNC1High/BNC1Low event (Session.HouseLight), and takes
+% the subject from wherever the launch manager kept it.
 %
 % See also: LuminoseFM
 
-release = '0.6.0';
+release = '0.6.1';
 text = release;
 
 try

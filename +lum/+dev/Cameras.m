@@ -7,8 +7,8 @@ classdef Cameras < lum.dev.Device
     % while Bpod runs trials: MATLAB only starts the recording before the barcode, marks
     % each trial's end on the camera clock, shows a low-rate preview if asked, and stops
     % the recording at teardown. Frames are logged in passive TTL mode: each frame records
-    % the state of the camera's TTL input (Line0), so once Bpod's sync line is wired to the
-    % cameras the barcode and the trial pulses are visible frame by frame.
+    % the state of the camera's TTL input (Line0), which Bpod's sync line is wired to, so
+    % the barcode and the trial pulses are visible frame by frame.
     %
     % Files go beside the session's data, one set per session:
     %
@@ -37,6 +37,23 @@ classdef Cameras < lum.dev.Device
         % matlab-* formats are drained by a MATLAB timer, which a trial loop would starve, so
         % they are not offered.
         Formats = {'avi-mjpeg-mt', 'avi-mjpeg', 'mp4-h264', 'avi-raw', 'raw'}
+        % One sentence per format, in the order of Formats, for the setup dialogs' help line
+        % (formatDescription). Figures are SpinCam's, for two full-frame cameras on the rig.
+        FormatDescriptions = { ...
+            ['avi-mjpeg-mt (recommended): compressed MJPEG that SpinCam encodes on several CPU '...
+             'cores, keeping up with both cameras at full frame up to 120 Hz for hours, about 27 GB '...
+             'an hour at 100 Hz, readable by VideoReader, ffmpeg and OpenCV.'], ...
+            ['avi-mjpeg: compressed MJPEG from Spinnaker''s SpinVideo, encoded on one core at about '...
+             '104 frames a second per full-frame camera, so at 100 Hz it falls behind once MATLAB is '...
+             'busy and drops frames; use it only with a crop or a lower frame rate.'], ...
+            ['mp4-h264: H.264 MP4 from Spinnaker''s SpinVideo, the slowest encoder (about 70 frames a '...
+             'second per full-frame camera), for low frame rates or small crops only.'], ...
+            ['avi-raw: SpinVideo''s "uncompressed" AVI, stored as YUV 4:2:0 (gray levels can shift '...
+             'by a few counts) and encoded on one core at about 110 frames a second per full-frame '...
+             'camera; choose raw instead when exact pixel values matter.'], ...
+            ['raw: lossless 8-bit frames written straight to disk with no encoding, exact at any '...
+             'frame rate but about 0.9 TB an hour for both cameras at 100 Hz; read with '...
+             'spincam.io.RawVideoReader or convert afterwards with spincam.io.rawToAvi.']}
         % Frames per second per camera at 1280 x 1024 that the single-threaded SpinVideo
         % formats keep up with on the rig (spincam.VideoRecorder.MeasuredCapacity), less
         % the margin a busy session takes from them.
@@ -138,6 +155,7 @@ classdef Cameras < lum.dev.Device
                             'Backend', obj.Backend, 'Available', obj.Available, ...
                             'Recorded', ~isempty(fieldnames(obj.Plan)), ...
                             'SpinCamFolder', obj.SpinCamFolder, 'SpinCamVersion', obj.spinCamVersion(), ...
+                            'EngineVersion', obj.engineVersion(), ...
                             'Settings', camera, 'Plan', obj.Plan, 'Summary', obj.Summary, ...
                             'TimeColumns', ['Data.CameraTime and the frame logs'' HostTime_s are '...
                                             'seconds on one host clock']);
@@ -163,6 +181,10 @@ classdef Cameras < lum.dev.Device
         end
 
         function version = spinCamVersion(obj) %#ok<MANU> % Overridden where spincam is loaded
+            version = '';
+        end
+
+        function version = engineVersion(obj) %#ok<MANU> % Overridden where spincam is loaded
             version = '';
         end
     end
@@ -278,6 +300,22 @@ classdef Cameras < lum.dev.Device
                                 'size; at %g Hz its queue fills and frames are dropped from the video. '...
                                 'Choose avi-mjpeg-mt.'], camera.Format, safeRate, camera.FrameRate);
             end
+        end
+
+        function text = formatDescription(format)
+            % formatDescription(format) is one sentence on what a video format does, for the
+            % help line; '' for a format not offered.
+            index = find(strcmp(lum.dev.Cameras.Formats, char(format)), 1);
+            text = '';
+            if ~isempty(index)
+                text = lum.dev.Cameras.FormatDescriptions{index};
+            end
+        end
+
+        function tf = needsSpinVideo(format)
+            % needsSpinVideo(format) is true for the formats written by Spinnaker's SpinVideo
+            % component, which a Spinnaker installation may lack.
+            tf = ismember(char(format), {'avi-mjpeg', 'mp4-h264', 'avi-raw'});
         end
 
         function name = cleanName(name)

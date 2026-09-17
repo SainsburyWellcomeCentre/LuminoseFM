@@ -40,6 +40,21 @@ S.Camera.Enabled = true;
 verifyTrue(testCase, any(contains(notes, 'avi-mjpeg-mt')), 'The session start says so');
 end
 
+function testEveryFormatIsDescribedInOneSentence(testCase)
+formats = lum.dev.Cameras.Formats;
+verifyNumElements(testCase, lum.dev.Cameras.FormatDescriptions, numel(formats));
+for i = 1:numel(formats)
+    text = lum.dev.Cameras.formatDescription(formats{i});
+    verifyTrue(testCase, startsWith(text, [formats{i} ' ']) || startsWith(text, [formats{i} ':']), ...
+               'Each description names its own format');
+    verifyTrue(testCase, endsWith(text, '.') && ~contains(text(1:end-1), '. '), ...
+               sprintf('One sentence: %s', text));
+end
+verifyEmpty(testCase, lum.dev.Cameras.formatDescription('matlab-avi'), 'Not offered, not described');
+verifyEqual(testCase, cellfun(@lum.dev.Cameras.needsSpinVideo, formats), [false true true true false], ...
+            'avi-mjpeg-mt and raw are SpinCam''s own; the others are SpinVideo''s');
+end
+
 function testCameraSettingsThatCannotRecordAreRefused(testCase)
 camera = lum.defaultSettings().Camera;
 cases = {@(c) setField(c, 'Format', 'matlab-avi'), 'badFormat'; ...
@@ -140,6 +155,7 @@ verifyEqual(testCase, {stats.Name}, {'sideview', 'topview'});
 cameras.stopRecording();
 record = cameras.sessionRecord();
 verifyTrue(testCase, record.Recorded);
+verifyEqual(testCase, record.EngineVersion, '', 'A stub has no native engine');
 verifyEqual(testCase, record.Summary.Cameras(1).FramesWritten, 10);
 verifyTrue(testCase, isnan(cameras.mark('TrialEnd', 2)), 'No clock once stopped');
 end
@@ -186,6 +202,7 @@ S = shortSession(lum.defaultSettings, folder);
 record = sessionData.Session.Cameras;
 verifyEqual(testCase, record.Backend, 'mock');
 verifyTrue(testCase, record.Recorded);
+verifyNotEmpty(testCase, record.EngineVersion, 'The native engine''s version is recorded');
 verifyEqual(testCase, {record.Summary.Cameras.Name}, {'sideview', 'topview'});
 verifyGreaterThan(testCase, [record.Summary.Cameras.FramesWritten], 0);
 videos = lum.dev.Cameras.videoFolder(dataFile);

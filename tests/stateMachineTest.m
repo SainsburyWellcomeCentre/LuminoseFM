@@ -35,6 +35,27 @@ for i = 1:numel(variants)
 end
 end
 
+%% The house light -----------------------------------------------------------------
+
+function testTheHouseLightCostsTheTrialNothing(testCase)
+% PulsePal holds the house light on its own output (lum.dev.HouseLight, D15): a trial
+% defines no timer for it, and no state writes a line for it, whatever level it is at.
+global BpodSystem %#ok<GVMIS>
+for on = [false true]
+    S = lum.defaultSettings;
+    S.Session.HouseLight = on;
+    context = makeTestContext('Settings', S);
+    context.spec.OptoOn = false;
+    [sma, plan] = lum.buildTrialSM(context);
+    verifyEqual(testCase, plan.nTimersUsed, 1, 'Only the hold window');
+    verifyEqual(testCase, sma.OutputMatrix(stateIndex(sma, 'TrialStart'), BpodSystem.HW.Pos.GlobalTimerTrig), ...
+                2 ^ (plan.holdWindowTimer - 1), 'TrialStart starts the hold window alone');
+    verifyFalse(testCase, isfield(plan, 'houseLightTimer'));
+    verifyFalse(testCase, any(sma.OutputMatrix(:, strcmp(BpodSystem.StateMachineInfo.OutputChannelNames, 'PWM5'))), ...
+                'Port 5 is no longer the house light');
+end
+end
+
 %% The hold ----------------------------------------------------------------------
 
 function testTheHoldLastsTheStimulusPlusThePostStimulusHold(testCase)
@@ -181,7 +202,7 @@ end
 
 function testTheHoldTriggersEveryLightTimerAtOnce(testCase)
 global BpodSystem %#ok<GVMIS>
-S = withPulses(lum.defaultSettings, [1 1 0 0.25; 1 2 0.25 0.5; 1 1 0.5 0.75; 1 2 0.75 1]);
+S = withPulses(lum.defaultSettings, [1 1 0 0.25; 1 2 0.25 0.5; 1 1 0.5 0.75; 1 2 0.75 1]);  % The emulator leaves 4
 sma = lum.buildTrialSM(makeTestContext('Settings', S));
 verifyEqual(testCase, sma.OutputMatrix(stateIndex(sma, 'CentreHold'), ...
             BpodSystem.HW.Pos.GlobalTimerTrig), 15, 'All four timers together (binary 1111)');

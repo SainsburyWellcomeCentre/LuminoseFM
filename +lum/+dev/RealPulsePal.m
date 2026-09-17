@@ -1,10 +1,10 @@
 classdef RealPulsePal < lum.dev.PulsePal
     % lum.dev.RealPulsePal is the PulsePal shim that talks to the device.
     %
-    % Constructed by lum.dev.openPulsePal when Bpod is not in emulator mode and the
-    % session delivers light. The PulsePal MATLAB folder is not on the saved MATLAB path
-    % on this rig, so the constructor adds it for the current session only — it never
-    % calls savepath.
+    % Constructed by lum.dev.openPulsePal when Bpod is not in emulator mode: in every
+    % session on the rig, because PulsePal drives the house light, and by TestHouseLight. The PulsePal MATLAB
+    % folder is not on the saved MATLAB path on this rig, so the constructor adds it for
+    % the current session only — it never calls savepath.
     %
     % The connection itself is PulsePal's own code, which keeps it in the global
     % PulsePalSystem. Two of its habits matter here:
@@ -106,8 +106,8 @@ classdef RealPulsePal < lum.dev.PulsePal
             if ~isfolder(matlabFolder)
                 error('lum:dev:RealPulsePal:noFolder', ...
                       ['PulsePal MATLAB folder not found at %s. Clone the PulsePal '...
-                       'repository next to Bpod_Gen2, or turn the light pattern off in '...
-                       'the setup dialog.'], matlabFolder);
+                       'repository next to Bpod_Gen2: sessions with light need PulsePal, '...
+                       'and every session''s house light is on it.'], matlabFolder);
             end
             if exist('ProgramPulsePalParam', 'file') ~= 2
                 addpath(genpath(matlabFolder));  % Session only; the saved path is left alone

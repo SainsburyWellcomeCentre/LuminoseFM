@@ -235,11 +235,21 @@ pulsePal = lum.dev.openPulsePal(false, S, @() lum.dev.NullPulsePal('stand-in for
 verifyEqual(testCase, nnz(startsWith(pulsePal.log(), 'would stop ch')), 4);
 end
 
-function testASessionWithoutLightNeverOpensPulsePal(testCase)
+function testASessionWithoutLightRunsWithoutPulsePal(testCase)
+% PulsePal is tried for the house light, but nothing gates A and B in a session without light,
+% so it runs on the null shim, warned, and the house light is disabled (lum.dev.openHouseLight).
 S = lum.defaultSettings;
 S.Session.UseOpto = false;
-pulsePal = lum.dev.openPulsePal(false, S, @() error('test:opened', 'PulsePal was opened'));
+pulsePal = lum.dev.openPulsePal(false, S, @() StubPulsePal(true));
+verifyTrue(testCase, pulsePal.Available, 'Connected when it can be');
+verifyEqual(testCase, nnz(startsWith(pulsePal.log(), 'stub stop ch')), 4, 'Stopped all the same');
+pulsePal = verifyWarning(testCase, @() lum.dev.openPulsePal(false, S, @unreachablePulsePal), ...
+                         'lum:dev:openPulsePal:noHouseLight');
 verifyFalse(testCase, pulsePal.Available);
+verifyTrue(testCase, any(contains(pulsePal.log(), 'no Pulse Pal on any port')), 'The log says why');
+pulsePal = verifyWarning(testCase, @() lum.dev.openPulsePal(false, S, @() StubPulsePal(false)), ...
+                         'lum:dev:openPulsePal:noHouseLight');
+verifyFalse(testCase, pulsePal.Available, 'One that does not answer is not used either');
 end
 
 function testTheEmulatorNeverOpensPulsePal(testCase)
@@ -295,6 +305,92 @@ verifyGreaterThan(testCase, answer, max(stops), 'Stopped first, then checked');
 end
 
 
+%% Holding an output: the house light -------------------------------------------------
+
+function testAHeldVoltageIsTheRestingVoltageOfAnUntriggeredOutput(testCase)
+% The firmware writes a resting voltage at once and returns to it after every stop, abort
+% and disconnect; unlinking both triggers keeps a gate on BNC1 or BNC2 off the output.
+pulsePal = lum.dev.NullPulsePal('test');
+p = lum.dev.PulsePal.Param;
+done = containers.Map();
+pulsePal.holdVoltage(3, 5, @(problem) remember(done, problem));
+verifyEqual(testCase, pulsePal.sentValue(3, p.RestingVoltage), 5);
+verifyEqual(testCase, pulsePal.sentValue(3, p.LinkedToTriggerCH1), 0);
+verifyEqual(testCase, pulsePal.sentValue(3, p.LinkedToTriggerCH2), 0);
+verifyEmpty(testCase, done('last'), 'Called back, without a problem');
+lines = pulsePal.log();
+verifyEqual(testCase, lines(end), {'would set ch3 param 17 = 5'}, 'Unlinked first, then held');
+pulsePal.holdVoltage(3, 0);
+verifyEqual(testCase, pulsePal.sentValue(3, p.RestingVoltage), 0);
+pulsePal.configure(waveform(20, 0.005));
+verifyEqual(testCase, pulsePal.sentValue(3, p.RestingVoltage), 0, 'Programming the carrier leaves it alone');
+verifyEqual(testCase, pulsePal.sentValue(1, p.RestingVoltage), 0);
+end
+
+function testOnlyUntriggeredOutputsCanBeHeld(testCase)
+pulsePal = lum.dev.NullPulsePal('test');
+verifyError(testCase, @() pulsePal.holdVoltage(1, 5), 'lum:dev:PulsePal:badOutput');
+verifyError(testCase, @() pulsePal.holdVoltage(2, 5), 'lum:dev:PulsePal:badOutput');
+verifyError(testCase, @() pulsePal.holdVoltage(5, 5), 'lum:dev:PulsePal:badOutput');
+verifyError(testCase, @() pulsePal.holdVoltage(3, 11), 'lum:dev:PulsePal:badVoltage');
+verifyError(testCase, @() pulsePal.holdVoltage(3, NaN), 'lum:dev:PulsePal:badVoltage');
+end
+
+function testAVoltageAskedForMidCommandWaitsForItToFinish(testCase)
+% A click runs inside any pause, and PulsePal's handshake pauses: the switch must not put its
+% bytes in the middle of the handshake's, so it is sent as soon as the handshake is over.
+pulsePal = StubPulsePal(true);
+done = containers.Map();
+pulsePal.DuringHandshake = @() pulsePal.holdVoltage(3, 5, @(problem) remember(done, problem));
+pulsePal.checkConnection();
+lines = pulsePal.log();
+waited = find(contains(lines, 'once the command under way finishes'));
+handshake = find(strcmp(lines, 'stub handshake'));
+held = find(strcmp(lines, 'stub set ch3 param 17 = 5'));
+verifyNumElements(testCase, waited, 1);
+verifyNumElements(testCase, held, 1);
+verifyGreaterThan(testCase, held, handshake, 'Sent after the handshake, not inside it');
+verifyTrue(testCase, isKey(done, 'last'), 'Called back once sent');
+verifyFalse(testCase, pulsePal.isBusy());
+end
+
+function testOnlyTheLatestWaitingVoltageIsSent(testCase)
+pulsePal = StubPulsePal(true);
+pulsePal.DuringHandshake = @() holdTwice(pulsePal);
+pulsePal.checkConnection();
+lines = pulsePal.log();
+verifyEqual(testCase, nnz(startsWith(lines, 'stub set ch3 param 17')), 1);
+verifyTrue(testCase, any(strcmp(lines, 'stub set ch3 param 17 = 0')), 'Off, the later request');
+end
+
+function testAWaitingVoltageIsSentEvenWhenTheCommandFails(testCase)
+pulsePal = StubPulsePal(true);
+pulsePal.DuringHandshake = @() pulsePal.holdVoltage(3, 5);
+pulsePal.Answers = false;
+verifyError(testCase, @() pulsePal.checkConnection(), 'lum:dev:PulsePal:notResponding');
+verifyTrue(testCase, any(strcmp(pulsePal.log(), 'stub set ch3 param 17 = 5')));
+verifyFalse(testCase, pulsePal.isBusy());
+end
+
+function testARefusedVoltageIsReportedToItsCaller(testCase)
+pulsePal = StubPulsePal(true);
+pulsePal.RefuseParams = true;
+done = containers.Map();
+pulsePal.holdVoltage(3, 5, @(problem) remember(done, problem));
+verifyNotEmpty(testCase, done('last'));
+verifyTrue(testCase, any(contains(pulsePal.log(), 'could not be held at 5 V')));
+end
+
+function holdTwice(pulsePal)
+pulsePal.holdVoltage(3, 5);
+pulsePal.holdVoltage(3, 0);
+end
+
+function remember(map, problem)
+map('last') = problem; %#ok<NASGU> % A containers.Map is a handle
+end
+
+
 %% Sleep sessions -------------------------------------------------------------------
 
 function testASleepSessionWithTestPulsesDoesNotStartWithoutPulsePal(testCase)
@@ -311,12 +407,15 @@ catch refusal
 end
 end
 
-function testASleepSessionWithoutTestPulsesNeverOpensPulsePal(testCase)
+function testASleepSessionWithoutTestPulsesStillOpensPulsePal(testCase)
 S = lum.defaultSettings;
 S.Session.UseOpto = true;
+S.Sleep.HouseLight = true;
 settings = lum.sleep.deviceSettings(S);
-pulsePal = lum.dev.openPulsePal(false, settings, @() error('test:opened', 'PulsePal was opened'));
-verifyFalse(testCase, pulsePal.Available);
+verifyFalse(testCase, settings.Session.UseOpto, 'No test pulses, no light');
+verifyTrue(testCase, settings.Session.HouseLight, 'The sleep session''s own house light');
+pulsePal = lum.dev.openPulsePal(false, settings, @() StubPulsePal(true));
+verifyTrue(testCase, pulsePal.Available, 'For the house light');
 verifyFalse(testCase, settings.Session.UseSound, 'Sleep sessions never open the HiFi module');
 end
 

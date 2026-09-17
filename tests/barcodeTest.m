@@ -142,6 +142,113 @@ verifyEqual(testCase, numel(visited), numel(code.Levels));
 verifyTrue(testCase, all(visited), 'Every element of the barcode must run');
 end
 
+function testTheBarcodeUsesNoGlobalTimer(testCase)
+% Its elements are states, and the house light is PulsePal's (D15), so the barcode leaves
+% every timer alone.
+global BpodSystem %#ok<GVMIS>
+ensureEmulator();
+code = lum.sync.barcode(5, defaultParams());
+sma = lum.sync.barcodeStateMachine(code, 'BNC2');
+verifyFalse(testCase, any(sma.OutputMatrix(:, BpodSystem.HW.Pos.GlobalTimerTrig)));
+verifyEqual(testCase, sma.OutputMatrix(:, strcmp(BpodSystem.StateMachineInfo.OutputChannelNames, 'BNC2'))', ...
+            code.Levels);
+end
+
+%% Fitted to the cameras ------------------------------------------------------------
+
+function testTheDefaultsAlreadyFitTheDefaultCameras(testCase)
+S = lum.defaultSettings;
+[fitted, changes, period] = lum.sync.fitToCameras(S);
+verifyEmpty(testCase, changes, '100 Hz needs nothing widened');
+verifyEqual(testCase, fitted, S);
+verifyEqual(testCase, period, 0.01, 'AbsTol', 1e-12);
+end
+
+function testWithoutVideoNothingIsWidened(testCase)
+S = lum.defaultSettings;
+S.Camera.FrameRate = 20;
+S.Camera.Enabled = false;
+[fitted, changes, period] = lum.sync.fitToCameras(S);
+verifyEqual(testCase, fitted, S);
+verifyEmpty(testCase, changes);
+verifyTrue(testCase, isnan(period));
+S.Camera.Enabled = true;
+[S.Camera.Cameras.Record] = deal(false);
+verifyEmpty(testCase, nthOutput(2, @lum.sync.fitToCameras, S), 'No camera ticked, no video');
+end
+
+function testASlowCameraWidensTheLineAndSaysSo(testCase)
+S = lum.defaultSettings;
+S.Camera.FrameRate = 30;
+S.Sleep.Sync.Mode = lum.SyncMode.FixedWidth;
+S.Sleep.Sync.FixedWidth = 0.01;
+[fitted, changes] = lum.sync.fitToCameras(S);
+T = 1 / 30;
+b = fitted.Sync.Barcode;
+verifyGreaterThanOrEqual(testCase, [b.ZeroWidth b.Gap], 2 * T * [1 1] - 1e-9);
+verifyGreaterThanOrEqual(testCase, b.OneWidth - b.ZeroWidth, 3 * T - 1e-9);
+verifyGreaterThanOrEqual(testCase, b.MarkerWidth - b.OneWidth, 3 * T - 1e-9);
+verifyGreaterThanOrEqual(testCase, b.SleepMarkerWidth - b.MarkerWidth, 3 * T - 1e-9);
+verifyEqual(testCase, b.nBits, S.Sync.Barcode.nBits, 'Bits never change');
+verifyEqual(testCase, fitted.Sync.MeanWidth - fitted.Sync.WidthJitter, 0.0667, 'AbsTol', 1e-9, ...
+            'The shortest trial pulse is two frames, rounded up to the cycle');
+verifyEqual(testCase, fitted.Sync.WidthJitter, S.Sync.WidthJitter, 'The spread is kept');
+verifyEqual(testCase, fitted.Sleep.Sync.FixedWidth, 0.0667, 'AbsTol', 1e-9);
+verifyTrue(testCase, any(contains(changes, '0 bit 20 -> 66.7 ms')));
+verifyEqual(testCase, lum.sync.fitToCameras(fitted), fitted, 'Fitting twice changes nothing');
+[~, ~, notes] = lum.validateSettings(S, RigConfig);
+verifyTrue(testCase, any(contains(notes, 'widened so the 30 Hz cameras')));
+end
+
+function testAFittedBarcodeDecodesFromFramesAtAnyRateAndPhase(testCase)
+% The claim the fitting makes: sampled once per frame, at any phase, with the camera running
+% up to 5 % slower than set and each frame's timestamp jittered, every barcode still decodes.
+S = lum.defaultSettings;
+stream = RandStream('mt19937ar', 'Seed', 7);
+for rate = [25 30 50 60 90 100 120 150]
+    S.Camera.FrameRate = rate;
+    fitted = lum.sync.fitToCameras(S);
+    for kind = {'Behaviour', 'Sleep'}
+        for trial = 1:25
+            value = floor(rand(stream) * 2^32);
+            code = lum.sync.barcode(value, fitted.Sync.Barcode, kind{1});
+            period = (1 + 0.05 * rand(stream)) / rate;
+            edges = 0.5 + [0 cumsum(code.Durations)];  % Recording starts before the barcode
+            frames = rand(stream) * period + (0:floor(edges(end) / period)) * period;
+            level = zeros(size(frames));
+            for k = find(code.Levels == 1)
+                level(frames >= edges(k) & frames < edges(k + 1)) = 1;
+            end
+            stamps = frames + 1e-4 * randn(stream, size(frames));
+            rise = find(diff(level) == 1) + 1;
+            fall = find(diff(level) == -1) + 1;
+            [decoded, ~, decodedKind] = lum.sync.decodeBarcode(stamps(rise), stamps(fall), ...
+                                                               fitted.Sync.Barcode);
+            verifyEqual(testCase, [decoded, double(strcmp(decodedKind, kind{1}))], [value 1], ...
+                        sprintf('%s barcode at %g Hz', kind{1}, rate));
+        end
+    end
+end
+end
+
+function testASleepGapTooShortForTheCamerasIsRefused(testCase)
+S = lum.defaultSettings;
+S.Camera.FrameRate = 25;
+S.Sleep.Sync.Mode = lum.SyncMode.FixedWidth;
+S.Sleep.Sync.FixedWidth = 0.05;
+S.Sleep.Sync.Interval = 0.12;
+S.Sleep.Sync.IntervalJitter = 0;
+verifyError(testCase, @() lum.sleep.validate(S, RigConfig), 'lum:sleep:validate:gapTooShortForCameras');
+S.Camera.Enabled = false;
+verifyWarningFree(testCase, @() lum.sleep.validate(S, RigConfig));
+end
+
+
+function value = nthOutput(n, f, varargin)
+outputs = cell(1, n);
+[outputs{:}] = f(varargin{:});
+value = outputs{n};
+end
 
 function params = defaultParams()
 params = lum.defaultSettings().Sync.Barcode;

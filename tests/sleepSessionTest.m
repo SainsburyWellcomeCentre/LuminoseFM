@@ -21,12 +21,28 @@ testCase.TestData.interval = 0.25;
 
 S = baseSettings(testCase);
 S.Sleep.DurationMinutes = testCase.TestData.durationSeconds / 60;
+S.Sleep.HouseLight = true;
+% Off from the sleep window about half a second into a block.
+started = NaN;
+clicker = startHouseLightClicker(@() blockUnderWay());
+cleanup = onCleanup(@() delete(clicker));
 testCase.TestData.sessionData = runSleepSession(testCase, S, 'testSubject_LuminoseFM_sleep_test.mat');
+stop(clicker);
+testCase.TestData.clicked = clicker.UserData.Clicked;
+delete(cleanup);
 
 S = withTestPulses(baseSettings(testCase));
 testCase.TestData.lightPlan = lum.sleep.testPulsePlan(S.Sleep.TestPulses);
 testCase.TestData.lightSessionData = runSleepSession(testCase, S, ...
                                                      'testSubject_LuminoseFM_sleep_light_test.mat');
+
+    function tf = blockUnderWay()
+        % True from half a second after the clicker first sees a block running.
+        if isnan(started)
+            started = tic;
+        end
+        tf = toc(started) > 0.5;
+    end
 end
 
 function teardownOnce(testCase)
@@ -47,6 +63,30 @@ verifyFalse(testCase, sessionData.Session.SyncSent, 'The emulator has no sync li
 verifyFalse(testCase, isfield(sessionData, 'Outcome'), 'A sleep session has no trials to score');
 verifyFalse(testCase, isfield(sessionData, 'LightSegments'), 'No test pulses, no light record');
 verifyFalse(testCase, sessionData.Session.TestPulses.Enabled);
+end
+
+function testTheHouseLightIsRecordedPerBlock(testCase)
+% On in the settings, and clicked off from the sleep window while a block runs: the block
+% started on and carries the edge; any after it start off.
+sessionData = testCase.TestData.sessionData;
+verifyTrue(testCase, testCase.TestData.clicked);
+record = sessionData.Session.HouseLight;
+verifyEqual(testCase, [record.OnAtStart record.OnAtEnd], [true false]);
+verifyEqual(testCase, record.Switches.On, false);
+verifyNumElements(testCase, record.Edges.Time, 1);
+k = record.Edges.Trial;
+verifyTrue(testCase, isfield(sessionData.RawEvents.Trial{k}.Events, 'BNC1Low'));
+verifyEqual(testCase, sessionData.HouseLight, double((1:sessionData.nTrials) <= k));
+verifyEqual(testCase, testCase.TestData.lightSessionData.HouseLight, ...
+            zeros(1, testCase.TestData.lightSessionData.nTrials), 'Off by default');
+verifyEmpty(testCase, testCase.TestData.lightSessionData.Session.HouseLight.Edges.Time);
+end
+
+function testThePlotsAreSavedAsAnImageBesideTheData(testCase)
+image = testCase.TestData.sessionData.Session.PlotsImage;
+[~, name, extension] = fileparts(image);
+verifyEqual(testCase, [name extension], 'testSubject_LuminoseFM_sleep_test_plots.png');
+verifyTrue(testCase, isfile(image));
 end
 
 function testEveryPulseIsRecordedWithItsOnsetAndWidth(testCase)
@@ -72,10 +112,12 @@ verifyLessThan(testCase, abs(seconds(lum.sync.barcodeTime(session.Barcode.Value)
 verifyTrue(testCase, any(contains(session.DeviceLog.FlexIO, 'sleep barcode')));
 end
 
-function testASessionWithoutTestPulsesNeverOpensPulsePal(testCase)
+function testASessionWithoutTestPulsesUsesPulsePalOnlyForTheHouseLight(testCase)
 log = testCase.TestData.sessionData.Session.DeviceLog.PulsePal;
-verifyTrue(testCase, any(contains(log, 'optogenetic stimulus disabled')));
-verifyFalse(testCase, any(contains(log, 'would set')), 'Nothing is programmed');
+verifyTrue(testCase, any(contains(log, 'would stop ch1')), 'Opened and stopped, as every session');
+verifyFalse(testCase, any(contains(log, 'would set ch1')), 'Channel A is not programmed');
+verifyFalse(testCase, any(contains(log, 'would set ch2')), 'Nor channel B');
+verifyTrue(testCase, any(strcmp(log, 'would set ch3 param 17 = 5')), 'The house light, on');
 end
 
 %% With test pulses -----------------------------------------------------------------

@@ -4,7 +4,7 @@ classdef CameraWindow < handle
     % One tile per camera: the latest frame, its view and serial, and a line of health
     % figures — frames per second, frames missed by the camera, frames written, writer
     % drops, and the TTL input of the latest frame (a quick check that the sync line
-    % reaches the camera, once it is wired).
+    % reaches the camera).
     %
     % It is built to cost the session as little as possible. Recording never passes
     % through it: spincam's engine grabs, encodes and logs on its own threads. The window

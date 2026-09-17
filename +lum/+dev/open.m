@@ -16,15 +16,19 @@ function devices = open(rig, S)
 %   .hifi      lum.dev.HiFi subclass — sound
 %   .flex      lum.dev.Flex subclass — flow meter stream and sync TTL
 %   .cameras   lum.dev.Cameras subclass — video, through spincam (lum.dev.openCameras)
+%   .houseLight lum.dev.HouseLight subclass — the house light on PulsePal output 3,
+%              starting at S.Session.HouseLight, switched at once; disabled in a session
+%              without light that has no PulsePal (lum.dev.openHouseLight)
 %
 % The HiFi module, when it is asked for but unreachable, degrades to its null shim
 % with a warning rather than ending the session: a rig with a loose HiFi cable can
-% still run a silent session. PulsePal does not: a session that delivers light
-% refuses to start without it, because Bpod would still gate channels A and B into a
-% PulsePal this session never programmed (lum.dev.openPulsePal). Cameras refuse the
-% same way when video is asked for and cannot be recorded (lum.dev.openCameras). PulsePal
-% is opened first and the cameras second, and a camera refusal closes PulsePal, so a
-% refusal leaves nothing open.
+% still run a silent session. PulsePal does too in a session without light, which then runs
+% without the house light (lum.dev.openHouseLight greys its switch out). A session that
+% delivers light does not: Bpod would gate channels A and B into a PulsePal it never
+% programmed, so it refuses to start without it (lum.dev.openPulsePal). Cameras refuse the same way when video is asked for and cannot
+% be recorded (lum.dev.openCameras). PulsePal is opened first, the cameras second and the
+% house light third, and a refusal closes what was opened before it, so it leaves nothing
+% open and the light off.
 %
 % See also: RigConfig, CheckRig, lum.dev.Device, lum.dev.openPulsePal
 
@@ -46,6 +50,14 @@ catch cameraError
     devices.pulsePal.close();
     rethrow(cameraError);
 end
+try
+    devices.houseLight = lum.dev.openHouseLight(devices.emulated, rig.HouseLight, S, devices.pulsePal);
+catch houseLightError
+    devices.cameras.close();
+    devices.pulsePal.close();
+    rethrow(houseLightError);
+end
+devices.houseLight.attachCameras(devices.cameras);
 devices.hifi     = openHiFi(devices.emulated, rig, S);
 devices.flex     = openFlex(devices.emulated, rig);
 

@@ -63,6 +63,11 @@ S.Session.UseOpto = true;           % Connect to PulsePal and deliver patterned 
 S.Session.UseSound = true;          % Connect to the HiFi module
 S.Session.UseSync = true;           % Drive the sync TTL, if Flex2 is a digital output
 S.Session.ShowAnalogViewer = true;  % Open Bpod's analog viewer (flow meter) at session start
+% The white house light inside the box (PulsePal output 3) as a behaviour session starts. It
+% is switched during the session from the online plots' header, at once (lum.dev.HouseLight,
+% D15), and the level it ends at is kept for the next session. S.Sleep.HouseLight is the
+% sleep session's, so one settings file can light sleep and leave behaviour dark.
+S.Session.HouseLight = false;
 % Which runtime parameter window to open. 'Automatic' is the tabbed window on the
 % rig and Bpod's own single-page window under the emulator.
 S.Session.RuntimeWindow = 'Automatic';
@@ -160,7 +165,7 @@ S.Sound.NoiseDuration = 0.5;        % White noise burst used as punishment, seco
 % beside 'Session Data', every file named after the data file and prefixed with its
 % camera's view. spincam is a separate repository: SpinCamFolder is where it was cloned
 % ('' when it is already on the MATLAB path). Frames log the cameras' TTL input
-% passively (TtlLine), so the sync line shows up frame by frame once it is wired to it.
+% passively (TtlLine), so the sync line (barcode and trial pulses) shows up frame by frame.
 S.Camera.Enabled = true;            % Record video
 S.Camera.SpinCamFolder = '';
 S.Camera.Format = 'avi-mjpeg-mt';   % lum.dev.Cameras.Formats; MJPEG encoded on several cores
@@ -183,13 +188,16 @@ S.Camera.Cameras = struct('Serial', {'24226887', '24226657'}, 'Name', {'sideview
 S.Sync.Mode = lum.SyncMode.JitteredWidth;
 S.Sync.ModeNames = lum.SyncMode.allNames();
 S.Sync.FixedWidth = 0.050;          % Fixed width: every trial's pulse, seconds
-S.Sync.MeanWidth = 0.055;           % Jittered width: average pulse, seconds
-S.Sync.WidthJitter = 0.045;         % Jittered width: drawn uniformly within +/- this
+S.Sync.MeanWidth = 0.060;           % Jittered width: average pulse, seconds
+S.Sync.WidthJitter = 0.040;         % Jittered width: drawn uniformly within +/- this (20-100 ms)
 % One barcode before the first trial identifies the session (lum.sync.barcode). Its
 % markers say what kind of session it opens: MarkerWidth for behaviour,
 % SleepMarkerWidth for sleep, so the two are told apart on any recording.
+% Every width on the sync line here (and in S.Sleep.Sync) is a minimum: with video they are
+% widened at session time until the cameras can read them frame by frame
+% (lum.sync.fitToCameras). These defaults already fit the 100 Hz default.
 S.Sync.Barcode = struct('Enabled', true, 'nBits', 32, 'MarkerWidth', 0.1, ...
-                        'ZeroWidth', 0.01, 'OneWidth', 0.03, 'Gap', 0.02, ...
+                        'ZeroWidth', 0.02, 'OneWidth', 0.05, 'Gap', 0.02, ...
                         'SleepMarkerWidth', 0.2);
 
 %% Pre-session tier: sleep sessions
@@ -198,8 +206,12 @@ S.Sync.Barcode = struct('Enabled', true, 'nBits', 32, 'MarkerWidth', 0.1, ...
 % either side). Pulse widths follow Mode, a lum.SyncMode code — Fixed width or
 % Jittered width; task events mean nothing without a task (lum.sleep).
 S.Sleep.DurationMinutes = 120;
+% The white house light inside the box during a sleep recording (PulsePal output 3). The
+% behaviour session's is S.Session.HouseLight; the two are kept apart so one settings
+% file can light sleep and darken behaviour. Switched at once from the sleep window.
+S.Sleep.HouseLight = false;
 S.Sleep.Sync = struct('Mode', lum.SyncMode.JitteredWidth, 'FixedWidth', 0.05, ...
-                      'MeanWidth', 0.055, 'WidthJitter', 0.045, ...
+                      'MeanWidth', 0.06, 'WidthJitter', 0.04, ...
                       'Interval', 1, 'IntervalJitter', 0);
 
 % Test pulses: light on channels A and B during a sleep recording, to probe the

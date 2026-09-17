@@ -213,6 +213,68 @@ verifyEmpty(testCase, axesTitled(plots.Figure, 'Test-pulse schedule'), 'No test 
 delete(cleanup);
 end
 
+function testBothSessionWindowsSwitchTheHouseLightAtOnce(testCase)
+[S, stimulusSet] = sessionFixture(testCase, 'pure', 2, false);
+for kind = {'Sleep', 'Behaviour'}
+    houseLight = lum.dev.NullHouseLight(lum.dev.NullPulsePal('test'), RigConfig().HouseLight, true, 'test');
+    if strcmp(kind{1}, 'Sleep')
+        plots = lum.sleep.Plots(S, 'Visible', 'off', 'HouseLight', houseLight);
+    else
+        plots = lum.OnlinePlots(S, stimulusSet, 'Visible', 'off', 'HouseLight', houseLight);
+    end
+    cleanup = onCleanup(@() plots.close());
+    switchControl = findobj(plots.Figure, 'Style', 'checkbox', 'String', 'House light');
+    verifyNumElements(testCase, switchControl, 1, kind{1});
+    verifyEqual(testCase, switchControl.Value, 1, 'Starts where the light is');
+    switchControl.Value = 0;
+    switchControl.Callback(switchControl, []);
+    verifyFalse(testCase, houseLight.On, 'The click switches the light itself');
+    verifyEqual(testCase, houseLight.record().Switches.On, false);
+    houseLight.set(true);
+    verifyEqual(testCase, switchControl.Value, 1, 'The box follows a switch made elsewhere');
+    delete(cleanup);
+end
+plots = lum.sleep.Plots(S, 'Visible', 'off');
+cleanup = onCleanup(@() plots.close());
+verifyEmpty(testCase, findobj(plots.Figure, 'Style', 'checkbox'), 'No light, no switch');
+delete(cleanup);
+% A session without light and without PulsePal: the box is there, off and greyed out.
+houseLight = lum.dev.DisabledHouseLight(RigConfig().HouseLight, 'test');
+plots = lum.OnlinePlots(S, stimulusSet, 'Visible', 'off', 'HouseLight', houseLight);
+cleanup = onCleanup(@() plots.close());
+switchControl = findobj(plots.Figure, 'Style', 'checkbox', 'String', 'House light');
+verifyEqual(testCase, switchControl.Value, 0);
+verifyEqual(testCase, char(switchControl.Enable), 'off');
+verifySubstring(testCase, switchControl.TooltipString, 'cannot be switched');
+delete(cleanup);
+end
+
+function testAClosedPlotWindowIsHiddenAndCanStillBeSaved(testCase)
+% The console's End button closes every protocol figure before the protocol's teardown
+% saves the plots, so a close request only hides them; close() deletes.
+[S, stimulusSet] = sessionFixture(testCase, 'pure', 2, false);
+plots = lum.OnlinePlots(S, stimulusSet, 'Visible', 'off');
+cleanup = onCleanup(@() plots.close());
+feed(plots, S, stimulusSet, 10);
+close(plots.Figure);
+verifyTrue(testCase, isvalid(plots.Figure), 'A close request must not delete the figure');
+folder = tempname;
+mkdir(folder);
+removeFolder = onCleanup(@() rmdir(folder, 's'));
+[imageFile, problem] = lum.gui.savePlotsImage(plots.Figure, fullfile(folder, 'mouse_LuminoseFM_1.mat'));
+verifyEmpty(testCase, problem);
+verifyEqual(testCase, imageFile, fullfile(folder, 'mouse_LuminoseFM_1_plots.png'));
+verifyTrue(testCase, isfile(imageFile));
+figureHandle = plots.Figure;
+plots.close();
+verifyFalse(testCase, isvalid(figureHandle), 'close() deletes it');
+[imageFile, problem] = lum.gui.savePlotsImage(figureHandle, fullfile(folder, 'x.mat'));
+verifyEmpty(testCase, imageFile);
+verifySubstring(testCase, problem, 'closed');
+delete(cleanup);
+delete(removeFolder);
+end
+
 function testSleepPlotsShowTheTestPulsesSent(testCase)
 S = testCase.TestData.S;
 S.Sleep.TestPulses.Enabled = true;
@@ -383,6 +445,18 @@ S = testCase.TestData.S;
 cleanup = onCleanup(@() closeIfOpen(app.Figure));
 c = app.cameras.Controls;
 verifyEqual(testCase, c.Table.Data(:, 2)', {'sideview', 'topview'});
+verifySubstring(testCase, c.Format.Tooltip, 'several CPU cores', 'The default format is described');
+c.Format.Value = 'raw';
+c.Format.ValueChangedFcn(c.Format, []);
+verifySubstring(testCase, app.helpLine.Text, 'lossless', 'Choosing a format describes it on the help line');
+verifySubstring(testCase, c.Format.Tooltip, 'lossless');
+c.Format.Value = 'avi-mjpeg';
+c.Format.ValueChangedFcn(c.Format, []);
+verifyNumElements(testCase, strfind(app.controls.Status.Text, 'Choose avi-mjpeg-mt'), 1, ...
+                  'The status line warns about a one-core encoder once');
+c.Format.Value = 'avi-mjpeg-mt';
+c.Format.ValueChangedFcn(c.Format, []);
+verifySubstring(testCase, app.helpLine.Text, 'several CPU cores');
 c.Table.Data{2, 3} = false;
 c.FrameRate.Value = 60;
 candidate = app.collect();
@@ -549,6 +623,10 @@ for group = {'Meta', 'Sleep', 'Task', 'Stimulus', 'Camera', 'GUI'}
 end
 verifyEqual(testCase, candidate.Sync.Barcode, S.Sync.Barcode);
 verifySubstring(testCase, app.status(), 'Ready to start');
+app.controls.HouseLight.Value = true;
+app.refresh();
+verifyTrue(testCase, app.collect().Sleep.HouseLight, 'The house light switch is read back');
+app.controls.HouseLight.Value = false;
 
 % With test pulses the recording lasts as long as their schedule, and the recording's
 % own length comes back when they are switched off.

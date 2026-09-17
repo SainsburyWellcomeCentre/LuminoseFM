@@ -11,7 +11,8 @@ D5 and D7 in [`architecture.md`](architecture.md).
 ```
 D:\luminoseData\<subject>\LuminoseFM\Session Data\<subject>_LuminoseFM_<YYYYMMDD_HHMMSS>.mat
 D:\luminoseData\<subject>\LuminoseFM\Session Settings\<settings name>.mat
-D:\luminoseData\<subject>\LuminoseFM\Session Data\<...>_ANLG.dat   (Flex analog stream)
+D:\luminoseData\<subject>\LuminoseFM\Session Data\<...>_ANLG.dat   (Flex analog stream, raw)
+D:\luminoseData\<subject>\LuminoseFM\Session Data\<...>_plots.png  (the online figure at the end)
 D:\luminoseData\<subject>\LuminoseFM\Session Videos\<view>_<data file name>.avi   (video, one per camera)
 D:\luminoseData\<subject>\LuminoseFM\Session Videos\<view>_<data file name>.csv   (one row per frame)
 D:\luminoseData\<subject>\LuminoseFM\Session Videos\<data file name>_events.csv  (marks, host clock)
@@ -32,10 +33,19 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
 - Because the whole struct is rewritten on every save, the per-trial record stays small:
   session-level information is stored **once**, and each trial stores only its own events,
   timestamps, outcome and indices into it.
-- The settings chosen on the setup dialog are saved as the subject's settings file, so a session
-  can be reproduced. A settings file from an older version is brought up to date when it is
-  loaded (`lum.mergeSettings`); renamed settings keep their values, and the console lists what was
-  converted.
+- The settings are saved to the settings file chosen in the launch manager
+  (`Session Settings\<settings name>.mat`, variable `ProtocolSettings`) twice: when the setup
+  dialog's **Start** is pressed, and again at teardown with the runtime tier as the session left it
+  and the house light where the operator left it — so the file always holds the last session's
+  settings, and the next session opens on them. Headless (test) sessions do not write it. The
+  exact settings a session ran with are in its own data file, `SessionData.Session.Settings`
+  (and, per trial, `TrialSettings`); to reuse them in a new settings file, load that struct and
+  save it as `ProtocolSettings`. A settings file from an older version is brought up to date when
+  it is loaded (`lum.mergeSettings`); renamed settings keep their values, and the console lists
+  what was converted.
+- At teardown the online figure is saved as `<data file name>_plots.png` beside the data file
+  (`lum.gui.savePlotsImage`), before the final save, which records its path in
+  `Session.PlotsImage` (`''` if it could not be written; the console says why).
 
 ---
 
@@ -44,18 +54,19 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
 ### `SessionData.Session` — written once
 
 - `Type` — `'Behaviour'`
-- `Subject`
 - `Settings` — the frozen settings struct
 - `StimulusSet` — every pattern as a segment table, the trial order, each group's label and
   `P(left)` as run (`GroupPLeft`), as typed (`BasePLeft`) and whether the contingency was
   `Reversed`, and descriptors of each pattern
+- `Subject` — the subject the session was launched for (`lum.launchSubject`)
 - `Rig` — the channel map
 - `DevicesAvailable` — which devices the session had (e.g. `FlexSync`)
 - the runner and runtime window used
 - `StartTime`, `EndTime`
 - `Barcode` — value, kind, whether it was sent, its parameters
 - `Cameras` — the video (below): `Enabled`, `Backend` (`'spinnaker'`, `'mock'` for the emulator's
-  simulated cameras, `'none'`), `Recorded`, `SpinCamFolder`, `SpinCamVersion`, `Settings`
+  simulated cameras, `'none'`), `Recorded`, `SpinCamFolder`, `SpinCamVersion`, `EngineVersion` (SpinCam's native engine, which
+  grabs and encodes; `''` without one), `Settings`
   (`S.Camera`), `Plan` (folder, base name, start time, format, events and session files, and per
   camera `Serial`, `Name`, `VideoFile`, `CsvFile`) and, written at teardown, `Summary` (`Duration_s`
   and per camera `FramesLogged`, `FramesWritten`, `FramesMissed`, `WriterDrops`,
@@ -64,11 +75,29 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
   `DeviceLog.FlexIO`, `DeviceLog.Cameras`)
 - `StoppedReason` — empty for a session that ran to its end or was stopped from the console, and
   the error message otherwise
+- `PlotsImage` — full path of the `_plots.png` saved at teardown, or `''`
+- `HouseLight` — the wiring: `Output` (PulsePal output, 3), `Voltage` (on, 5 V), `Input` (`'BNC1'`),
+  `OnEvent` (`'BNC1High'`), `OffEvent` (`'BNC1Low'`); `Switchable` (false when a session without light
+  ran without PulsePal: the light was off throughout); `OnAtStart`, `OnAtEnd`; `Switches`, one per
+  switch the operator made: `On` (1 × n logical), `HostTime` (camera clock, s; `NaN` without video —
+  also a `HouseLight` row in `_events.csv`) and `WallTime` (text); and `Edges`, one per edge of the
+  loopback input among the trial events: `Time` (s, Bpod's clock: `TrialStartTimestamp` plus the
+  event time), `On` (logical) and `Trial`. A switch made while no state machine ran is in
+  `Switches` but has no edge. Rig sessions from 2026-09-17 have no edges at all, because the
+  loopback did not reach BNC input 1 (P1 in [`rig-checks.md`](rig-checks.md))
+- `DeviceLog.HouseLight`, and `DevicesAvailable.HouseLight` (false in the emulator, and when the light
+  could not be switched). PulsePal is opened in every session on the rig, since it drives the light:
+  `DevicesAvailable.PulsePal` is true with or without light when it connected, and
+  `DeviceLog.PulsePal` has a `set ch3 param 17 = 5` (on) or `= 0` (off) line for the start and every
+  switch
+- `SyncFit` — what `lum.sync.fitToCameras` widened so the cameras could read the sync line, one text
+  per value (e.g. `'0 bit 20 -> 66.7 ms'`); empty when nothing was. `Settings` and `Barcode.Params`
+  hold the fitted values; the settings file keeps the typed ones
 
 ### One value per trial
 
 `StimulusGroup`, `PatternIndex`, `CorrectSide`, `Choice`, `Correct`, `Rewarded`, `Outcome`,
-`ReactionTime`, `OptoOn`, `SoundOn`, `SyncMode`, `SyncPulseWidth`, `BiasTargetPLeft`,
+`ReactionTime`, `OptoOn`, `SoundOn`, `HouseLight`, `SyncMode`, `SyncPulseWidth`, `BiasTargetPLeft`,
 `TrainingStage`, `HoldDuration`, `HoldGrace`, `HoldBreaks`, `HoldAttempts`, `EarlyWithdrawals` and
 `CameraTime`, plus `TrialSettings` (the runtime parameters only) and `OutcomeNames` for decoding
 `Outcome`.
@@ -78,7 +107,13 @@ that trial; `EarlyWithdrawals` how many times the animal left the centre port be
 complete without the break being forgiven (visits to `EarlyWithdrawal`, during the latency or the
 hold) — what automatic shaping counts before it steps the hold back. `HoldDuration` shows the
 steps. `CameraTime` is the time, in seconds on the video's host clock, at which the trial's events
-reached MATLAB (`NaN` without video); see *Video*.
+reached MATLAB (`NaN` without video); see *Video*. `HouseLight` is 1 when the trial started with the
+house light on, 0 when off. PulsePal switches the light at once, and its line is looped back into
+Bpod's BNC input 1, so a switch during a trial is an event in it: `BNC1High` (switched on) or
+`BNC1Low` (switched off) in `RawEvents.Trial{k}.Events`, on the trial's clock (all of them, on the
+session's clock, are `Session.HouseLight.Edges`). `HouseLight` is read from those events when there are
+any (the first edge gives the level before it), and otherwise is the level PulsePal held as the trial
+started.
 
 To get trial *k*'s light:
 
@@ -116,6 +151,10 @@ sent, start and end time, barcode, `TestPulses`, version, PulsePal and Flex logs
 
 - `SessionData.CameraTime` — one value per block: seconds on the video's host clock when the
   block's events reached MATLAB (`NaN` without video); `Session.Cameras` as for behaviour.
+- `SessionData.HouseLight` — one value per block: 1 when the block started with the house light on,
+  0 when off; switches during a block are `BNC1High`/`BNC1Low` events in it.
+- `Session.PlotsImage`, `Session.SyncFit`, `Session.HouseLight`, `DeviceLog.HouseLight` — as for
+  behaviour.
 
 Per-pulse carrier copies are never stored: the compiled steps are written once.
 
@@ -148,8 +187,31 @@ length, readable by `VideoReader`, ffmpeg and OpenCV), gray stored as YCbCr 4:2:
 chroma: read the first channel. SpinCam's `_session.json` records the encoder settings
 (`Recorder.JpegQuality`, `Recorder.EncoderThreads`).
 
-**Aligning to Bpod.** Until the sync line is wired to the cameras (`TTL_State` then carries the
-barcode and trial pulses frame by frame, D4/D7), fit Bpod's clock to the host clock from the
+**Aligning to Bpod.** Bpod's sync line reaches both cameras' Line0 (from 2026-09-17; `TTL_State` is 0
+throughout earlier videos), so each frame log carries the session barcode and every trial pulse (or
+sleep sync pulse). Frame-accurate alignment reads them from `TTL_State`, on the camera's own clock:
+
+```matlab
+S = SessionData.Session;
+T = readtable(S.Cameras.Plan.Cameras(1).CsvFile);             % or spincam.io.readFrameLog
+t = double(T.HardwareTimestamp_us) / 1e6;                      % camera clock, s
+rise = find(diff(T.TTL_State) == 1) + 1;
+fall = find(diff(T.TTL_State) == -1) + 1;
+[value, first] = lum.sync.decodeBarcode(t(rise), t(fall), S.Barcode.Params);
+assert(isequal(value, S.Barcode.Value), 'This video is not this session');
+pulses = rise(first + S.Barcode.Params.nBits + 2:end);         % one per trial after the barcode
+n = SessionData.nTrials;                                       % a stopped trial may add one more
+fit = polyfit(SessionData.TrialStartTimestamp, t(pulses(1:n))', 1);  % camera = a*bpod + b
+bpodTime = (t - fit(2)) / fit(1);                              % each frame on Bpod's session clock
+```
+
+A frame samples the line once, so edges are known to one frame period (10 ms at 100 Hz) and each
+pulse's width in frames is its Bpod width to within one frame (jittered widths can also match trials
+one by one). In a pulsed sync mode the rising edge is `TrialStart`. From 0.6.1 every pulse and gap
+is at least two frames long (`lum.sync.fitToCameras`), so none is missed at any frame rate. In the first wired session the camera clock ran 0.037 % fast against Bpod's, and the
+straight-line fit left residuals under 6 ms (within a frame).
+
+Without the TTL (older videos, or a camera not wired), fit Bpod's clock to the host clock from the
 per-trial pairs:
 
 ```matlab
@@ -170,6 +232,19 @@ exposure.
 Flex I/O analog data is streamed by Bpod to a separate `..._ANLG.dat` file next to the session
 file, and merged into the session data at the end of the session as `SessionData.Analog`
 (`Samples`, `Timestamps`, `TrialNumber`).
+
+**What the `_ANLG.dat` file is, and whether it is needed.** Bpod's state machine sends Flex analog
+samples (here the flow meter on Flex1, at 1 kHz) over its second USB serial link continuously, and
+Bpod writes them straight to this binary file as they arrive — a whole session of samples is too much
+to keep growing in `BpodSystem.Data` and rewrite at every save. Bpod opens it when the launch
+manager starts a session on a state machine with a Flex channel configured as an analog input, and
+the samples start with the session's first state machine (the barcode): every session on this rig
+has one, and no emulated session does. A session cancelled in its setup dialog leaves an empty
+`_ANLG.dat` and no `.mat`; it can be deleted. At teardown `lum.dev.Flex.mergeAnalogData`
+closes it and reads it into `SessionData.Analog` (in volts, realigned — below), so **for analysis
+the `.mat` is enough**. Keep the `.dat` all the same: it is the raw copy, and the only copy of the
+airflow when a session never reaches its teardown (MATLAB or the computer failing). It is about
+4 bytes per sample — 0.7 MB for a 3-minute session, 14 MB an hour.
 
 **The merge corrects Bpod's timeline for the session barcode.** Bpod starts the stream with the
 barcode's own state machine but stamps its first sample with trial 1's start, which put every
@@ -201,6 +276,16 @@ the null device shims swallowed is recorded in `Data.Session.DeviceLog`. See
   widths. Align those sessions by the barcode and `Data.TrialStartTimestamp`; see
   [`sync-and-barcode.md`](sync-and-barcode.md).
 - **Analog timestamps from 0.2** need `lum.dev.Flex.alignAnalog`, above.
+- **The first 0.6.1 sessions** (`FakeSubject_LuminoseFM_20260917_091854` and any other run before the
+  house light moved to the plots' header and to PulsePal) have `Settings.GUI.HouseLight` or only
+  `Settings.Sleep.HouseLight`, no `Session.HouseLight` record, and switches took effect only at the
+  next trial or block: their `Data.HouseLight` is the level through the whole trial or block. Their
+  `Session.Subject` may be empty; the subject is in the file name.
+- **Sessions before 0.6.1** have 10 ms / 30 ms barcode bits by default, no `Session.SyncFit`, no
+  `HouseLight` series and no `Session.PlotsImage` (the house light
+  was off in every state), and their settings file holds the settings as Start was pressed, not as
+  the session ended.
+- **Videos before 2026-09-17** have `TTL_State` 0 in every frame: align them by `CameraTime`.
 - **Sessions before 0.6.0** have no `EarlyWithdrawals`, `CameraTime` or `Session.Cameras`, and their
   `Settings.Task.HoldShaping` may be `'Off'` (no `AutoShaping`).
 - **Field and state names changed** in 0.2, 0.3, 0.4, 0.5, 0.5.1 and 0.6.0; the full old → new tables are

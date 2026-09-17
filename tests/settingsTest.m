@@ -20,7 +20,7 @@ loaded.GUI = rmfield(loaded.GUI, 'ITI');
 loaded.Sync = rmfield(loaded.Sync, 'WidthJitter');
 [S, added] = lum.mergeSettings(lum.defaultSettings, loaded);
 verifyEqual(testCase, S.GUI.ITI, 1);
-verifyEqual(testCase, S.Sync.WidthJitter, 0.045);
+verifyEqual(testCase, S.Sync.WidthJitter, 0.04);
 verifyEqual(testCase, sort(added), {'GUI.ITI', 'Sync.WidthJitter'});
 end
 
@@ -79,6 +79,27 @@ loaded = rmfield(lum.defaultSettings, 'Light');
 loaded.Stimulus.Waveform = struct('Frequency', 20, 'PulseWidth', 0.005, 'Voltage', [2 7]);
 S = lum.mergeSettings(lum.defaultSettings, loaded);
 verifyEqual(testCase, [S.Light.Carrier.Voltage], [2 7]);
+end
+
+function testTheHouseLightSwitchMovedOutOfTheRuntimeTier(testCase)
+% 0.6.1 first had it as a runtime parameter, synced once a trial; now it is switched at once
+% from the plots, and a settings file saved in between keeps its value.
+loaded = lum.defaultSettings;
+loaded.Session = rmfield(loaded.Session, 'HouseLight');
+loaded.GUI.HouseLight = 1;
+S = lum.mergeSettings(lum.defaultSettings, loaded);
+verifyEqual(testCase, S.Session.HouseLight, 1);
+verifyFalse(testCase, isfield(S.GUI, 'HouseLight'));
+end
+
+function testTheSubjectIsTheOneLaunched(testCase)
+file = 'D:\luminoseData\LUMS0013\LuminoseFM\Session Data\LUMS0013_LuminoseFM_20260917_091854.mat';
+verifyEqual(testCase, lum.launchSubject('LUMS0013', '', file), 'LUMS0013', 'The launch button''s record');
+verifyEqual(testCase, lum.launchSubject('', 'LUMS0013', ''), 'LUMS0013', 'The selection''s');
+verifyEqual(testCase, lum.launchSubject('', '', file), 'LUMS0013', ...
+            'The launch manager left both empty: the data file''s folder');
+verifyEqual(testCase, lum.launchSubject([], 0, 'C:\temp\x.mat'), '', 'No subject anywhere');
+verifyEqual(testCase, lum.launchSubject(" FakeSubject ", '', ''), 'FakeSubject');
 end
 
 function testRenamedSettingsKeepTheOperatorsValues(testCase)
@@ -201,13 +222,15 @@ verifyEqual(testCase, sort({fields.Name}), sort(fieldnames(S.GUI))');
 end
 
 function testTheSyncPulseCostsNoTimerInAnyMode(testCase)
-% The hold window always takes one; the sync line takes none, in any mode, because
-% every edge it carries is a state's output action (D4).
+% The hold window always takes one; the sync line takes none, in any mode, because every
+% edge it carries is a state's output action (D4). Nor does the house light: PulsePal holds
+% it (D15).
 S = lum.defaultSettings;
 rig = struct('Limits', struct('GlobalTimers', 16), 'Available', struct('Sync', true));
 [budget, reserved] = lum.timerBudget(S, rig);
 verifyEqual(testCase, budget, 15);
 verifyEqual(testCase, reserved.HoldWindow, 1);
+verifyFalse(testCase, isfield(reserved, 'HouseLight'));
 verifyEqual(testCase, reserved.Sync, 0);
 for mode = [lum.SyncMode.FixedWidth lum.SyncMode.JitteredWidth lum.SyncMode.TaskEvents]
     S.Sync.Mode = mode;

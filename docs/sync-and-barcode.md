@@ -17,12 +17,13 @@ Before the first trial the line carries one barcode that identifies the session 
 that records it:
 
 - a marker pulse,
-- one pulse per bit — 10 ms for 0, 30 ms for 1, most significant bit first, each followed by a
+- one pulse per bit — 20 ms for 0, 50 ms for 1, most significant bit first, each followed by a
   20 ms gap,
 - a closing marker.
 
 The markers say what kind of session it is: **100 ms for a behaviour session, 200 ms for a sleep
-session**. Its 32 bits are the seconds from 2020-01-01 to the session start, which is also in the
+session**. These are the defaults, and minimums: with video they are widened to what the cameras
+can read (below). Before 0.6.1 the bits were 10 and 30 ms. Its 32 bits are the seconds from 2020-01-01 to the session start, which is also in the
 data file's name.
 
 To read it from a recording:
@@ -52,7 +53,7 @@ Three modes (`S.Sync.Mode`, `lum.SyncMode`), and every one of them drives the li
 
 In a pulsed mode the pulse **is** the trial's first state: `TrialStart` drives the line high and
 lasts the pulse's width, and `WaitForCentrePoke` drives it low as the cue comes on. The cue
-therefore starts one pulse width (10–100 ms) after the state machine does — invisible to an
+therefore starts one pulse width (20–100 ms by default) after the state machine does — invisible to an
 animal whose only sign that a trial has begun is the cue itself, and it makes the rising edge an
 exact marker for the cue as well.
 
@@ -69,6 +70,44 @@ is a state.
 
 To align a session from 0.2–0.5.0, use the barcode and `Data.TrialStartTimestamp` rather than
 looking for trial pulses.
+
+---
+
+## Reading it from the video
+
+Flex2 reaches both cameras' Line0 through the splitter (3.3 V TTL, since 2026-09-17), and SpinCam
+logs the line with every frame as `TTL_State`, so the barcode and every trial pulse are in each
+camera's frame log. A frame samples the line once: an edge is known to one frame period, a pulse's
+width to within one frame, and a pulse or gap shorter than a frame can be missed.
+
+**So the line is fitted to the cameras, automatically** (`lum.sync.fitToCameras`, from 0.6.1).
+Whenever a session records video, every width typed for the barcode, the trial pulses and a sleep
+session's sync pulses is treated as a minimum, and at session time whatever the frame period *T*
+(1 / frame rate) could make unreadable is widened:
+
+| Element | Rule | At 100 Hz (defaults) | At 30 Hz |
+|---------|------|----------------------|----------|
+| 0 bit, gap after each pulse | ≥ 2 *T* | 20 ms, 20 ms | 66.7 ms, 66.7 ms |
+| 1 bit | ≥ 0 bit + 3 *T* | 50 ms | 166.7 ms |
+| behaviour marker | ≥ 1 bit + 3 *T* | 100 ms | 266.7 ms |
+| sleep marker | ≥ behaviour marker + 3 *T* | 200 ms | 366.7 ms |
+| trial or sleep pulse | shortest ≥ 2 *T*; a jittered range keeps its spread | 20–100 ms | 66.7–146.7 ms |
+
+A high or low time of *n T* is seen as *n* − 1 to *n* + 1 frames, so 2 *T* is never missed, and 3 *T*
+between neighbouring widths keeps them apart at the decoder's thresholds even when the camera runs
+5 % slower than set (tested at 25–150 Hz, every phase, both kinds). The number of bits never changes,
+and the barcode takes longer at a low rate (about 2 s at 100 Hz, 7 s at 30 Hz). The settings file
+keeps what was typed; the session sends and records the fitted values (`Session.Barcode.Params`,
+`SyncPulseWidth`, `SyncPulses.Width`, `Session.Settings`), lists what changed in `Session.SyncFit`,
+and prints it; the setup dialogs' barcode preview and status line show it before Start. A sleep
+interval that leaves under two frames between pulses cannot be widened, and is refused. Task-event
+mode has no pulse to widen: its high time is the wait for the poke.
+
+In the first wired session,
+at 100 Hz, both cameras logged all 34 barcode pulses and all 45 trial pulses (the last from the trial
+the End button stopped, which is not in the data file), decoded the barcode, and matched every trial
+pulse's width to Bpod's within a frame. The code to align frames to Bpod's clock is in
+[`data-format.md`](data-format.md#video).
 
 ---
 
@@ -97,3 +136,7 @@ It sends the same train twice: once from **states**, the way the barcode and (fr
 trial pulses are sent, and once from a **global timer** linked to the channel, the way trial
 pulses were sent before. If one train arrives and the other does not, the line is fine and the way
 it was driven is not.
+
+On 2026-09-17 (0.6.1) both cameras' `TTL_State` decoded the barcode and logged every pulse, in a
+behaviour session (15 trial pulses) and in a sleep session with test pulses (32 sync pulses). Each
+width and interval matched Bpod's to within one frame ([`rig-checks.md`](rig-checks.md)).

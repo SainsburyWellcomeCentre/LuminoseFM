@@ -220,6 +220,32 @@ for k = 1:numel(block.SegmentIndices)
 end
 end
 
+function testASwitchDuringABlockIsAnEdgeInItsEvents(testCase)
+% PulsePal holds the light (D15) and its line is looped back into BNC1, so a switch made
+% while a block runs is among the block's events on its own clock. The emulator has no wire:
+% the null shim puts the edge into the emulated state machine instead. The block itself
+% uses no timer and drives no line for the light.
+ensureEmulator();
+rig = RigConfig;
+block = struct('Durations', [0.4 0.4], 'Levels', false(2, 3), 'StateNames', {{'Level001', 'Level002'}});
+sma = lum.sleep.blockStateMachine(block, {'', '', ''});
+verifyFalse(testCase, any(sma.OutputMatrix(:)), 'Nothing for the light in the state machine');
+pulsePal = lum.dev.NullPulsePal('test');
+houseLight = lum.dev.NullHouseLight(pulsePal, rig.HouseLight, true, 'test');
+switcher = timer('StartDelay', 0.15, 'TimerFcn', @(~, ~) houseLight.set(false));
+cleanup = onCleanup(@() delete(switcher));
+start(switcher);
+trial = runOnce(sma);
+verifyFalse(testCase, houseLight.On);
+verifyTrue(testCase, isfield(trial.Events, rig.HouseLight.OffEvent), 'Switched off: BNC1Low in the block');
+verifyFalse(testCase, isfield(trial.Events, rig.HouseLight.OnEvent));
+verifyGreaterThan(testCase, trial.Events.(rig.HouseLight.OffEvent)(1), 0.1, 'Timed on the block''s clock');
+verifyTrue(testCase, lum.dev.HouseLight.levelAtStart(trial.Events, rig.HouseLight, false), ...
+           'The edge says the block started with the light on');
+verifyEqual(testCase, pulsePal.sentValue(rig.HouseLight.PulsePalChannel, lum.dev.PulsePal.Param.RestingVoltage), 0);
+delete(cleanup);
+end
+
 function testWithoutLinesTheBlockKeepsItsTiming(testCase)
 ensureEmulator();
 plan = lum.sleep.testPulsePlan(lum.defaultSettings().Sleep.TestPulses);
@@ -255,7 +281,8 @@ cases = {@(S) setSleep(S, 'DurationMinutes', 0), 'badDuration'; ...
          @(S) setSync(S, 'WidthJitter', 0.06), 'badJitter'; ...
          @(S) setSync(S, 'Interval', 0.1), 'pulsesOverlap'; ...
          @(S) setSync(S, 'Interval', 0.2, 'IntervalJitter', 0.1), 'pulsesOverlap'; ...
-         @(S) setSync(setSleep(S, 'DurationMinutes', 1440), 'Interval', 0.11), 'tooManyPulses'; ...
+         @(S) setSync(setSleep(noVideo(S), 'DurationMinutes', 1440), 'Interval', 0.11), 'tooManyPulses'; ...
+         @(S) setSync(S, 'Interval', 0.11), 'gapTooShortForCameras'; ...
          @unnamedDrug, 'noDrugName'; ...
          @crowdedProbes, 'epochsCrowdSync'; ...
          @busyTrain, 'epochTooBusy'};
@@ -328,6 +355,11 @@ function S = setSync(S, varargin)
 for i = 1:2:numel(varargin)
     S.Sleep.Sync.(varargin{i}) = varargin{i + 1};
 end
+end
+
+function S = noVideo(S)
+% Without video the gap between pulses need only be 1 ms.
+S.Camera.Enabled = false;
 end
 
 function S = unnamedDrug(S)

@@ -14,6 +14,15 @@ classdef PulsePal < lum.dev.Device
     % lum.dev.openPulsePal: a session that delivers light does not start without the
     % device, and a connected device has its outputs stopped first (stopOutputs).
     %
+    % PulsePal also drives the house light, on an output no trigger reaches (OUT3,
+    % rig.HouseLight): holdVoltage() sets that output's resting voltage, which the
+    % firmware writes at once and returns to after every stop, abort and disconnect,
+    % so the level holds whatever else PulsePal is told (lum.dev.HouseLight, D15). The
+    % switch is clicked by the operator, and MATLAB runs a click's callback inside any
+    % pause or drawnow — including those in PulsePal's serial code and its handshake.
+    % So a voltage asked for while another command is talking to the device is sent
+    % the moment that command finishes, and the two never share the port.
+    %
     % Carrier: a struct array with one element per optical channel, element k
     % programming PulsePal output k (S.Light.Carrier, plus MaxDuration). The two
     % channels drive different LEDs into different cables, so each carries its own
@@ -52,7 +61,8 @@ classdef PulsePal < lum.dev.Device
         CyclePeriod = 1e-4;   % PulsePal time base: all times must be multiples of 100 us
         MaxTime = 3600;       % Longest time value PulsePal accepts, in seconds
         MaxVoltage = 10;      % Output range is -10 V to +10 V
-        nOutputChannels = 4;  % PulsePal has four output channels; this rig uses 1 and 2
+        nOutputChannels = 4;  % PulsePal has four outputs: 1 and 2 for A and B, 3 the house light
+        nTriggerChannels = 2; % OUT1 follows IN1, OUT2 follows IN2; nothing gates 3-4
     end
 
     properties (SetAccess = protected)
@@ -62,12 +72,17 @@ classdef PulsePal < lum.dev.Device
     properties (Access = private)
         sentValues  % Map from 'channel/paramCode' to the value last sent, for change detection
         answered = false  % Whether a handshake has been answered yet, so only the first is logged
+        depth = 0         % Above 0 while a command talks to the device; a held voltage then waits
+        pendingVolts      % Per output: the voltage to hold once the device is free, NaN for none
+        pendingDone       % Per output: what to call once it is held
     end
 
     methods
         function obj = PulsePal(available)
             obj@lum.dev.Device('PulsePal', available);
             obj.sentValues = containers.Map('KeyType', 'char', 'ValueType', 'double');
+            obj.pendingVolts = NaN(1, obj.nOutputChannels);
+            obj.pendingDone = cell(1, obj.nOutputChannels);
         end
 
         function configure(obj, carrier)
@@ -77,37 +92,58 @@ classdef PulsePal < lum.dev.Device
             % so a session that never changes its carrier costs one round trip on
             % trial 1 and nothing afterwards. Call this in the inter-trial window.
             carrier = obj.validateCarrier(carrier);
-            p = obj.Param;
-
-            for channel = 1:obj.nOutputChannels
-                if channel <= numel(carrier)
-                    thisChannel = carrier(channel);
-                    [phase1Duration, interPulseInterval] = obj.carrierTimes(thisChannel);
-                    obj.set(channel, p.IsBiphasic, 0);
-                    obj.set(channel, p.Phase1Voltage, thisChannel.Voltage);
-                    obj.set(channel, p.RestingVoltage, 0);
-                    obj.set(channel, p.Phase1Duration, phase1Duration);
-                    obj.set(channel, p.InterPulseInterval, interPulseInterval);
-                    obj.set(channel, p.BurstDuration, 0);   % 0 disables bursting: one continuous train
-                    obj.set(channel, p.BurstInterval, 0);
-                    obj.set(channel, p.PulseTrainDuration, thisChannel.MaxDuration);
-                    obj.set(channel, p.PulseTrainDelay, 0);
-                    obj.set(channel, p.CustomTrainID, 0);
-                    obj.set(channel, p.CustomTrainTarget, 0);
-                    obj.set(channel, p.CustomTrainLoop, 0);
-                end
-                % Output n follows trigger n alone. Linking an output to both gated
-                % triggers would make the firmware wait for both lines to fall before
-                % stopping it (PulsePal_2_0_1.ino:655), coupling the two channels.
-                obj.set(channel, p.LinkedToTriggerCH1, double(channel == 1));
-                obj.set(channel, p.LinkedToTriggerCH2, double(channel == 2));
+            obj.enter();
+            try
+                obj.program(carrier);
+            catch programError
+                obj.leave();
+                rethrow(programError);
             end
-
-            for triggerChannel = 1:2
-                obj.set(triggerChannel, p.TriggerMode, obj.GatedTriggerMode);
-            end
-
+            obj.leave();
             obj.LastCarrier = carrier;
+        end
+
+        function holdVoltage(obj, channel, volts, done)
+            % holdVoltage(channel, volts, done) holds an output no trigger drives at a voltage.
+            %
+            % Sets the output's resting voltage, which the firmware writes to the output at
+            % once and returns to after every stop, abort and disconnect, and unlinks the
+            % output from both trigger inputs first, so no gate on BNC1 or BNC2 can play a
+            % train on it. Only outputs 3 and 4: 1 and 2 carry channels A and B.
+            %
+            % done (optional) is called once the device has it, as done([]), or as
+            % done(err) when the device refused it. When another command is talking to the
+            % device — programming, stopping, a handshake — the voltage is sent the moment
+            % that command finishes, and a later request for the same output replaces one
+            % still waiting.
+            if nargin < 4
+                done = [];
+            end
+            if ~isscalar(channel) || mod(channel, 1) ~= 0 || channel <= obj.nTriggerChannels ...
+                    || channel > obj.nOutputChannels
+                error('lum:dev:PulsePal:badOutput', ...
+                      ['Only PulsePal outputs %d to %d can be held at a voltage; outputs 1 and 2 '...
+                       'carry channels A and B.'], obj.nTriggerChannels + 1, obj.nOutputChannels);
+            end
+            if ~isscalar(volts) || ~isfinite(volts) || abs(volts) > obj.MaxVoltage
+                error('lum:dev:PulsePal:badVoltage', ...
+                      'A held voltage must be one value within +/-%g V.', obj.MaxVoltage);
+            end
+            if obj.depth > 0
+                obj.pendingVolts(channel) = volts;
+                obj.pendingDone{channel} = done;
+                obj.note('ch%d to be held at %g V once the command under way finishes', channel, volts);
+                return
+            end
+            obj.depth = 1;
+            problem = obj.sendHeld(channel, volts);
+            obj.depth = 0;
+            finishHold(done, problem);
+        end
+
+        function tf = isBusy(obj)
+            % isBusy() is true while a command is talking to the device.
+            tf = obj.depth > 0;
         end
 
         function value = sentValue(obj, channel, paramCode)
@@ -145,10 +181,18 @@ classdef PulsePal < lum.dev.Device
             % PulsePal is doing now: a train still running carries on, and an output
             % left looping continuously — from the front panel or by another program —
             % plays with no trigger at all. lum.dev.openPulsePal sends this once,
-            % straight after connecting and before any trial.
-            for channel = 1:obj.nOutputChannels
-                obj.sendStopOutput(channel);
+            % straight after connecting and before any trial. A stopped output returns
+            % to its resting voltage, so a held output (holdVoltage) stays where it is.
+            obj.enter();
+            try
+                for channel = 1:obj.nOutputChannels
+                    obj.sendStopOutput(channel);
+                end
+            catch stopError
+                obj.leave();
+                rethrow(stopError);
             end
+            obj.leave();
         end
 
         function checkConnection(obj)
@@ -162,7 +206,15 @@ classdef PulsePal < lum.dev.Device
             % the carrier and at every save, and stops if the answer does not come.
             % Errors with 'lum:dev:PulsePal:notResponding'. Only the first answer is
             % logged, so a long session does not fill the device log with them.
-            if ~obj.handshake()
+            obj.enter();
+            try
+                answers = obj.handshake();  % Pauses 0.1 s on the rig, time enough for a click
+            catch handshakeError
+                obj.leave();
+                rethrow(handshakeError);
+            end
+            obj.leave();
+            if ~answers
                 obj.note('did not answer a handshake');
                 error('lum:dev:PulsePal:notResponding', ...
                       ['PulsePal did not answer a handshake. Check its USB cable and that no '...
@@ -197,6 +249,38 @@ classdef PulsePal < lum.dev.Device
     end
 
     methods (Access = private)
+        function program(obj, carrier)
+            % program() sends both trigger channels' parameters for a validated carrier.
+            p = obj.Param;
+            for channel = 1:obj.nOutputChannels
+                if channel <= numel(carrier)
+                    thisChannel = carrier(channel);
+                    [phase1Duration, interPulseInterval] = obj.carrierTimes(thisChannel);
+                    obj.set(channel, p.IsBiphasic, 0);
+                    obj.set(channel, p.Phase1Voltage, thisChannel.Voltage);
+                    obj.set(channel, p.RestingVoltage, 0);
+                    obj.set(channel, p.Phase1Duration, phase1Duration);
+                    obj.set(channel, p.InterPulseInterval, interPulseInterval);
+                    obj.set(channel, p.BurstDuration, 0);   % 0 disables bursting: one continuous train
+                    obj.set(channel, p.BurstInterval, 0);
+                    obj.set(channel, p.PulseTrainDuration, thisChannel.MaxDuration);
+                    obj.set(channel, p.PulseTrainDelay, 0);
+                    obj.set(channel, p.CustomTrainID, 0);
+                    obj.set(channel, p.CustomTrainTarget, 0);
+                    obj.set(channel, p.CustomTrainLoop, 0);
+                end
+                % Output n follows trigger n alone. Linking an output to both gated
+                % triggers would make the firmware wait for both lines to fall before
+                % stopping it (PulsePal_2_0_1.ino:655), coupling the two channels.
+                obj.set(channel, p.LinkedToTriggerCH1, double(channel == 1));
+                obj.set(channel, p.LinkedToTriggerCH2, double(channel == 2));
+            end
+
+            for triggerChannel = 1:2
+                obj.set(triggerChannel, p.TriggerMode, obj.GatedTriggerMode);
+            end
+        end
+
         function set(obj, channel, paramCode, value)
             % set() sends one parameter, unless that exact value was already sent.
             key = sprintf('%d/%d', channel, paramCode);
@@ -205,6 +289,46 @@ classdef PulsePal < lum.dev.Device
             end
             obj.send(channel, paramCode, value);
             obj.sentValues(key) = value;
+        end
+
+        function problem = sendHeld(obj, channel, volts)
+            % sendHeld() unlinks an output from both triggers and holds it at a voltage.
+            % Returns the error, or [] when the device took it.
+            problem = [];
+            p = obj.Param;
+            try
+                obj.set(channel, p.LinkedToTriggerCH1, 0);
+                obj.set(channel, p.LinkedToTriggerCH2, 0);
+                obj.set(channel, p.RestingVoltage, volts);
+            catch sendError
+                problem = sendError;
+                obj.note('ch%d could not be held at %g V: %s', channel, volts, sendError.message);
+            end
+        end
+
+        function enter(obj)
+            % enter() marks a command as talking to the device.
+            obj.depth = obj.depth + 1;
+        end
+
+        function leave(obj)
+            % leave() ends a command, then sends any voltage asked for while it ran.
+            obj.depth = obj.depth - 1;
+            if obj.depth > 0
+                return
+            end
+            waiting = find(~isnan(obj.pendingVolts), 1);
+            while ~isempty(waiting)
+                volts = obj.pendingVolts(waiting);
+                done = obj.pendingDone{waiting};
+                obj.pendingVolts(waiting) = NaN;
+                obj.pendingDone{waiting} = [];
+                obj.depth = 1;
+                problem = obj.sendHeld(waiting, volts);
+                obj.depth = 0;
+                finishHold(done, problem);
+                waiting = find(~isnan(obj.pendingVolts), 1);
+            end
         end
 
         function [phase1Duration, interPulseInterval] = carrierTimes(obj, carrier)
@@ -236,7 +360,7 @@ classdef PulsePal < lum.dev.Device
                       ['The carrier must be a struct array with one element per optical '...
                        'channel. See lum.defaultSettings, S.Light.Carrier.']);
             end
-            nTriggerChannels = 2;   % OUT1 follows IN1, OUT2 follows IN2; nothing gates 3-4
+            nTriggerChannels = lum.dev.PulsePal.nTriggerChannels;
             if numel(carrier) > nTriggerChannels
                 error('lum:dev:PulsePal:badCarrier', ...
                       ['The carrier has %d channels, but only %d PulsePal outputs are '...
@@ -308,4 +432,18 @@ classdef PulsePal < lum.dev.Device
             t = round(t / lum.dev.PulsePal.CyclePeriod) * lum.dev.PulsePal.CyclePeriod;
         end
     end
+end
+
+
+function finishHold(done, problem)
+% Tell holdVoltage's caller how it went. The caller's own failure is its to report: it must
+% not break the command that happened to be under way when the voltage was sent.
+if isempty(done)
+    return
+end
+try
+    done(problem);
+catch callbackError
+    warning('lum:dev:PulsePal:holdCallbackFailed', '%s', callbackError.message);
+end
 end

@@ -50,7 +50,7 @@ function [sma, plan] = buildTrialSM(context)
 % TrialStart raises it and lasts the pulse's width, and WaitForCentrePoke drops it as
 % the cue comes on; in task-event mode TrialStart has no timer, the line stays high
 % through the wait for the poke, and the poke drops it. So a pulsed mode delays the
-% cue by the pulse width — 10 to 100 ms, invisible to an animal whose only sign that
+% cue by the pulse width — 20 to 100 ms by default, invisible to an animal whose only sign that
 % a trial has started is the cue itself — and the rising edge marks the state machine
 % starting in every mode.
 %

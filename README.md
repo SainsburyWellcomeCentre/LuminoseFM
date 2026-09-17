@@ -18,7 +18,8 @@ means. The rig, the data format and the design live in [`docs/`](docs):
 | [`docs/sync-and-barcode.md`](docs/sync-and-barcode.md) | The sync TTL and the session barcode, for aligning other recordings |
 | [`docs/naming-and-versions.md`](docs/naming-and-versions.md) | Glossary, and what changed between versions |
 | [`docs/emulator.md`](docs/emulator.md) | Running the whole protocol with no hardware attached |
-| [`docs/architecture.md`](docs/architecture.md) | Design decisions (D1–D14) and the map from design to code |
+| [`docs/architecture.md`](docs/architecture.md) | Design decisions (D1–D16) and the map from design to code |
+| [`docs/rig-checks.md`](docs/rig-checks.md) | What has been checked on the rig, and the checks still waiting for someone at it |
 | [`docs/repository.md`](docs/repository.md) | Where the code lives, and what the test suite covers |
 
 ---
@@ -38,8 +39,8 @@ CheckRig            % preflight report — worth reading before the first animal
 ```
 
 `CheckRig` prints one line per check: the state machine, the behaviour ports, the optogenetic BNC
-lines, the HiFi module, the Flex I/O configuration, PulsePal, the liquid calibration and the data
-folder. Failures name the exact thing to change and where. The protocol runs it at startup too.
+lines, the house light's BNC input, the HiFi module, the Flex I/O configuration, PulsePal, the liquid
+calibration and the data folder. Failures name the exact thing to change and where. The protocol runs it at startup too.
 
 ```matlab
 report = CheckRig;          % also return it
@@ -47,7 +48,8 @@ CheckRig('Strict', true)    % error if anything failed
 ```
 
 Launch the protocol from Bpod's launch manager as usual: protocol `LuminoseFM`, subject, settings
-file.
+file. The subject you launch for fills the setup dialogs' *Subject* field and every record of the
+session; there is nothing to type.
 
 ---
 
@@ -132,7 +134,7 @@ chosen:
 
 | Stage | Light pattern | Stimulus air | Automatic shaping |
 |-------|---------------|--------------|-------------------|
-| Habituation | **off** (no PulsePal needed) | **on**, for the whole stimulus window | left as it is |
+| Habituation | **off** | **on**, for the whole stimulus window | left as it is |
 | Training | on | off | **on** |
 | Experiment | on | off | **off** |
 
@@ -245,13 +247,13 @@ says what is wrong, and **Start session** stays disabled until nothing is.
 
 | Tab | What it holds |
 |-----|---------------|
-| Experiment | Subject (from the launch manager); genotype (OSN-ChR or wild type offered, any other typed into the box); *Neuropixels recording* (probe, implant, target, coordinates, serial), *EEG/EMG recording* (channel counts), *Drug administration* (name, delivery route, dose and unit, vehicle, time given); session length, devices, runtime window, notes |
+| Experiment | Subject (the one launched in the launch manager); whether the **house light** is on as the session starts; genotype (OSN-ChR or wild type offered, any other typed into the box); *Neuropixels recording* (probe, implant, target, coordinates, serial), *EEG/EMG recording* (channel counts), *Drug administration* (name, delivery route, dose and unit, vehicle, time given); session length, devices, runtime window, notes |
 | Task | Which task (Familiar/Novel, Mixture, Sequence, Motifs); training stage and what it does to rewards — choosing one sets the session up the way that stage is normally run; trial order, including the contingency reversal; centre hold — how long it is, what a broken hold does, and hold shaping; which components make up the cue, the stimulus and each side; a timeline of one trial, with the hold window |
 | Cue | For each cue component (centre light, tone, air): whether it continues through the stimulus, and if not, how long it stays on into it; the cue tone's frequency and sound output, each sound with a **▶ Play** button; a timeline of the cue against the latency and the stimulus, one row per component |
 | Stimulus | The stimulus window and its latency from the poke; a summary of the stimulus set with **Design stimuli…** and **New trial order**; P(left) per group; every trial of the session to scroll through; timing of air, centre light and tone, with **▶ Play tones** |
 | Light path | The fiber bundle and which cables are on A and B; the carrier for each channel (frequency, pulse width, LED drive voltage) |
 | Left, Right | That side's port light and tone (with **▶ Play**), each timed from stimulus onset; its guide light; which groups pay that side |
-| Sync | Trial sync pulse mode and widths — every mode is driven by states, and a pulsed one is the trial's first state, so the cue follows it; the session barcode (behaviour and sleep marker widths), with a preview |
+| Sync | Trial sync pulse mode and widths — every mode is driven by states, and a pulsed one is the trial's first state, so the cue follows it; the session barcode (behaviour and sleep marker widths), with a preview. With video, widths are minimums, widened to what the cameras can read |
 | Cameras | Video (§8): record or not, the SpinCam folder, format, cameras and their views, frame rate, exposure, gain, TTL input, the camera window — with a **live preview** |
 | Runtime | Starting values of the parameters that stay editable during the session |
 
@@ -303,7 +305,19 @@ S = lum.gui.TestPulseDesigner();   % defaults: paired-pulse probes on A and B fo
 
 One figure, updated in place once per trial, with a header giving the subject, stage, stimulus
 set, what a broken hold does, trial count, performance, rewards and water delivered, and session
-time. Panels, in the order they are read:
+time — and the **House light** box.
+
+**The house light** (the white light inside the box) is switched with that box, and it changes **at
+once**, in either direction, whatever the trial is doing. It starts as set on the setup dialog's
+Experiment tab, and the level you leave it at is kept for the next session; it goes off when the
+session ends. PulsePal drives it (output 3): a session with light does not start without PulsePal,
+and one without light runs without it but **without the house light** — a warning says so, the box
+is greyed out and the light stays off. Its line is also wired into Bpod's BNC input 1, so each switch during a trial is in the
+trial's events (`BNC1High` on, `BNC1Low` off) on Bpod's clock, and on the video's clock too (see
+[`docs/data-format.md`](docs/data-format.md) and [`docs/hardware.md`](docs/hardware.md)). If a click
+comes while PulsePal is being programmed, the light switches the moment PulsePal is free.
+
+Panels, in the order they are read:
 
 - Top row
   - **Now and next** (top left) — the pattern of the running trial and the next three in the order,
@@ -328,7 +342,9 @@ time. Panels, in the order they are read:
   - **Reaction time** — by side chosen, with a running median
 
 The per-trial panels scroll with the session and rescale to what is on screen, so they stay
-legible at any point in it. **Closing the figure does not stop the session.**
+legible at any point in it. **Closing the figure does not stop the session** — it only hides it.
+When the session ends, however it ends, the figure is saved as it looks then, as
+`<data file name>_plots.png` beside the data file.
 
 Bpod's analog viewer also opens, showing the flow meter on Flex1.
 
@@ -341,7 +357,8 @@ window; the **sleep setup dialog** then asks only for what a sleep recording nee
 
 - the animal and the experiment record — the same panels as the behaviour dialog (subject,
   genotype, Neuropixels recording, EEG/EMG recording, drug administration, notes)
-- the recording length in minutes, and whether Flex2 is driven
+- the recording length in minutes, whether Flex2 is driven, and whether the **house light** is on as
+  it starts
 - the sync pulses: widths (*Fixed width* or *Jittered width*, as for behaviour trials), the
   interval between pulses and an optional jitter on it
 - the session barcode, with its **sleep marker** (200 ms by default) and a preview
@@ -382,15 +399,21 @@ and the schedule as a table of steps, with presets, the minute each step starts,
 and previews of the session and of one epoch of the selected step. Everything compiles on each
 edit, and nothing leaves the window until the session could run it.
 
-**PulsePal.** A sleep session with test pulses does not start without PulsePal, and PulsePal must
-answer a handshake whenever it is given a new carrier and at every save. If it stops answering, the
+**PulsePal.** A sleep session with test pulses does not start without PulsePal; one without runs
+without it, with the house light (which PulsePal drives) disabled. With test pulses, PulsePal must
+also answer a handshake whenever it is given a new carrier and at every
+save. If it stops answering, the
 session stops, saves what it sent and records why (`Session.TestPulses.StoppedReason`).
 
 **The sleep plot** shows, under a header with the pulse rule, the test pulses, the barcode and the
 counts: with test pulses, the schedule across the session with the part already sent shaded; the
 last 30 s of the sync line (and of A and B); with test pulses, the latest epoch at millisecond scale
 — its gates, and the light in them; the width of every sync pulse against session time; and, with
-test pulses, epochs sent against planned, step by step. No sound or runtime window is used.
+test pulses, epochs sent against planned, step by step. Its header has the **House light** box,
+which switches the light at once, in the middle of a block too; every switch is recorded, and one
+made during a block is a `BNC1High`/`BNC1Low` event in it. The light stays as you left it between
+blocks. No sound or runtime window is used. Like the behaviour figure, closing it only
+hides it, and it is saved as `<data file name>_plots.png` when the session ends.
 
 Every sync pulse and every gate of light is laid out before the first block, and the timeline goes
 out in state machines of about 10 s. Uploading the next one lengthens an interval by a few
@@ -406,19 +429,38 @@ Every session — behaviour or sleep — is recorded on the box's cameras by
 **SpinCam**, the lab's multi-camera package for FLIR cameras (a repository of its own, cloned anywhere). It is on by
 default and set up on the setup dialog's **Cameras** tab.
 
-**Once per computer:** clone SpinCam and run `spincam.setup` in it (it finds Spinnaker and builds its
-engine). Then, on the Cameras tab, set **SpinCam folder** to where it was cloned (**Browse…**), or
-leave it empty if SpinCam is on the MATLAB path. The tab says whether it found it.
+**Once per computer:** install the **Spinnaker SDK with its .NET components** (4.2.0.83 on the rig),
+clone SpinCam and run `spincam.setup` in it (it finds Spinnaker and builds its engine with the C#
+compiler that ships with Windows). Then, on the Cameras tab, set **SpinCam folder** to where it was
+cloned (**Browse…**), or leave it empty if SpinCam is on the MATLAB path. The tab says whether it
+found it. After updating Spinnaker or SpinCam, restart MATLAB: the engine rebuilds itself on the
+next load. Everything else the computer needs is listed in
+[`docs/hardware.md` §3](docs/hardware.md#3-software-environment).
 
 | Field | Default | What it does |
 |-------|---------|--------------|
 | Record video | on | Record every camera ticked below for the whole session. Untick to run without video |
-| Video format | `avi-mjpeg-mt` | `avi-mjpeg-mt` is MJPEG encoded on several cores: two full-frame cameras at 100 Hz for hours (≈ 27 GB/h), and up to 120 Hz. `avi-mjpeg` is SpinVideo's one-core encoder, which falls behind at 100 Hz full frame (the dialog says so); `raw` is lossless (≈ 0.9 TB/h); `mp4-h264`, `avi-raw` |
+| Video format | `avi-mjpeg-mt` | How frames are stored (below). Choosing one puts a sentence on what it does in the help line at the foot of the dialog |
 | Cameras | 24226887 *sideview*, 24226657 *topview* | One row per camera: serial, view (the file prefix), record, crop. **Find attached** adds attached cameras; **Full frame** clears the crops |
 | Frame rate | 100 Hz | For every camera; up to 120 Hz at full frame, above that crop (full viewer) |
 | Exposure, gain | Auto | Or a manual value (µs, dB) |
 | TTL input | Line0 | The camera input logged with every frame (yellow signal, brown ground) |
 | Camera window | shown, 5 Hz | A window with every camera during the session |
+
+Every format is written on SpinCam's own threads, never MATLAB's. Figures are for both cameras at
+full frame on the rig:
+
+| Format | What it does |
+|--------|--------------|
+| `avi-mjpeg-mt` | **Use this.** Compressed MJPEG encoded on several CPU cores: keeps up at 100 Hz for hours and up to 120 Hz, ≈ 27 GB an hour at 100 Hz; opens in `VideoReader`, ffmpeg, OpenCV |
+| `avi-mjpeg` | Spinnaker SpinVideo's MJPEG, encoded on one core (≈ 104 frames/s per camera): falls behind at 100 Hz once MATLAB is busy, and the dialog says so. Only with a crop or a lower rate |
+| `mp4-h264` | SpinVideo's H.264, the slowest encoder (≈ 70 frames/s per camera): low rates or small crops only |
+| `avi-raw` | SpinVideo's "uncompressed" AVI, stored as YUV 4:2:0 (gray levels can shift by a few counts), one core (≈ 110 frames/s per camera) |
+| `raw` | Lossless 8-bit frames straight to disk, exact at any rate, ≈ 0.9 TB an hour; read with `spincam.io.RawVideoReader`, convert with `spincam.io.rawToAvi` |
+
+The three SpinVideo formats need Spinnaker's SpinVideo component; without it the session refuses
+to start and says so. Leave room on `D:`: a 6-hour sleep session at the defaults is ≈ 160 GB of
+video.
 
 **Preview** connects the ticked cameras exactly as the session will and shows them; frame rate,
 exposure and gain apply live. **Simulated cameras** previews SpinCam's synthetic cameras on a
@@ -450,9 +492,14 @@ Each `.csv` has one row per frame: `HostTime_s` (seconds on the host clock), `Ha
 (the camera's clock — use it for intervals), `TTL_State`, `VideoFrameIndex` and drop flags. Every
 trial (every block, in a sleep session) is marked on the same host clock: a `TrialEnd` row in
 `_events.csv`, and `SessionData.CameraTime`, so `CameraTime` against `TrialEndTimestamp` maps
-Bpod's clock onto the video to within a few milliseconds. **The Bpod sync line is not yet wired to
-the cameras**, so `TTL_State` stays 0; once it is, the barcode and the trial pulses mark the video
-frame by frame. `SessionData.Session.Cameras` records the files, the settings and, per camera,
+Bpod's clock onto the video to within a few milliseconds. **The Bpod sync line (Flex2) reaches both
+cameras' Line0**, so `TTL_State` also carries the session barcode and every trial pulse frame by
+frame: in the first wired session (2026-09-17, 3.3 V TTL, 100 Hz) both cameras logged every one of
+the 79 pulses, the barcode decoded from each, and every pulse width matched Bpod's to within a frame.
+A frame logs the line once, so a pulse or gap shorter than a frame could be missed: whenever video is
+recorded, the session **widens the barcode and the sync pulses to what the cameras can read at the
+chosen frame rate** (at least two frames for every pulse and gap), so any frame rate works. The
+barcode preview and the status line show the widened values; the settings keep what you typed. `SessionData.Session.Cameras` records the files, the settings and, per camera,
 the frames logged, written, missed and dropped.
 
 In the emulator the session records SpinCam's simulated cameras (synthetic video, real files) when
@@ -479,8 +526,8 @@ startTime = lum.sync.barcodeTime(value);   % kind is 'Behaviour' or 'Sleep'
 ```
 
 To see what actually reaches the line, put a scope on it and run `TestSyncLine` (§11). Video is
-aligned the same way once the sync line reaches the cameras, and by `SessionData.CameraTime` until
-then (§8).
+aligned the same way, from each frame's `TTL_State`, and `SessionData.CameraTime` gives a second,
+coarser alignment (§8; the code is in [`docs/data-format.md`](docs/data-format.md#video)).
 
 **Sessions before 0.5.1 have no usable trial pulses** — align them by the barcode and
 `Data.TrialStartTimestamp`. The full specification, and that story, are in
@@ -492,12 +539,28 @@ then (§8).
 
 ```
 D:\luminoseData\<subject>\LuminoseFM\Session Data\<subject>_LuminoseFM_<YYYYMMDD_HHMMSS>.mat
+D:\luminoseData\<subject>\LuminoseFM\Session Data\<subject>_LuminoseFM_<YYYYMMDD_HHMMSS>_ANLG.dat
+D:\luminoseData\<subject>\LuminoseFM\Session Data\<subject>_LuminoseFM_<YYYYMMDD_HHMMSS>_plots.png
 D:\luminoseData\<subject>\LuminoseFM\Session Settings\<settings name>.mat
 D:\luminoseData\<subject>\LuminoseFM\Session Videos\<view>_<subject>_LuminoseFM_<YYYYMMDD_HHMMSS>.avi / .csv
 ```
 
 The `.mat` holds one variable, `SessionData`, saved every few trials, so a crash costs at most a
-few trials. Session-level information — the settings, the stimulus set, the rig map, the barcode —
+few trials.
+
+- **`_ANLG.dat`** is Bpod's raw recording of the flow meter (Flex1, 1 kHz), written as the session
+  runs because Bpod streams analog input straight to disk. At the end of the session it is read
+  back into the `.mat` as `SessionData.Analog`, so for analysis the `.mat` is enough. Keep the
+  `.dat` anyway: it is the only copy of the airflow if MATLAB or the computer fails before the
+  session ends. It is written only when a Flex channel is an
+  analog input — not in the emulator. Details in [`docs/data-format.md`](docs/data-format.md).
+- **`_plots.png`** is the online figure as it looked when the session ended.
+- **Settings.** The settings file chosen in the launch manager (`DefaultSettings` unless you make
+  another) holds the last session's settings: it is written when **Start** is pressed and again
+  when the session ends, so runtime changes (reward, timing) and the house light carry over to the next
+  session. To keep a set of settings apart — per animal, or per stage — create a new settings file
+  in the launch manager and choose it. Every data file also holds the exact settings it ran with,
+  in `SessionData.Session.Settings`. Session-level information — the settings, the stimulus set, the rig map, the barcode —
 is stored **once** in `SessionData.Session`; each trial stores only its own events, timestamps,
 outcome and indices into it. Airflow from the flow meter is merged in at the end of the session as
 `SessionData.Analog`.
@@ -520,7 +583,9 @@ Every field, and what to watch for in files from older versions, is in
 ## 11. Utilities
 
 Helpers for working with the rig outside a session live in `hardware/`. All of them refuse to run
-while a protocol is in progress unless `'Force', true` is passed.
+while a protocol is in progress unless `'Force', true` is passed, and they can be run one after
+another from the same MATLAB. What they have shown on this rig, and the checks still to do in person,
+are in [`docs/rig-checks.md`](docs/rig-checks.md).
 
 ### `CheckRig` — preflight
 
@@ -562,6 +627,25 @@ Put a scope, a logic analyser or the acquisition system itself on the line and r
 same train twice — once from **states**, the way the protocol drives it, and once from a **global
 timer** — so the line and the way it is driven can be told apart. Nothing here touches the animal:
 no valve, no LED, no optical channel.
+
+### `TestHouseLight` — check the house light and its loopback into Bpod
+
+```matlab
+TestHouseLight                     % switch it on and off 5 times, 0.5 s each
+TestHouseLight('Count', 20)        % more switches
+TestHouseLight('On', 1, 'Off', 2)  % seconds on and off
+```
+
+With Bpod running and no protocol in progress, it connects PulsePal, switches the house light on and
+off through the same call the House light box makes, and looks for each switch among the state
+machine's events as `BNC1High` / `BNC1Low`. It prints one line per switch with its latency (command to
+edge, typically a few ms) and says what to check when edges are missing: the light blinking but no
+edges means the splitter, the cable into BNC input 1, or the input disabled in the console's port
+settings; no blinking means PulsePal output 3 or the LED driver. The light is left off and PulsePal's
+port released. Under `Bpod('EMU')` it runs too, with emulated edges.
+
+**Not yet passing on this rig** (2026-09-17): PulsePal takes every switch but no edge reaches BNC
+input 1. The cabling is still to be checked; see P1 in [`docs/rig-checks.md`](docs/rig-checks.md).
 
 ---
 

@@ -64,6 +64,12 @@ try
     connected = lum.dev.configureCameras(manager, camera, 'Strict', true, 'PreviewRate', previewRate);
     manager.startPreview();
     manager.stopPreview();
+    % SpinCam checks this only when recording starts; a session should refuse now.
+    if lum.dev.Cameras.needsSpinVideo(camera.Format) && ~SpinCam.Engine.HasSpinVideo
+        error('lum:dev:openCameras:noSpinVideo', ['The %s format needs Spinnaker''s SpinVideo '...
+              'component, which this Spinnaker installation lacks; choose avi-mjpeg-mt or raw.'], ...
+              camera.Format);
+    end
     cameras = lum.dev.RealCameras(manager, camera, folder, connected);
 catch openError
     if ~isempty(manager) && isvalid(manager)

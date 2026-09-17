@@ -26,16 +26,28 @@ switch sync.Mode
         if ~(sync.FixedWidth > 0)
             fail('badWidth', 'The fixed sync pulse must be longer than 0 s.');
         end
-        longestPulse = sync.FixedWidth;
     case lum.SyncMode.JitteredWidth
         if ~(sync.WidthJitter >= 0 && sync.WidthJitter < sync.MeanWidth)
             fail('badJitter', ...
                  ['A jitter of %g s around a mean of %g s would ask for pulses of zero width '...
                   'or less. Reduce the jitter below the mean.'], sync.WidthJitter, sync.MeanWidth);
         end
-        longestPulse = sync.MeanWidth + sync.WidthJitter;
     otherwise
         fail('badMode', 'Sleep sync pulses must be Fixed width or Jittered width.');
+end
+
+% With video, what goes on the line is widened until the cameras can read it. What was
+% typed is checked above; from here on the fitted values are.
+[S, syncFit, framePeriod] = lum.sync.fitToCameras(S);
+if ~isempty(syncFit)
+    notes{end+1} = sprintf('Sync line widened so the %g Hz cameras can read it: %s.', ...
+                           S.Camera.FrameRate, strjoin(syncFit, ', '));
+end
+sync = S.Sleep.Sync;
+if sync.Mode == lum.SyncMode.FixedWidth
+    longestPulse = sync.FixedWidth;
+else
+    longestPulse = sync.MeanWidth + sync.WidthJitter;
 end
 if ~(sync.Interval > 0 && sync.IntervalJitter >= 0)
     fail('badInterval', 'The interval between pulses must be positive, and its jitter not negative.');
@@ -46,6 +58,13 @@ if ~(shortestInterval - longestPulse >= 1e-3)
          ['The shortest interval between pulses (%g s) must leave at least 1 ms after the '...
           'longest pulse (%g s). Lengthen the interval or shorten the pulses.'], ...
          shortestInterval, longestPulse);
+end
+% The gap between pulses is on the video too, and cannot be widened for it.
+if ~isnan(framePeriod) && ~(shortestInterval - longestPulse >= 2 * framePeriod - 1e-9)
+    fail('gapTooShortForCameras', ...
+         ['The shortest gap between sync pulses (%.4g ms) is under two video frames at %g Hz '...
+          '(%.4g ms), so the cameras could miss it. Lengthen the interval.'], ...
+         1000 * (shortestInterval - longestPulse), S.Camera.FrameRate, 2000 * framePeriod);
 end
 
 % With test pulses the recording lasts as long as their schedule; without, as set.

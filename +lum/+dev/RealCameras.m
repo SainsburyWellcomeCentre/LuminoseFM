@@ -119,5 +119,18 @@ classdef RealCameras < lum.dev.Cameras
         function version = spinCamVersion(obj) %#ok<MANU> % spincam is on the path once cameras are open
             version = spincam.version();
         end
+
+        function version = engineVersion(obj)
+            % The native engine that grabs and encodes carries its own version.
+            version = '';
+            if isempty(obj.manager) || ~isa(obj.manager, 'spincam.CameraManager')
+                return
+            end
+            try
+                version = char(SpinCam.Engine.Version);
+            catch
+                % Engine not loaded; the record says so by leaving it empty.
+            end
+        end
     end
 end

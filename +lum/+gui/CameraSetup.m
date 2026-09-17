@@ -20,6 +20,10 @@ classdef CameraSetup < handle
     %   S.Camera = cameras.read(S.Camera);    % in collect
     %   cameras.update(S.Camera);             % in the appearance update
     %   note = cameras.problem(S.Camera);     % '' or a note for the status line
+    %   cameras.useHelpLine(helpLine);        % after helpLine.registerTooltips()
+    %
+    % The video format's tooltip, and so the help line, is one sentence on what the format
+    % selected does (lum.dev.Cameras.formatDescription), changing with the choice.
     %
     % See also: lum.dev.Cameras, lum.dev.configureCameras, lum.gui.CameraWindow
 
@@ -38,6 +42,7 @@ classdef CameraSetup < handle
         images = gobjects(0)
         ticks = 0
         viewer = []
+        helpLine = []         % The dialog's lum.gui.HelpLine, once attached
     end
 
     properties (Constant, Access = private)
@@ -95,6 +100,7 @@ classdef CameraSetup < handle
             lum.gui.Form.setEnable({c.ExposureTime}, on && ~camera.ExposureAuto);
             lum.gui.Form.setEnable({c.Gain}, on && ~camera.GainAuto);
             lum.gui.Form.setEnable({c.WindowRate}, on && camera.ShowWindow);
+            obj.describeFormat();
 
             folder = lum.dev.Cameras.locateSpinCam(camera.SpinCamFolder);
             if isempty(folder)
@@ -126,13 +132,21 @@ classdef CameraSetup < handle
             end
         end
 
+        function useHelpLine(obj, helpLine)
+            % useHelpLine(helpLine) lets the tab describe the chosen video format on the
+            % dialog's help line. Call it after helpLine.registerTooltips().
+            obj.helpLine = helpLine;
+            helpLine.register(obj.Controls.Format, obj.Controls.Format.Tooltip);
+        end
+
         function text = problem(obj, camera) %#ok<INUSL> % A method, so the dialogs call it alike
-            % problem(camera) is '' or a note for the status line about video.
+            % problem(camera) is '' or a note for the status line about video that validation
+            % cannot give, because it does not look for SpinCam. The format note comes from
+            % validation (lum.validateSettings, lum.sleep.validate), so it is not repeated here.
+            text = '';
             if camera.Enabled && isempty(lum.dev.Cameras.locateSpinCam(camera.SpinCamFolder))
                 text = ['Video recording is on but SpinCam was not found; set its folder on the '...
                         'Cameras tab (on the rig the session will not start without it).'];
-            else
-                text = lum.dev.Cameras.formatNote(camera);
             end
         end
 
@@ -267,12 +281,8 @@ classdef CameraSetup < handle
             c.FolderNote = uilabel(form, 'Text', '', 'FontSize', 11);
             lum.gui.Form.label(form, 'Video format', t);
             c.Format = uidropdown(form, 'Items', lum.dev.Cameras.Formats, 'Value', camera.Format, ...
-                'ValueChangedFcn', @(~, ~) obj.onEdit(), ...
-                'Tooltip', ['avi-mjpeg-mt (default): compressed MJPEG encoded on several cores, keeps up '...
-                            'with two full-frame cameras up to 120 Hz (about 27 GB an hour at 100 Hz). '...
-                            'avi-mjpeg: SpinVideo''s one-core encoder, falls behind at 100 Hz. raw: '...
-                            'lossless, about 0.9 TB an hour. All are encoded on SpinCam''s own threads, '...
-                            'never MATLAB''s.']);
+                'ValueChangedFcn', @(~, ~) obj.formatChanged(), ...
+                'Tooltip', lum.dev.Cameras.formatDescription(camera.Format));
             lum.gui.Form.label(form, 'Files', t);
             c.FilesNote = lum.gui.Form.note(form, '', t);
 
@@ -302,8 +312,8 @@ classdef CameraSetup < handle
             lum.gui.Form.label(form, 'Frame rate (Hz)', t);
             c.FrameRate = uieditfield(form, 'numeric', 'Value', camera.FrameRate, ...
                 'Limits', [1 lum.dev.Cameras.MaxFrameRate], 'ValueChangedFcn', @(~, ~) obj.imageEdited(), ...
-                'Tooltip', ['Frames per second, the same for every camera. 100 Hz full frame is what '...
-                            'MJPEG sustains with two cameras; above that, crop in the full viewer.']);
+                'Tooltip', ['Frames per second, the same for every camera. Two full-frame cameras on '...
+                            'the one USB controller deliver up to 120 Hz; above that, crop in the full viewer.']);
             lum.gui.Form.label(form, 'Exposure (us)', t);
             row = uigridlayout(form, [1 2], 'ColumnWidth', {70, '1x'}, 'Padding', 0, ...
                                'ColumnSpacing', 6, 'BackgroundColor', t.Panel);
@@ -344,8 +354,8 @@ classdef CameraSetup < handle
                                      'waits for Bpod and Bpod never waits for the video. Every frame''s '...
                                      'row in the .csv has its camera timestamp (HardwareTimestamp_us), '...
                                      'its host time in seconds (HostTime_s, the clock of '...
-                                     'Data.CameraTime) and the TTL input state. The sync line is not yet '...
-                                     'wired to the cameras, so TTL_State stays 0 until it is.'], t);
+                                     'Data.CameraTime) and the TTL input state (TTL_State), which carries '...
+                                     'the session barcode and trial pulses from Bpod''s sync line.'], t);
 
             box = uipanel(grid, 'Title', 'Live preview', 'FontWeight', 'bold', ...
                           'BackgroundColor', t.Panel, 'ForegroundColor', t.Accent);
@@ -452,6 +462,29 @@ classdef CameraSetup < handle
             obj.onEdit();
         end
 
+        function formatChanged(obj)
+            % The help line shows the old description before this runs (it chains the
+            % callback), so the one for the format just chosen replaces it here.
+            obj.describeFormat();
+            if ~isempty(obj.helpLine) && isvalid(obj.helpLine)
+                obj.helpLine.describe(obj.Controls.Format);
+            end
+            obj.onEdit();
+        end
+
+        function describeFormat(obj)
+            % The format's tooltip and help-line text describe the format selected.
+            format = obj.Controls.Format;
+            text = lum.dev.Cameras.formatDescription(format.Value);
+            if strcmp(char(format.Tooltip), text)
+                return
+            end
+            format.Tooltip = text;
+            if ~isempty(obj.helpLine) && isvalid(obj.helpLine)
+                obj.helpLine.register(format, text);
+            end
+        end
+
         function previewToggled(obj, on)
             if on
                 obj.startPreview();
@@ -512,8 +545,13 @@ classdef CameraSetup < handle
             try
                 c = obj.Controls;
                 first = obj.Connected(1).Serial;
-                c.FrameRate.Value = min(max(round(obj.Manager.getProperty('FrameRate', {first}), 2), 1), ...
-                                        lum.dev.Cameras.MaxFrameRate);
+                % The camera quantizes the frame rate (100 reads back 100.058), and writing a
+                % read-back value lands one step higher. Keep the typed rate unless the viewer
+                % really changed it.
+                rate = obj.Manager.getProperty('FrameRate', {first});
+                if abs(rate - c.FrameRate.Value) > 0.2
+                    c.FrameRate.Value = min(max(round(rate, 1), 1), lum.dev.Cameras.MaxFrameRate);
+                end
                 c.ExposureAuto.Value = ~strcmpi(obj.Manager.getProperty('ExposureAuto', {first}), 'Off');
                 c.ExposureTime.Value = round(obj.Manager.getProperty('ExposureTime', {first}));
                 c.GainAuto.Value = ~strcmpi(obj.Manager.getProperty('GainAuto', {first}), 'Off');

@@ -4,7 +4,8 @@ classdef Plots < handle
     % A sleep session has no trials and no choices, so the figure shows what it puts on
     % its lines (D11, D13):
     %   Header        subject, session length and pulse rule, the test pulses, the
-    %                 barcode and whether it was sent, pulses so far and time elapsed
+    %                 barcode and whether it was sent, pulses so far and time elapsed,
+    %                 and the house light switch, which acts at once
     %   Schedule      (test pulses only) every step on channels A and B across the
     %                 session, with the part already sent shaded
     %   Lines         the sync line — and channels A and B — as sent over the last 30 s
@@ -17,7 +18,8 @@ classdef Plots < handle
     % As in lum.OnlinePlots, every handle is created in the constructor into
     % preallocated data and only updated afterwards, each update touches the new pulses
     % and the visible trace only, and there is one drawnow limitrate per block. Closing
-    % the figure does not stop the session.
+    % the figure only hides it (so it can still be saved as an image at teardown), and does
+    % not stop the session.
     %
     % See also: lum.sleep.run, lum.OnlinePlots, lum.gui.drawTestPulseSchedule, lum.gui.theme
 
@@ -62,6 +64,8 @@ classdef Plots < handle
             %   'Subject'    Shown in the header
             %   'Plan'       From lum.sleep.testPulsePlan (default: compiled from S)
             %   'MaxPulses'  Sync pulses to preallocate for (default: the session's worth)
+            %   'HouseLight' The session's lum.dev.HouseLight, for the header's switch
+            %                (lum.gui.houseLightSwitch); none without it
             %   'Visible'    'on' (default) or 'off', for tests
             global BpodSystem %#ok<GVMIS> % Figures are registered so Bpod can close them
 
@@ -72,6 +76,7 @@ classdef Plots < handle
             addParameter(p, 'Subject', '', @(x) ischar(x) || isstring(x));
             addParameter(p, 'Plan', [], @(x) isempty(x) || isstruct(x));
             addParameter(p, 'MaxPulses', [], @(x) isempty(x) || (isnumeric(x) && isscalar(x) && x >= 1));
+            addParameter(p, 'HouseLight', [], @(x) isempty(x) || isa(x, 'lum.dev.HouseLight'));
             addParameter(p, 'Visible', 'on');
             parse(p, varargin{:});
 
@@ -109,12 +114,13 @@ classdef Plots < handle
 
             obj.Figure = figure('Name', 'LuminoseFM - sleep', 'NumberTitle', 'off', ...
                                 'MenuBar', 'none', 'ToolBar', 'none', 'Color', t.Background, ...
-                                'Position', [80 60 1200 780], 'Visible', p.Results.Visible);
+                                'Position', [80 60 1200 780], 'Visible', p.Results.Visible, ...
+                                'CloseRequestFcn', @hideInstead);
             if ~isempty(BpodSystem) && isobject(BpodSystem)
                 BpodSystem.ProtocolFigures.LuminoseSleepPlots = obj.Figure;
             end
 
-            obj.buildHeader(S, char(p.Results.Subject));
+            obj.buildHeader(S, char(p.Results.Subject), p.Results.HouseLight);
             body = uipanel(obj.Figure, 'Units', 'normalized', 'Position', [0 0 1 0.86], ...
                            'BorderType', 'none', 'BackgroundColor', t.Background);
             if obj.hasLight
@@ -212,9 +218,12 @@ classdef Plots < handle
         end
 
         function close(obj)
-            % close() closes the figure, if it is still open.
+            % close() closes the figure for good, if it is still open. Closing it any
+            % other way — the operator, or the console's End button through
+            % RunProtocol('Stop') — only hides it, so the session can still save it as an
+            % image at teardown (lum.gui.savePlotsImage) before calling this.
             if ~isempty(obj.Figure) && isvalid(obj.Figure)
-                close(obj.Figure);
+                delete(obj.Figure);
             end
         end
     end
@@ -309,7 +318,7 @@ classdef Plots < handle
                                       obj.plan.Steps(step).Kind, epoch);
         end
 
-        function buildHeader(obj, S, subject)
+        function buildHeader(obj, S, subject, houseLight)
             t = obj.theme;
             header = uipanel(obj.Figure, 'Units', 'normalized', 'Position', [0 0.86 1 0.14], ...
                              'BorderType', 'none', 'BackgroundColor', t.Background);
@@ -340,12 +349,14 @@ classdef Plots < handle
             else
                 lightText = 'No test pulses';
             end
-            uicontrol(header, 'Style', 'text', 'Units', 'normalized', 'Position', [0.06 0.74 0.92 0.22], ...
+            uicontrol(header, 'Style', 'text', 'Units', 'normalized', 'Position', [0.06 0.74 0.78 0.22], ...
                       'String', titleText, 'FontSize', 12, 'FontWeight', 'bold', ...
                       'HorizontalAlignment', 'left', 'BackgroundColor', t.Background, 'ForegroundColor', t.Ink);
             uicontrol(header, 'Style', 'text', 'Units', 'normalized', 'Position', [0.06 0.50 0.92 0.22], ...
                       'String', lightText, 'FontSize', 10, 'HorizontalAlignment', 'left', ...
                       'BackgroundColor', t.Background, 'ForegroundColor', t.Ink);
+            obj.handles.houseLight = lum.gui.houseLightSwitch(header, [0.86 0.74 0.13 0.22], ...
+                                                              houseLight, t);
             obj.handles.barcode = uicontrol(header, 'Style', 'text', 'Units', 'normalized', ...
                       'Position', [0.06 0.27 0.92 0.21], 'String', 'Barcode not sent yet', 'FontSize', 10, ...
                       'HorizontalAlignment', 'left', 'BackgroundColor', t.Background, 'ForegroundColor', t.Muted);
@@ -497,4 +508,12 @@ ax.Title.FontSize = 10;
 ax.Title.Color = t.Ink;
 ax.TitleHorizontalAlignment = 'left';
 hold(ax, 'on');
+end
+
+
+function hideInstead(figureHandle, ~)
+% The figure's close request: hide it, so a session stopped from the console, which
+% closes every protocol figure before the protocol's own teardown runs, can still save
+% the plots as they ended. close() deletes it.
+set(figureHandle, 'Visible', 'off');
 end

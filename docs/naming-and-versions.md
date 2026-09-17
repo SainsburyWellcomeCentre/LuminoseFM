@@ -36,6 +36,8 @@ right — D8 in [`architecture.md`](architecture.md).
 | view | A camera's name, the prefix of its files: `sideview` (24226887), `topview` (24226657) |
 | camera clock | SpinCam's host clock: `HostTime_s` in the frame logs, `_events.csv`, `Data.CameraTime` |
 | help line | The strip at the foot of a setup or runtime window describing the field under the pointer |
+| house light | The white light inside the box, on PulsePal output 3 and looped back into BNC input 1: `S.Session.HouseLight` (behaviour), `S.Sleep.HouseLight` (sleep), `Data.HouseLight`, `Session.HouseLight`; switched from the live figure's header. Not "room light" or "port 5 light" |
+| plots image | The online figure saved at the end of a session, `<data file name>_plots.png` (`Session.PlotsImage`) |
 
 ---
 
@@ -109,6 +111,19 @@ names.
 | a hold stopped growing while the animal withdrew | it steps back one growth step after `HoldStepBackAfter` (10) early withdrawals at one hold; `HoldStart` default 0.2 → 0.1 s (existing settings files keep theirs) |
 | — | per-trial `EarlyWithdrawals` and `CameraTime`; `Session.Cameras`, `DevicesAvailable.Cameras`, `DeviceLog.Cameras`; sleep `CameraTime` per block |
 | — | `S.Camera` and video through SpinCam into `Session Videos` (D14); Cameras tab with live preview in both setup dialogs; camera window during sessions |
-| — | the video stops after the final save (`SessionSaved` event), and a second save adds its summary; default format `avi-mjpeg-mt` (SpinCam 1.2.0 engine, multi-core MJPEG), with a note when a single-threaded format cannot keep up |
+| — | the video stops after the final save (`SessionSaved` event), and a second save adds its summary; default format `avi-mjpeg-mt` (SpinCam 1.2.0 engine, multi-core MJPEG), with a note when a single-threaded format cannot keep up; the help line describes the format chosen; a SpinVideo format without SpinVideo is refused when the devices open; `Session.Cameras.EngineVersion` |
 | — | `GUIMeta.<name>.Help` for every runtime parameter; help line in the setup and runtime windows |
 | — | **▶ Play** buttons for the session's sounds in the setup dialog (`lum.testSounds`) |
+
+### 0.6.0 → 0.6.1 — house light, plots image, settings kept, cameras on the sync line
+
+| 0.6.0 | 0.6.1 |
+|-------|-------|
+| the house light (port 5) was never driven | driven by **PulsePal output 3**, held as its resting voltage, with the line looped back into Bpod's **BNC input 1** (D15). `S.Session.HouseLight` (setup dialog, Experiment tab) and `S.Sleep.HouseLight` (sleep setup dialog) where it starts; the **House light** box in both live figures switches it at once; `Data.HouseLight` per trial or block, `BNC1High`/`BNC1Low` events, `Session.HouseLight` (switches on the camera clock, edges on Bpod's clock). Port 5 is unused. Builds of 0.6.1 before it had `S.GUI.HouseLight` (renamed on load) and drove port 5 from the states, then from a global timer and output override; no data file records the latter |
+| PulsePal opened only for sessions with light | opened in every session on the rig, for the house light; a session without light runs without it, with the house light disabled (`Session.HouseLight.Switchable`); `hardware/TestHouseLight` checks the loopback |
+| the subject came from `Status.CurrentSubjectName`, empty unless the launch manager's selection changed | `lum.launchSubject`: the launch button's `GUIData.SubjectName`, then the selection, then the data file's folder |
+| the plots closed with the session | saved as `<data file name>_plots.png` beside the data file, `Session.PlotsImage`; closing a plot window hides it (D16) |
+| the settings file held the settings as Start was pressed | written again at teardown, with runtime changes (D16) |
+| Flex2 went to the scope only; `TTL_State` 0 | Flex2 wired to both cameras' Line0 (3.3 V); `TTL_State` carries the barcode and trial pulses; with video, the barcode and sync pulses are widened to what the cameras can read (`lum.sync.fitToCameras`, `Session.SyncFit`) |
+| a second rig utility in the same MATLAB refused to run ("A protocol is running"): `RunStateMachine` leaves `Status.BeingUsed` at 1 | `TestHouseLight` and `TestSyncLine` put `BeingUsed` and `InStateMatrix` back when they finish |
+| barcode bits 10 / 30 ms, trial and sleep pulses 55 ± 45 ms | defaults 20 / 50 ms and 60 ± 40 ms (existing settings files keep theirs, fitted at session time) |

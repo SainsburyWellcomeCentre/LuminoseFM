@@ -57,7 +57,7 @@ end
 function testEveryPerTrialSeriesIsTrimmedToTheTrialsThatRan(testCase)
 sessionData = testCase.TestData.sessionData;
 series = {'StimulusGroup', 'PatternIndex', 'CorrectSide', 'Choice', 'Correct', 'Rewarded', ...
-          'Outcome', 'ReactionTime', 'OptoOn', 'SoundOn', 'SyncMode', 'SyncPulseWidth', ...
+          'Outcome', 'ReactionTime', 'OptoOn', 'SoundOn', 'HouseLight', 'SyncMode', 'SyncPulseWidth', ...
           'BiasTargetPLeft', 'TrainingStage', 'HoldDuration', 'HoldGrace', 'HoldBreaks', ...
           'HoldAttempts', 'EarlyWithdrawals', 'CameraTime'};
 for i = 1:numel(series)
@@ -123,6 +123,40 @@ verifyEqual(testCase, sessionData.Session.Cameras.Backend, 'none');
 verifyTrue(testCase, all(isnan(sessionData.CameraTime)), 'No video, no camera clock');
 end
 
+function testTheHouseLightIsRecordedPerTrialAndForTheSession(testCase)
+% It starts on, and the House light box in the plots is clicked off part way through a
+% trial: PulsePal's output 3 goes to 0 V, the emulated loopback puts BNC1Low in that
+% trial's events, and each trial's level is read from them (D15).
+sessionData = testCase.TestData.sessionData;
+verifyTrue(testCase, testCase.TestData.clicked, 'The box was clicked during a trial');
+record = sessionData.Session.HouseLight;
+verifyTrue(testCase, record.OnAtStart);
+verifyFalse(testCase, record.OnAtEnd);
+verifyEqual(testCase, record.Switches.On, false, 'One switch, off');
+verifyEqual(testCase, {record.Input, record.OffEvent}, {'BNC1', 'BNC1Low'});
+verifyNumElements(testCase, record.Edges.Time, 1, 'One edge on Bpod''s clock');
+verifyFalse(testCase, record.Edges.On);
+k = record.Edges.Trial;
+verifyTrue(testCase, isfield(sessionData.RawEvents.Trial{k}.Events, 'BNC1Low'));
+verifyEqual(testCase, record.Edges.Time, sessionData.TrialStartTimestamp(k) ...
+            + sessionData.RawEvents.Trial{k}.Events.BNC1Low, 'AbsTol', 1e-9);
+verifyEqual(testCase, sessionData.HouseLight, double((1:sessionData.nTrials) <= k), ...
+            'On until the trial it was switched off in, off after');
+verifyTrue(testCase, any(strcmp(sessionData.Session.DeviceLog.PulsePal, 'would set ch3 param 17 = 5')));
+verifyTrue(testCase, any(strcmp(sessionData.Session.DeviceLog.PulsePal, 'would set ch3 param 17 = 0')));
+verifyTrue(testCase, sessionData.Session.DevicesAvailable.HouseLight == false, 'Emulated');
+end
+
+function testThePlotsAreSavedAsAnImageBesideTheData(testCase)
+sessionData = testCase.TestData.sessionData;
+[folder, name] = fileparts(sessionData.Session.PlotsImage);
+verifyEqual(testCase, name, 'testSubject_LuminoseFM_test_plots');
+verifyEqual(testCase, folder, testCase.TestData.dataFolder);
+verifyTrue(testCase, isfile(sessionData.Session.PlotsImage), 'The image must be written');
+info = imfinfo(sessionData.Session.PlotsImage);
+verifyGreaterThan(testCase, info.Width, 500);
+end
+
 function testTheEmulatorGetsTheRunnerAndWindowItCanRun(testCase)
 session = testCase.TestData.sessionData.Session;
 verifyEqual(testCase, session.RunnerMode, 'blocking');
@@ -165,6 +199,7 @@ S.GUI.DrinkingGrace = 0.05;
 S.GUI.PunishTimeout = 0.05;
 S.GUI.ITI = 0.05;
 S.GUI.RewardAmount = 1;
+S.Session.HouseLight = true;  % And clicked off part way through (startHouseLightClicker)
 S.Camera.Enabled = false;  % cameraTest runs a session with simulated cameras
 
 BpodSystem.ProtocolSettings = S;
@@ -181,7 +216,13 @@ BpodSystem.Path.CurrentDataFile = fullfile(testCase.TestData.dataFolder, ...
 
 setappdata(0, 'LuminoseFM_Headless', true);
 
+% Off during the third trial or later, so trials run both ways.
+clicker = startHouseLightClicker(@() isfield(BpodSystem.Data, 'nTrials') && BpodSystem.Data.nTrials >= 2);
+cleanup = onCleanup(@() delete(clicker));
 LuminoseFM;
+stop(clicker);
+testCase.TestData.clicked = clicker.UserData.Clicked;
+delete(cleanup);
 
 % RunProtocol('Stop') took the protocol folder off the path on its way out, which is
 % correct on the rig but would leave the rest of the suite unable to resolve lum.*.

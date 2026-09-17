@@ -15,8 +15,14 @@ function run(S, rig, subject, headless)
 %   blocks     the timeline in state machines of about 10 s (lum.sleep.nextBlock), each
 %              cut where every line is low and no epoch is split; PulsePal is given each
 %              step's carrier between blocks; onsets read back from the states
-%   teardown   the pulse and light records, the analog stream, the final file, then the
+%   teardown   the plots saved as an image, the pulse and light records, the analog
+%              stream, the final file, the settings kept for the next session, then the
 %              video stopped and its summary added to the file, devices released
+%
+% The house light starts at S.Sleep.HouseLight and is switched from the sleep window's
+% header at once, mid-block included (devices.houseLight, D15). PulsePal holds it on its
+% output 3, so it stays as the operator left it between blocks too, and its loopback
+% into BNC1 puts each switch made during a block among that block's events.
 %
 % Blocks run on blocking RunStateMachine calls, on the rig as in the emulator: with
 % nothing to prepare between blocks there is no use for BpodTrialManager, and every
@@ -29,12 +35,19 @@ function run(S, rig, subject, headless)
 %                       SyncSent, StartTime, EndTime, Barcode (Value, Hex, Kind, Sent,
 %                       Params), TestPulses (Enabled, Steps, Duration, Completed,
 %                       StoppedReason), Cameras (lum.dev.Cameras.sessionRecord),
-%                       ProtocolVersion, DeviceLog (PulsePal, FlexIO, Cameras)
+%                       ProtocolVersion, DeviceLog (PulsePal, FlexIO, Cameras, HouseLight),
+%                       HouseLight (lum.dev.HouseLight.record: every switch, and every
+%                       edge on Bpod's clock),
+%                       PlotsImage (lum.gui.savePlotsImage), SyncFit (what
+%                       lum.sync.fitToCameras widened)
 %   Data.SyncPulses     .Onset (s, state machine clock), .Width (s) and .Block, one value
 %                       per pulse sent
 %   Data.LightSegments  With test pulses: .Onset (s, state machine clock), .Duration (s),
 %                       .Channel (1 A, 2 B), .Step, .Epoch and .Block, one value per gate
 %                       of light sent (lum.sleep.epochShape gives the pulses in it)
+%   Data.HouseLight     1 or 0 per block: whether the house light was on as it started;
+%                       switches during a block are BNC1High (on) and BNC1Low (off) in
+%                       its events, and Data.Session.HouseLight lists every switch
 %   Data.CameraTime     Seconds on the camera host clock when each block's events arrived,
 %                       one value per block (NaN without video): pairs TrialEndTimestamp
 %                       with the frame logs' HostTime_s
@@ -61,7 +74,20 @@ if ~headless
     end
     SaveProtocolSettings(S);
 end
+% Kept, because the console's End button clears BpodSystem.Path.Settings before the
+% teardown writes the settings back.
+settingsFile = BpodSystem.Path.Settings;
 S.Session.Type = 'Sleep';
+% With video, the barcode and sync pulses are widened until the cameras can read them
+% (lum.sync.fitToCameras); the session runs and records the fitted values, and the
+% settings file keeps what was typed.
+typedSync = S.Sync;
+typedSleepSync = S.Sleep.Sync;
+[S, syncFit] = lum.sync.fitToCameras(S);
+if ~isempty(syncFit)
+    fprintf('LuminoseFM: sync line widened so the %g Hz cameras can read it: %s.\n', ...
+            S.Camera.FrameRate, strjoin(syncFit, ', '));
+end
 notes = lum.sleep.validate(S, rig);
 for i = 1:numel(notes)
     fprintf('LuminoseFM: note: %s\n', notes{i});
@@ -82,10 +108,11 @@ syncPulses = lum.sleep.syncPulseTimes(sync, durationSeconds);
 cycle = plan.CyclePeriod;
 
 %% Hardware
-% The Flex channels, and PulsePal when test pulses are on; never the HiFi module. A
-% session with test pulses refuses to start without PulsePal (lum.dev.openPulsePal), and
-% Bpod runs the protocol file with no try/catch of its own, so the console is released
-% here before the error is shown.
+% The Flex channels and PulsePal, which drives the house light and any test pulses;
+% never the HiFi module. A session with test pulses does not start on the rig without
+% PulsePal; one without runs, without the house light (lum.dev.openPulsePal,
+% lum.dev.openHouseLight). Bpod runs the protocol file with no try/catch of its own,
+% so the console is released here before the error is shown.
 try
     devices = lum.dev.open(rig, lum.sleep.deviceSettings(S));
 catch openError
@@ -110,7 +137,8 @@ if testPulses.Enabled
     lines(2:3) = rig.Opto.Channels;
 end
 
-plots = lum.sleep.Plots(S, 'Subject', subject, 'MaxPulses', size(syncPulses, 1), 'Plan', plan);
+plots = lum.sleep.Plots(S, 'Subject', subject, 'MaxPulses', size(syncPulses, 1), 'Plan', plan, ...
+                        'HouseLight', devices.houseLight);
 cameraWindow = [];
 if S.Camera.ShowWindow && devices.cameras.canPreview()
     cameraWindow = lum.gui.CameraWindow(devices.cameras, S.Camera, 'Subject', subject);
@@ -146,6 +174,7 @@ nBlocks = 0;
 % Blocks last about 10 s and are never shorter than their shortest span, so one mark a
 % second of recording is room enough.
 cameraTimes = NaN(1, max(100, ceil(durationSeconds)));
+houseLights = NaN(1, numel(cameraTimes));
 saveEveryNBlocks = 6;   % About a minute of 10 s blocks
 stoppedReason = '';
 cursor = struct('Time', 0, 'End', round(durationSeconds / cycle), 'NextSync', 1, 'NextEpoch', 1);
@@ -168,6 +197,7 @@ while BpodSystem.Status.BeingUsed == 1 && cursor.Time < cursor.End
     end
     SendStateMachine(lum.sleep.blockStateMachine(block, lines));
     rawEvents = RunStateMachine;
+    arrivedAt = devices.houseLight.sessionTime();  % For the block's house light level
     if isempty(fieldnames(rawEvents))
         break  % Stopped before the block began; nothing to record
     end
@@ -176,6 +206,7 @@ while BpodSystem.Status.BeingUsed == 1 && cursor.Time < cursor.End
     nBlocks = nBlocks + 1;
     if nBlocks <= numel(cameraTimes)
         cameraTimes(nBlocks) = devices.cameras.mark('BlockEnd', nBlocks);
+        houseLights(nBlocks) = double(houseLightAtStart(devices.houseLight, nBlocks, arrivedAt));
     end
     if nBlocks == 1
         % AddTrialEvents builds Data.Info on the first block, so session-level
@@ -183,6 +214,7 @@ while BpodSystem.Status.BeingUsed == 1 && cursor.Time < cursor.End
         BpodSystem.Data.Info.EmulatorMode = devices.emulated;
         BpodSystem.Data.Session = sessionRecord(S, rig, devices, startTime, barcode, ...
                                                 barcodeSent, syncChannel, plan);
+        BpodSystem.Data.Session.SyncFit = syncFit;
     end
     trial = BpodSystem.Data.RawEvents.Trial{nBlocks};
     trialStart = BpodSystem.Data.TrialStartTimestamp(nBlocks);
@@ -207,6 +239,7 @@ while BpodSystem.Status.BeingUsed == 1 && cursor.Time < cursor.End
         BpodSystem.Data = publishPulses(BpodSystem.Data, syncOnsets, syncWidths, syncBlocks, ...
             nSyncSent, plan, segmentOnsets, segmentBlocks, nSegmentsSent, testPulses.Enabled);
         BpodSystem.Data.CameraTime = cameraTimes(1:min(nBlocks, numel(cameraTimes)));
+        BpodSystem.Data.HouseLight = houseLights(1:min(nBlocks, numel(houseLights)));
         SaveBpodSessionData;
         if ~isempty(stoppedReason)
             break
@@ -227,14 +260,26 @@ if ~isempty(cameraWindow)
     cameraWindow.close();
 end
 saved = false;
+plotsImage = '';
+if nBlocks > 0
+    [plotsImage, plotsProblem] = lum.gui.savePlotsImage(plots.Figure, BpodSystem.Path.CurrentDataFile);
+    if ~isempty(plotsProblem)
+        warning('lum:sleep:run:plotsNotSaved', 'The plots were not saved as an image: %s', ...
+                plotsProblem);
+    end
+end
 try
     BpodSystem.Data = publishPulses(BpodSystem.Data, syncOnsets, syncWidths, syncBlocks, ...
         nSyncSent, plan, segmentOnsets, segmentBlocks, nSegmentsSent, testPulses.Enabled);
     BpodSystem.Data.CameraTime = cameraTimes(1:min(nBlocks, numel(cameraTimes)));
+    BpodSystem.Data.HouseLight = houseLights(1:min(nBlocks, numel(houseLights)));
     if isfield(BpodSystem.Data, 'Session')
+        BpodSystem.Data.Session.PlotsImage = plotsImage;
+        BpodSystem.Data.Session.HouseLight = devices.houseLight.record(BpodSystem.Data);
         BpodSystem.Data.Session.DeviceLog = struct('PulsePal', {devices.pulsePal.log()}, ...
                                                    'FlexIO', {devices.flex.log()}, ...
-                                                   'Cameras', {devices.cameras.log()});
+                                                   'Cameras', {devices.cameras.log()}, ...
+                                                   'HouseLight', {devices.houseLight.log()});
         BpodSystem.Data.Session.Cameras = devices.cameras.sessionRecord();
         BpodSystem.Data.Session.EndTime = char(datetime('now'), 'yyyy-MM-dd HH:mm:ss');
         BpodSystem.Data.Session.TestPulses.Completed = testPulses.Enabled && completed;
@@ -248,6 +293,24 @@ try
 catch teardownError
     warning('lum:sleep:run:teardownFailed', 'Saving the sleep session failed: %s', ...
             teardownError.message);
+end
+
+% The house light as the operator left it is where the next sleep session starts; a session
+% that could not switch it keeps what the settings asked for.
+if ~headless
+    if devices.houseLight.Switchable
+        S.Sleep.HouseLight = devices.houseLight.On;
+    end
+    S.Sync = typedSync;             % What was typed, not what was fitted to the cameras
+    S.Sleep.Sync = typedSleepSync;
+    try
+        ProtocolSettings = S;
+        save(settingsFile, 'ProtocolSettings');
+    catch settingsError
+        warning('lum:sleep:run:settingsNotSaved', ...
+                'The settings as they ended were not saved for the next session: %s', ...
+                settingsError.message);
+    end
 end
 
 % The video stops only once the data are saved, so everything the file holds is on it
@@ -269,6 +332,7 @@ if saved && isfield(BpodSystem.Data, 'Session') && devices.cameras.sessionRecord
     end
 end
 
+plots.close();  % Only hidden by the console's End button, so it could be saved above
 closeDevices(devices);
 clear devices plots cameraWindow  % No lum.* object may outlive RunProtocol('Stop')
 
@@ -284,7 +348,7 @@ end
 
 function closeDevices(devices)
 % Release every device, whatever happened to the session.
-for name = {'cameras', 'pulsePal', 'hifi', 'flex'}
+for name = {'cameras', 'houseLight', 'pulsePal', 'hifi', 'flex'}  % The light off before PulsePal goes
     try
         devices.(name{1}).close();
     catch closeError
@@ -334,7 +398,8 @@ record.Emulated = devices.emulated;
 record.DevicesAvailable = struct('PulsePal', devices.pulsePal.Available, ...
                                  'FlexAnalog', devices.flex.hasAnalog(), ...
                                  'FlexSync', devices.flex.hasSync(), ...
-                                 'Cameras', devices.cameras.Available);
+                                 'Cameras', devices.cameras.Available, ...
+                                 'HouseLight', devices.houseLight.Available);
 record.Cameras = devices.cameras.sessionRecord();  % Brought up to date at teardown
 record.SyncSent = ~isempty(syncChannel);
 record.StartTime = char(startTime, 'yyyy-MM-dd HH:mm:ss');
@@ -343,6 +408,16 @@ record.Barcode = struct('Value', barcode.Value, 'Hex', barcode.Hex, 'Kind', barc
 record.TestPulses = struct('Enabled', S.Sleep.TestPulses.Enabled, 'Steps', plan.Steps, ...
                            'Duration', plan.Duration, 'Completed', false, 'StoppedReason', '');
 record.ProtocolVersion = lum.version();
+
+
+function on = houseLightAtStart(houseLight, blockNumber, arrivedAt)
+% The house light's level as a block started: from the loopback input's first edge in the
+% block when there is one, otherwise the level PulsePal held when the block started on
+% MATLAB's clock — its events arrived arrivedAt, one block's length after it started.
+global BpodSystem %#ok<GVMIS>
+duration = BpodSystem.Data.TrialEndTimestamp(blockNumber) - BpodSystem.Data.TrialStartTimestamp(blockNumber);
+on = lum.dev.HouseLight.levelAtStart(BpodSystem.Data.RawEvents.Trial{blockNumber}.Events, ...
+                                     houseLight, houseLight.levelAt(arrivedAt - duration));
 
 
 function text = barcodeText(barcode, sent)

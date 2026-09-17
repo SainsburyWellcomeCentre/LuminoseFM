@@ -12,6 +12,9 @@ classdef OnlinePlots < handle
     % Axis limits follow the data: the per-trial panels scroll with the session and
     % rescale to what is on screen, so they stay legible at trial 5 and at trial 900.
     %
+    % The header also holds the house light switch, which acts at once
+    % (lum.gui.houseLightSwitch).
+    %
     % Panels (README §6), laid out in the order the operator reads them:
     %   Top row
     %     Now and next  The pattern of the running trial and the next three queued,
@@ -36,6 +39,9 @@ classdef OnlinePlots < handle
     %     Side bias     P(chose left) over the last BiasWindow choices, with the
     %                   P(left) bias correction aimed for on each trial
     %     Reaction time Per trial, by side chosen, with a running median
+    %
+    % Closing the figure only hides it: the session saves it as an image beside the data
+    % file at teardown (lum.gui.savePlotsImage), and close() is what deletes it.
     %
     % See also: lum.newHistory, lum.scoreTrial, lum.pattern.stimulusSet, lum.gui.theme,
     %           lum.sleep.Plots
@@ -102,6 +108,8 @@ classdef OnlinePlots < handle
             %   'nTrialsToShow'  Scrolling window width (default 80)
             %   'RefreshEvery'   Trials between aggregate panel updates (default 5)
             %   'Subject'        Shown in the header
+            %   'HouseLight'     The session's lum.dev.HouseLight, for the header's switch
+            %                    (lum.gui.houseLightSwitch); none without it
             %   'Visible'        'on' (default) or 'off', for tests
             global BpodSystem %#ok<GVMIS> % Figures are registered so Bpod can close them
 
@@ -110,6 +118,7 @@ classdef OnlinePlots < handle
             addParameter(p, 'nTrialsToShow', 80, @(x) isnumeric(x) && isscalar(x) && x > 1);
             addParameter(p, 'RefreshEvery', 5, @(x) isnumeric(x) && isscalar(x) && x >= 1);
             addParameter(p, 'Subject', '', @(x) ischar(x) || isstring(x));
+            addParameter(p, 'HouseLight', [], @(x) isempty(x) || isa(x, 'lum.dev.HouseLight'));
             addParameter(p, 'Visible', 'on');
             parse(p, varargin{:});
             obj.nTrialsToShow = p.Results.nTrialsToShow;
@@ -149,12 +158,13 @@ classdef OnlinePlots < handle
             t = obj.theme;
             obj.Figure = figure('Name', 'LuminoseFM - online', 'NumberTitle', 'off', ...
                                 'MenuBar', 'none', 'ToolBar', 'none', 'Color', t.Background, ...
-                                'Position', [80 60 1320 820], 'Visible', p.Results.Visible);
+                                'Position', [80 60 1320 820], 'Visible', p.Results.Visible, ...
+                                'CloseRequestFcn', @hideInstead);
             if ~isempty(BpodSystem) && isobject(BpodSystem)
                 BpodSystem.ProtocolFigures.LuminoseOnlinePlots = obj.Figure;
             end
 
-            obj.buildHeader(S, char(p.Results.Subject));
+            obj.buildHeader(S, char(p.Results.Subject), p.Results.HouseLight);
             body = uipanel(obj.Figure, 'Units', 'normalized', 'Position', [0 0 1 0.93], ...
                            'BorderType', 'none', 'BackgroundColor', t.Background);
             % Twelve columns, so the top row keeps its one-to-three split and the two
@@ -269,9 +279,12 @@ classdef OnlinePlots < handle
         end
 
         function close(obj)
-            % close() closes the figure, if it is still open.
+            % close() closes the figure for good, if it is still open. Closing it any
+            % other way — the operator, or the console's End button through
+            % RunProtocol('Stop') — only hides it, so the session can still save it as an
+            % image at teardown (lum.gui.savePlotsImage) before calling this.
             if ~isempty(obj.Figure) && isvalid(obj.Figure)
-                close(obj.Figure);
+                delete(obj.Figure);
             end
         end
     end
@@ -415,7 +428,7 @@ classdef OnlinePlots < handle
             end
         end
 
-        function buildHeader(obj, S, subject)
+        function buildHeader(obj, S, subject, houseLight)
             % A strip across the top: logo, what session this is, and the summary.
             t = obj.theme;
             header = uipanel(obj.Figure, 'Units', 'normalized', 'Position', [0 0.93 1 0.07], ...
@@ -443,9 +456,11 @@ classdef OnlinePlots < handle
                 titleText = [titleText '  |  habituation: both side ports pay'];
             end
             uicontrol(header, 'Style', 'text', 'Units', 'normalized', ...
-                      'Position', [0.05 0.5 0.9 0.42], 'String', titleText, 'FontSize', 12, ...
+                      'Position', [0.05 0.5 0.8 0.42], 'String', titleText, 'FontSize', 12, ...
                       'FontWeight', 'bold', 'HorizontalAlignment', 'left', ...
                       'BackgroundColor', t.Background, 'ForegroundColor', t.Ink);
+            obj.handles.houseLight = lum.gui.houseLightSwitch(header, [0.87 0.5 0.12 0.42], ...
+                                                              houseLight, t);
             obj.handles.summary = uicontrol(header, 'Style', 'text', 'Units', 'normalized', ...
                       'Position', [0.05 0.06 0.9 0.4], 'String', 'Waiting for the first trial', ...
                       'FontSize', 10, 'HorizontalAlignment', 'left', ...
@@ -753,4 +768,12 @@ function text = orDash(text)
 if isempty(text)
     text = '-';
 end
+end
+
+
+function hideInstead(figureHandle, ~)
+% The figure's close request: hide it, so a session stopped from the console, which
+% closes every protocol figure before the protocol's own teardown runs, can still save
+% the plots as they ended. close() deletes it.
+set(figureHandle, 'Visible', 'off');
 end

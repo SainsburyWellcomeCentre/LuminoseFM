@@ -9,7 +9,8 @@ function [S, accepted, app] = SleepSetupDialog(S, rig, varargin)
 % pulses (D13): whether light is sent on channels A and B, a summary and preview of
 % the schedule, and the button that opens lum.gui.TestPulseDesigner to design it. With
 % test pulses on, the recording lasts as long as their schedule, which the duration
-% field then shows.
+% field then shows. The house light's level at the start is set here (S.Sleep.HouseLight);
+% during the session it is switched from the sleep window, at once.
 %
 % A Cameras tab sets up the session's video, with a live preview (lum.gui.CameraSetup),
 % and a help line at the foot of the window describes the field under the pointer
@@ -69,16 +70,22 @@ cameraTab = uitab(tabGroup, 'Title', 'Cameras', 'BackgroundColor', t.Background)
 body = uigridlayout(sessionTab, [1 3], 'ColumnWidth', {470, '1x', 480}, 'Padding', 8, ...
                     'ColumnSpacing', 12, 'BackgroundColor', t.Background);
 height = @lum.gui.Form.panelHeight;
-left = uigridlayout(body, [4 1], 'RowHeight', {height(2), height(2), height(6) + 50, '1x'}, ...
+left = uigridlayout(body, [4 1], 'RowHeight', {height(2), height(3), height(6) + 50, '1x'}, ...
                     'Padding', 0, 'RowSpacing', 10, 'BackgroundColor', t.Background);
 controls = lum.gui.ExperimentForm.buildAnimal(left, S, choices, t);
 
-form = lum.gui.Form.panel(left, 'Recording', 2, t, 190);
+form = lum.gui.Form.panel(left, 'Recording', 3, t, 190);
 lum.gui.Form.label(form, 'Duration (min)', t);
 controls.Duration = lum.gui.Form.number(form, S.Sleep.DurationMinutes, [0.01 1440], @durationEdited, false);
 lum.gui.Form.label(form, 'Sync TTL', t);
 controls.UseSync = uicheckbox(form, 'Text', 'Flex2 output', 'Value', S.Session.UseSync, ...
                               'ValueChangedFcn', @(~, ~) refresh());
+lum.gui.Form.label(form, 'House light', t);
+controls.HouseLight = uicheckbox(form, 'Text', 'On', 'Value', S.Sleep.HouseLight, ...
+    'Tooltip', ['The white house light inside the box (PulsePal output 3), on or off for the '...
+                'recording as it starts. Switch it during the session from the House light box in the '...
+                'sleep window''s header; it changes at once.'], ...
+    'ValueChangedFcn', @(~, ~) refresh());
 
 sync = S.Sleep.Sync;
 form = lum.gui.Form.panel(left, 'Sync pulses', 7, t, 190);
@@ -167,6 +174,7 @@ controls.Start = uibutton(footer, 'Text', 'Start recording', 'FontWeight', 'bold
 helpLine = lum.gui.HelpLine(fig, controls.Help, ...
                             'Point at a field, or use it, to see what it does here.');
 helpLine.registerTooltips();
+cameras.useHelpLine(helpLine);  % The format's description follows the choice
 refresh();
 app = struct('Figure', fig, 'collect', @collectSettings, 'refresh', @refresh, ...
              'start', @onStart, 'cancel', @onCancel, 'status', @statusText, ...
@@ -283,6 +291,7 @@ end
         candidate.Meta = lum.gui.ExperimentForm.read(c, candidate.Meta);
         candidate.Session.Type = 'Sleep';
         candidate.Session.UseSync = c.UseSync.Value;
+        candidate.Sleep.HouseLight = c.HouseLight.Value;
         candidate.Sleep.DurationMinutes = ownDuration;
         candidate.Sleep.Sync = struct( ...
             'Mode', find(strcmp(c.SyncMode.Value, candidate.Sync.ModeNames), 1), ...
@@ -315,9 +324,10 @@ end
         end
         lum.gui.Form.setEnable({c.BarcodeBits, c.BarcodeSleepMarker, c.BarcodeZero, ...
                                 c.BarcodeOne, c.BarcodeGap}, candidate.Sync.Barcode.Enabled);
-        if ~isequal(candidate.Sync.Barcode, drawnBarcode)
-            lum.gui.Form.drawBarcode(c.BarcodeAxes, candidate.Sync.Barcode, 'Sleep', t);
-            drawnBarcode = candidate.Sync.Barcode;
+        fitted = lum.sync.fitToCameras(candidate);  % What the session will send
+        if ~isequal(fitted.Sync.Barcode, drawnBarcode)
+            lum.gui.Form.drawBarcode(c.BarcodeAxes, fitted.Sync.Barcode, 'Sleep', t);
+            drawnBarcode = fitted.Sync.Barcode;
         end
 
         design = candidate.Sleep.TestPulses;

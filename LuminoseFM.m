@@ -22,8 +22,9 @@ function LuminoseFM
 %              sounds, windows, barcode
 %   trial loop generate, build, upload, run, mark the camera clock, score, record,
 %              plot, save
-%   teardown   merge the analog stream, write the final file, stop the video and add
-%              its summary to the file, release devices
+%   teardown   save the plots as an image, merge the analog stream, write the final
+%              file, keep the settings as they ended for the next session, stop the
+%              video and add its summary to the file, release devices
 %
 % Everything with logic in it lives in the +lum package, where it can be tested
 % without hardware. See lum.buildTrialSM for the state graph, lum.nextTrialSpec for
@@ -89,6 +90,19 @@ if ~headless
     end
     SaveProtocolSettings(S);  % So the session can be reproduced or resumed
 end
+% Kept, because the console's End button clears BpodSystem.Path.Settings before the
+% teardown writes the settings back.
+settingsFile = BpodSystem.Path.Settings;
+
+% With video, the barcode and trial pulses are widened until the cameras can read them
+% (lum.sync.fitToCameras). The session runs, and records, the fitted values; the settings
+% file keeps what was typed.
+typedSync = S.Sync;
+[S, syncFit] = lum.sync.fitToCameras(S);
+if ~isempty(syncFit)
+    fprintf('LuminoseFM: sync line widened so the %g Hz cameras can read it: %s.\n', ...
+            S.Camera.FrameRate, strjoin(syncFit, ', '));
+end
 
 % Validated here as well as in the dialog, so a headless session cannot start on a
 % settings file the dialog would have refused. Nothing is open yet to release.
@@ -98,7 +112,9 @@ for i = 1:numel(notes)
 end
 
 %% Hardware
-% A session that delivers light refuses to start without PulsePal (lum.dev.openPulsePal).
+% A session that delivers light refuses to start without PulsePal; one without light runs
+% without it, and without the house light PulsePal drives (lum.dev.openPulsePal,
+% lum.dev.openHouseLight).
 % Bpod runs the protocol file with no try/catch of its own, so the console is released
 % here before the error is shown.
 try
@@ -146,7 +162,7 @@ if strcmp(windowMode, 'Automatic')
     end
 end
 runtime = lum.gui.RuntimeWindow(S, 'Mode', windowMode, 'Subject', subject);
-plots = lum.OnlinePlots(S, stimulusSet, 'Subject', subject);
+plots = lum.OnlinePlots(S, stimulusSet, 'Subject', subject, 'HouseLight', devices.houseLight);
 if S.Session.ShowAnalogViewer
     devices.flex.openAnalogViewer();  % Airflow, from the flow meter on Flex1
 end
@@ -223,6 +239,7 @@ try
         sendSeconds = toc(sendTimer);
 
         rawEvents = runner.awaitTrialData();
+        arrivedAt = devices.houseLight.sessionTime();  % For the trial's house light level
         cameraTime = NaN;
         if ~isempty(fieldnames(rawEvents))
             % As soon as the trial's events arrive: pairs the trial's end with the video's
@@ -247,12 +264,14 @@ try
             BpodSystem.Data.Info.EmulatorMode = devices.emulated;
             BpodSystem.Data.Session = sessionRecord(S, rig, stimulusSet, runner, devices, startTime, ...
                                                     barcode, barcodeSent, windowMode);
+            BpodSystem.Data.Session.SyncFit = syncFit;
         end
 
         result = lum.scoreTrial(BpodSystem.Data.RawEvents.Trial{currentTrial}, spec, rig);
         history = lum.updateHistory(history, currentTrial, spec, result);
         data = recordTrial(data, currentTrial, spec, result, S);
         data.CameraTime(currentTrial) = cameraTime;
+        data.HouseLight(currentTrial) = houseLightAtStart(devices.houseLight, currentTrial, arrivedAt);
 
         plotTimer = tic;
         plots.update(currentTrial, spec, result, nextSpec, queue, S.GUI.RewardAmount);
@@ -291,9 +310,21 @@ if ~isempty(cameraWindow)
     cameraWindow.close();
 end
 saved = false;
+% The plots as the operator last saw them, beside the data file; written before the
+% final save so the file can say where the image is.
+plotsImage = '';
+if nCompleted > 0
+    [plotsImage, plotsProblem] = lum.gui.savePlotsImage(plots.Figure, BpodSystem.Path.CurrentDataFile);
+    if ~isempty(plotsProblem)
+        warning('lum:LuminoseFM:plotsNotSaved', 'The plots were not saved as an image: %s', ...
+                plotsProblem);
+    end
+end
 try
     BpodSystem.Data = publishTrialFields(BpodSystem.Data, data, nCompleted);
     if isfield(BpodSystem.Data, 'Session')
+        BpodSystem.Data.Session.PlotsImage = plotsImage;
+        BpodSystem.Data.Session.HouseLight = devices.houseLight.record(BpodSystem.Data);
         BpodSystem.Data.Session.DeviceLog = deviceLogs(devices);
         BpodSystem.Data.Session.Cameras = devices.cameras.sessionRecord();
         BpodSystem.Data.Session.EndTime = char(datetime('now'), 'yyyy-MM-dd HH:mm:ss');
@@ -312,12 +343,29 @@ catch teardownError
 end
 runner.close();
 
+% The settings file chosen in the launch manager was written when the setup dialog was
+% accepted; it is written again now, so runtime changes made during the session (reward,
+% timing, the house light...) are where the next session starts.
+if ~headless
+    try
+        S = runtime.sync(S);  % Changes typed since the last trial was prepared
+    catch
+        % Bpod's compact window, already closed by the End button: S is as last synced.
+    end
+    S.Sync = typedSync;  % What was typed, not what was fitted to the cameras
+    if devices.houseLight.Switchable
+        S.Session.HouseLight = devices.houseLight.On;  % Where the operator left it
+    end
+    saveSettings(settingsFile, S);
+end
+
 % The video stops only once the data are saved and the trial manager is closed, so
 % everything the data file holds is on it (D14). What the recording summary says is
 % then added to the file with a second, small save.
 finishVideo(devices, nCompleted, saved);
 
 runtime.close();
+plots.close();  % Only hidden by the console's End button, so it could be saved above
 closeDevices(devices);
 clear runner runtime devices plots cueComponents stimulusComponents cameraWindow  % No lum.* object may outlive Stop
 
@@ -399,11 +447,18 @@ end
 
 
 function subject = currentSubject()
-% The subject chosen in the launch manager, or '' when there is none.
+% The subject the session was launched for in the launch manager, or '' when there is none
+% (lum.launchSubject says where Bpod keeps it, and why Status.CurrentSubjectName alone is
+% not enough).
 global BpodSystem %#ok<GVMIS>
 subject = '';
 try
-    subject = char(BpodSystem.Status.CurrentSubjectName);
+    launched = '';
+    if isfield(BpodSystem.GUIData, 'SubjectName')
+        launched = BpodSystem.GUIData.SubjectName;
+    end
+    subject = lum.launchSubject(launched, BpodSystem.Status.CurrentSubjectName, ...
+                                BpodSystem.Path.CurrentDataFile);
 catch
     % No launch manager, as in a headless test.
 end
@@ -424,7 +479,7 @@ function names = trialSeriesNames()
 % Every per-trial series written to the data file, one value per trial. docs/data-format.md
 % and emulatorSessionTest list them too; keep all three in step.
 names = {'StimulusGroup', 'PatternIndex', 'CorrectSide', 'Choice', 'Correct', 'Rewarded', ...
-         'Outcome', 'ReactionTime', 'OptoOn', 'SoundOn', 'SyncMode', 'SyncPulseWidth', ...
+         'Outcome', 'ReactionTime', 'OptoOn', 'SoundOn', 'HouseLight', 'SyncMode', 'SyncPulseWidth', ...
          'BiasTargetPLeft', 'TrainingStage', 'HoldDuration', 'HoldGrace', 'HoldBreaks', ...
          'HoldAttempts', 'EarlyWithdrawals', 'CameraTime'};
 
@@ -492,7 +547,8 @@ record.DevicesAvailable = struct('PulsePal', devices.pulsePal.Available, ...
                                  'HiFi', devices.hifi.Available, ...
                                  'FlexAnalog', devices.flex.hasAnalog(), ...
                                  'FlexSync', devices.flex.hasSync(), ...
-                                 'Cameras', devices.cameras.Available);
+                                 'Cameras', devices.cameras.Available, ...
+                                 'HouseLight', devices.houseLight.Available);
 record.Cameras = devices.cameras.sessionRecord();  % Brought up to date at teardown
 record.StartTime = char(startTime, 'yyyy-MM-dd HH:mm:ss');
 record.StoppedReason = '';  % Filled in at teardown if the session ended in an error
@@ -507,7 +563,8 @@ function logs = deviceLogs(devices)
 logs = struct('PulsePal', {devices.pulsePal.log()}, ...
               'HiFi', {devices.hifi.log()}, ...
               'FlexIO', {devices.flex.log()}, ...
-              'Cameras', {devices.cameras.log()});
+              'Cameras', {devices.cameras.log()}, ...
+              'HouseLight', {devices.houseLight.log()});
 
 
 function finishVideo(devices, nCompleted, saved)
@@ -532,10 +589,34 @@ catch saveError
 end
 
 
+function on = houseLightAtStart(houseLight, trialNumber, arrivedAt)
+% The house light's level as a trial started: from the loopback input's first edge in the
+% trial when there is one, otherwise the level PulsePal held when the trial started on
+% MATLAB's clock — its data arrived arrivedAt, one trial's length after it started.
+global BpodSystem %#ok<GVMIS>
+duration = BpodSystem.Data.TrialEndTimestamp(trialNumber) - BpodSystem.Data.TrialStartTimestamp(trialNumber);
+fallback = houseLight.levelAt(arrivedAt - duration);
+on = lum.dev.HouseLight.levelAtStart(BpodSystem.Data.RawEvents.Trial{trialNumber}.Events, ...
+                                     houseLight, fallback);
+
+
+function saveSettings(settingsFile, ProtocolSettings)
+% Write the settings back to the launch manager's settings file, as SaveProtocolSettings
+% does but to the file the session started with, warning rather than failing: the
+% session's data are already saved.
+try
+    save(settingsFile, 'ProtocolSettings');
+catch settingsError
+    warning('lum:LuminoseFM:settingsNotSaved', ...
+            'The settings as they ended were not saved for the next session: %s', ...
+            settingsError.message);
+end
+
+
 function closeDevices(devices)
 % Release every device, whatever happened to the session. Safe to call twice: the
 % shims' close methods are idempotent.
-names = {'cameras', 'pulsePal', 'hifi', 'flex'};
+names = {'cameras', 'houseLight', 'pulsePal', 'hifi', 'flex'};  % The light off before PulsePal goes
 for i = 1:numel(names)
     try
         devices.(names{i}).close();

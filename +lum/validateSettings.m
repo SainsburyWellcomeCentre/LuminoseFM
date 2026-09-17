@@ -194,6 +194,14 @@ switch S.Sync.Mode
                  S.Sync.MeanWidth);
         end
 end
+% With video, what goes on the line is widened until the cameras can read it. What was
+% typed is checked above; from here on the fitted values are, and the operator is told
+% what changed.
+[S, syncFit] = lum.sync.fitToCameras(S);
+if ~isempty(syncFit)
+    notes{end+1} = sprintf('Sync line widened so the %g Hz cameras can read it: %s.', ...
+                           S.Camera.FrameRate, strjoin(syncFit, ', '));
+end
 % A pulsed mode is the trial's first state, so the cue starts one pulse width after the
 % state machine does. That is nothing at the tens of milliseconds the modes are meant for,
 % and worth saying out loud past that.

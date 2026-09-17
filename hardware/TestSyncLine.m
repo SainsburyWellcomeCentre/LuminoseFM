@@ -81,6 +81,10 @@ if ~ismember(channel, outputs)
            'that exists, e.g. ''BNC2''.'], channel);
 end
 
+% RunStateMachine leaves Status.BeingUsed at 1; put it back so the next utility is not refused.
+previousStatus = [BpodSystem.Status.BeingUsed, BpodSystem.Status.InStateMatrix];
+cleanup = onCleanup(@() restoreStatus(previousStatus));
+
 nPulses = round(opt.Count);
 report = struct('Channel', channel, 'Width', opt.Width, 'Gap', opt.Gap, ...
                 'Count', nPulses, 'Drive', drive, 'States', [], 'Timer', [], 'Barcode', []);
@@ -117,6 +121,13 @@ end
 fprintf(['TestSyncLine: if one train reached the recording and the other did not, the line '...
          'is fine and\n  the way it was driven is not. Say which in the session notes and in '...
          'docs/architecture.md (D4).\n']);
+delete(cleanup);
+
+
+function restoreStatus(previousStatus)
+global BpodSystem %#ok<GVMIS>
+BpodSystem.Status.BeingUsed = previousStatus(1);
+BpodSystem.Status.InStateMatrix = previousStatus(2);
 
 
 function sma = statesTrain(channel, width, gap, nPulses)

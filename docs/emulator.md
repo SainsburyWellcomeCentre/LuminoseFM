@@ -52,6 +52,14 @@ again on the next trial. A sleep session needs no clicks.
   The data and the rig are not affected.
 - **`LoopMode` is not emulated** — a looping timer fires once and never repeats. This is why no
   stimulus structure is ever put in a looping timer (D1 in [`architecture.md`](architecture.md)).
+- **The house light's loopback is emulated.** On the rig PulsePal's output 3 drives the light and a
+  copy of the line comes into Bpod's BNC input 1. The emulator has neither, so `NullHouseLight` logs
+  each level in PulsePal's device log (`would set ch3 param 17 = 5`) and, while a state machine runs,
+  puts the input's edge into it the way the console's BNC input button does — so a switch is a
+  `BNC1High` / `BNC1Low` event in the data file, as on the rig, and the console's BNC 1 input shows the
+  level. A switch between state machines has no event, as on the rig.
+- **Plots are saved as an image** at the end of an emulated session too (`_plots.png` beside the
+  data file), and a headless (test) session never writes the settings file.
 - **No millisecond time.** The emulator runs states from a MATLAB loop: a state never ends before
   its timer, but may end tens of ms after. Emulated intervals are lower bounds only; exact timing
   is a property of the plan and of the rig.
@@ -77,5 +85,5 @@ must behave differently is told so through `devices.emulated`.
 Emulated sessions still produce a complete, correctly structured data file, marked with
 `Data.Info.EmulatorMode = 1` so it is never mistaken for real behaviour.
 
-The test suite (`tests/runLuminoseTests`) starts `Bpod('EMU')` itself and **refuses to run against
+The test suite (`tests/runLuminoseTests.m`) starts `Bpod('EMU')` itself and **refuses to run against
 a real state machine**; `emulatorSessionTest` and `sleepSessionTest` run whole sessions this way.
