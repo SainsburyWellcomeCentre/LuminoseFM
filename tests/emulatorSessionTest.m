@@ -83,7 +83,7 @@ else
 end
 verifyEqual(testCase, unique(sessionData.LEDCurrentA), expected(1));
 verifyEqual(testCase, unique(sessionData.LEDCurrentB), expected(2));
-verifyEqual(testCase, [record.LightPaths.nFibers], [10 9]);
+verifyEqual(testCase, [record.LightPaths.nFibers], [9 10], 'Blue on A, green on B');
 end
 
 function testTheStimulusSetIsStoredOnceAndIndexed(testCase)

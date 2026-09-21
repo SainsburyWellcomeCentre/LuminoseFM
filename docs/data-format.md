@@ -94,9 +94,10 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
 - `DoricLED` — the LED (D17), from `lum.led.sessionRecord`: `Controlled` (true when the session set
   the driver), `Mode` (`'Device'`, `'Simulated'` in the emulator, `'Manual'` when set by hand) and
   `Reason`; `Settings` (`S.Doric`); `LightPaths`, one per channel: `Channel`, `LEDChannel`, `Bundle`,
-  `Cable`, `nFibers`, `FiberDiameter` (mm), `Area` (mm²); `Calibrations`, a 1 × 2 cell holding each
-  path's calibration as used, or `[]` (`CurrentmA`, `PowermW`, `IrradiancemWmm2`, `PowerUnit`,
-  `PowerTyped`, `Date`, `Notes`); and `Device`: `CurrentmA` and `MaxCurrentmA` at the end, `Changes`
+  `Cable`, `nFibers`, `FiberDiameter` (mm), `Area` (mm²); `Calibrations`, a 1 × 2 cell holding the
+  calibration of the cable on each channel as used, or `[]` (`Bundle`, `Cable`, `MeasuredOn` and
+  `MeasuredLEDChannel`, the channel it was measured through, `CurrentmA`, `PowermW`,
+  `IrradiancemWmm2`, `PowerUnit`, `PowerTyped`, `Date`, `Notes`); and `Device`: `CurrentmA` and `MaxCurrentmA` at the end, `Changes`
   (one row per current sent: session seconds on the LED's clock, channel 1 = A, mA, trial or block)
   and `Package`, the DoricLED package's record of what the driver acknowledged (without its log).
   Irradiance for any current: `lum.led.irradiance(Session.DoricLED.Calibrations{k}, mA)`.
@@ -306,6 +307,12 @@ the null device shims swallowed is recorded in `Data.Session.DeviceLog`. See
 
 ## Reading older files
 
+- **Sessions before 0.7.2** name the 2-to-19 bundle's cables `'ch1 fiber'` (10 fibers, on A) and
+  `'ch2 fiber'` (9, on B) in `Session.DoricLED.LightPaths`, and their settings' `Light.Cables` is not
+  read for that bundle. From 0.7.2 the cables are named by colour, blue (9 fibers) and green (10), blue
+  on A by default. Which colour an older 2-to-19 session had on A is not recorded. A 0.7.0 or 0.7.1
+  calibration has `Channel` and `LEDChannel` where later ones have `MeasuredOn` and
+  `MeasuredLEDChannel`.
 - **Sessions before 0.7.0** have no `LEDCurrentA`/`LEDCurrentB`, `LightSegments.CurrentmA` or
   `Session.DoricLED`: the LED was set by hand. Their barcode parameters have no `EphysMarkerWidth`,
   and their house light never switched on at the rig (see `Session.HouseLight` above).

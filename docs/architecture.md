@@ -1,6 +1,6 @@
 # LuminoseFM — Architecture
 
-Design record for the LuminoseFM protocol. Status: **implemented** (version 0.7.0); decisions
+Design record for the LuminoseFM protocol. Status: **implemented** (version 0.7.2); decisions
 D1–D18 confirmed. Update this file whenever the architecture changes.
 
 ---
@@ -797,13 +797,15 @@ unchanged. What MATLAB adds is the current:
   driver as set by hand. A session without light runs on with a warning. An ePhys calibration
   session needs the control. The emulator never refuses.
 - **Stored in mA, shown as irradiance when calibrated.** Settings and data hold mA
-  (`S.Doric.CurrentmA`, `S.Ephys.*mA`, `Data.LEDCurrentA/B`, `LightSegments.CurrentmA`). A light
-  path (channel + bundle cable, `lum.led.lightPath`) may have a calibration (`lum.led`): power meter
-  readings at several currents, divided by the cable's fiber area (spots × π × (50 µm)²). With one,
-  every window shows and takes that channel's intensity in mW/mm² (`lum.gui.IntensityField`,
-  `lum.led.toUnit`/`fromUnit`), converting by linear interpolation, never extrapolating, and rounding
-  to whole mA. Calibrations live in `calibration/` at the repository root, one file per channel and
-  cable, replaced by the next calibration of that path, and ignored by git.
+  (`S.Doric.CurrentmA`, `S.Ephys.*mA`, `Data.LEDCurrentA/B`, `LightSegments.CurrentmA`). Each
+  channel's light path (the channel and the bundle cable on it, `lum.led.lightPath`) uses the
+  calibration of its cable, if there is one (`lum.led`): power meter readings at several currents,
+  divided by the cable's fiber area (spots × π × (50 µm)²). With one, every window shows and takes
+  that channel's intensity in mW/mm² (`lum.gui.IntensityField`, `lum.led.toUnit`/`fromUnit`),
+  converting by linear interpolation, never extrapolating, and rounding to whole mA. Calibrations
+  live in `calibration/` at the repository root, one file per bundle and cable
+  (`DoricLED_<bundle>_<cable>.mat`), replaced by the next calibration of that cable, and ignored by
+  git.
 
 **Why.**
 
@@ -817,8 +819,11 @@ unchanged. What MATLAB adds is the current:
    every recalibration; a stored current is what was sent. The calibration used is stored with the
    session, so irradiance can be recomputed from the data.
 4. *A calibration belongs to a cable.* The power leaving a cable depends on the cable's coupling and
-   its fiber count; keying it by channel and cable keeps each measurement valid for exactly the light
-   it measured, and lets two cables each keep theirs.
+   its fiber count. The two LED channels are taken to give equal power at equal current (measured at
+   the driver's outputs, without the bundle), so the calibration is keyed by bundle and cable only:
+   the operator can swap cables between channels at the commutator without calibrating again, and
+   each cable keeps its own. The channel it was measured on is recorded (`MeasuredOn`). If the two
+   channels ever differ, this assumption is what to revisit.
 5. *Optional by design.* The protocol runs without the package, as it did before 0.7.0, with the
    driver set by hand; nothing else changes.
 

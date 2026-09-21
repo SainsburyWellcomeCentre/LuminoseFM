@@ -95,6 +95,7 @@ drawnKeys = struct('Flow', {{}}, 'Cue', {{}}, 'Barcode', {{}}, 'Browser', {{}});
 
 fig = uifigure('Name', 'LuminoseFM - session setup', 'Position', [40 40 1280 850], ...
                'Color', t.Background, 'Visible', p.Results.Visible);
+lum.gui.Form.waitForView(fig);  % Before any content (see waitForView)
 outer = uigridlayout(fig, [5 1], 'RowHeight', {58, '1x', 46, 'fit', 34}, ...
                      'Padding', [14 10 14 12], 'RowSpacing', 8, 'BackgroundColor', t.Background);
 buildHeader(outer, S, rig, t);

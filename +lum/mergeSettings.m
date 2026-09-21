@@ -209,6 +209,26 @@ if hasPath(loaded, 'Task.HoldShaping') && ~hasPath(loaded, 'Task.AutoShaping')
                               onOffText(shaped), char(string(old)));
 end
 
+%% Reshaped (version 0.7.2): the 2-to-19 bundle's cables are named by colour
+% Its cables were fixed ('ch1 fiber' on A, 'ch2 fiber' on B) and S.Light.Cables was read
+% only for the 4-to-19 bundle, so a 2-to-19 file holds a 4-to-19 pair or the old names.
+% Its cables are now blue and green, either on either channel; such a file gets the
+% bundle's defaults, blue on A and green on B.
+if hasPath(loaded, 'Light.Bundle') && strcmp(loaded.Light.Bundle, '2-to-19')
+    bundles = lum.fiberBundles();
+    bundle = bundles(strcmp({bundles.Name}, '2-to-19'));
+    cables = {};
+    if hasPath(loaded, 'Light.Cables')
+        cables = loaded.Light.Cables;
+    end
+    if ~iscell(cables) || numel(cables) ~= 2 || ~all(ismember(cables, bundle.Cables)) ...
+            || strcmp(cables{1}, cables{2})
+        loaded.Light.Cables = bundle.Defaults;
+        migrated{end+1} = sprintf(['Light.Cables (the 2-to-19 bundle''s cables are named by '...
+                                   'colour: %s on A, %s on B)'], bundle.Defaults{:});
+    end
+end
+
 %% Retired (version 0.2, and 0.4)
 % The hand-written stimulus table was replaced by the stimulus generator; its rows
 % cannot be converted into generator parameters, so the defaults are used instead.

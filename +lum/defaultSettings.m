@@ -144,10 +144,10 @@ S.Left = sideDefaults(8000);
 S.Right = sideDefaults(12000);
 
 %% Pre-session tier: light path
-% Which fiber bundle is on the animal and, for the 4-to-19 bundle, which two of its
-% cables are on channels A and B (lum.fiberBundles).
+% Which fiber bundle is on the animal, and which two of its cables, named by colour, are
+% on channels A and B (lum.fiberBundles).
 S.Light.Bundle = '2-to-19';
-S.Light.Cables = {'orange', 'blue'};   % Used with the 4-to-19 bundle: A, then B
+S.Light.Cables = {'blue', 'green'};   % A, then B
 % Carrier, delivered by PulsePal while a channel is gated high. One element per
 % optical channel, because the two channels drive different LEDs into different
 % cables: matching the light they deliver is a per-channel calibration.

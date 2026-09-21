@@ -18,20 +18,22 @@ end
 
 %% Light paths ----------------------------------------------------------------------
 
-function testTheTwoTo19BundleHasFixedFibers(testCase)
+function testTheTwoTo19BundleDefaultsToBlueOnAAndGreenOnB(testCase)
 S = lum.defaultSettings;
-S.Light.Bundle = '2-to-19';
+verifyEqual(testCase, {S.Light.Bundle, S.Light.Cables}, {'2-to-19', {'blue', 'green'}});
 a = lum.led.lightPath(S, 1);
 b = lum.led.lightPath(S, 2);
-verifyEqual(testCase, {a.Channel, a.LEDChannel, a.Cable, a.nFibers}, {'A', 1, 'ch1 fiber', 10});
-verifyEqual(testCase, {b.Channel, b.LEDChannel, b.Cable, b.nFibers}, {'B', 2, 'ch2 fiber', 9});
-verifyEqual(testCase, a.Area, 10 * pi * 0.05^2, 'AbsTol', 1e-12, 'Ten 100 um fibers');
+verifyEqual(testCase, {a.Channel, a.LEDChannel, a.Cable, a.nFibers}, {'A', 1, 'blue', 9});
+verifyEqual(testCase, {b.Channel, b.LEDChannel, b.Cable, b.nFibers}, {'B', 2, 'green', 10});
+verifyEqual(testCase, b.Area, 10 * pi * 0.05^2, 'AbsTol', 1e-12, 'Ten 100 um fibers');
+S.Light.Cables = {'green', 'blue'};   % Swapped at the commutator
+verifyEqual(testCase, lum.led.lightPath(S, 1).nFibers, 10);
 end
 
 function testTheFourTo19BundleDefaultsToOrangeOnAAndBlueOnB(testCase)
 S = lum.defaultSettings;
 S.Light.Bundle = '4-to-19';
-verifyEqual(testCase, S.Light.Cables, {'orange', 'blue'});
+S.Light.Cables = {'orange', 'blue'};
 a = lum.led.lightPath(S, 1);
 b = lum.led.lightPath(S, 2);
 verifyEqual(testCase, {a.Cable, a.nFibers, b.Cable, b.nFibers}, {'orange', 5, 'blue', 5});
@@ -49,14 +51,35 @@ verifyError(testCase, @() lum.led.lightPath(S, 1), 'lum:led:lightPath:unknownCab
 verifyError(testCase, @() lum.led.lightPath(S, 3), 'lum:led:lightPath:badChannel');
 end
 
-function testTheCalibrationFileNamesTheChannelAndCable(testCase)
+function testTheCalibrationFileNamesTheCableNotTheChannel(testCase)
 S = lum.defaultSettings;
 S.Light.Bundle = '4-to-19';
+S.Light.Cables = {'orange', 'blue'};
 [~, name] = fileparts(lum.led.calibrationFile(lum.led.lightPath(S, 1), testCase.TestData.folder));
-verifyEqual(testCase, name, 'DoricLED_A_4-to-19_orange');
+verifyEqual(testCase, name, 'DoricLED_4-to-19_orange');
+S.Light.Cables = {'blue', 'orange'};
+[~, onB] = fileparts(lum.led.calibrationFile(lum.led.lightPath(S, 2), testCase.TestData.folder));
+verifyEqual(testCase, onB, name, 'The same file on channel B');
 S.Light.Bundle = '2-to-19';
+S.Light.Cables = {'blue', 'green'};
 [~, name] = fileparts(lum.led.calibrationFile(lum.led.lightPath(S, 2), testCase.TestData.folder));
-verifyEqual(testCase, name, 'DoricLED_B_2-to-19_ch2-fiber');
+verifyEqual(testCase, name, 'DoricLED_2-to-19_green');
+end
+
+function testACalibrationFollowsItsCableToTheOtherChannel(testCase)
+folder = testCase.TestData.folder;
+S = lum.defaultSettings;   % 2-to-19: blue on A, green on B
+cal = lum.led.makeCalibration(lum.led.lightPath(S, 1), [0 100], [0 1], 'mW');
+verifyEqual(testCase, {cal.MeasuredOn, cal.MeasuredLEDChannel, cal.Cable}, {'A', 1, 'blue'});
+lum.led.saveCalibration(cal, folder);
+cals = lum.led.calibrations(S, folder);
+verifyEqual(testCase, cals{1}.Cable, 'blue');
+verifyEmpty(testCase, cals{2}, 'Green is not calibrated');
+S.Light.Cables = {'green', 'blue'};   % The cables swapped at the commutator
+cals = lum.led.calibrations(S, folder);
+verifyEmpty(testCase, cals{1});
+verifyEqual(testCase, {cals{2}.Cable, cals{2}.MeasuredOn}, {'blue', 'A'}, ...
+            'Blue keeps its calibration on channel B');
 end
 
 %% Calibrations ---------------------------------------------------------------------
@@ -130,13 +153,13 @@ verifyEqual(testCase, loaded.Notes, 'second', 'Recalibrating overwrites');
 verifyEqual(testCase, loaded.CurrentmA, [0; 100; 200]);
 verifyNumElements(testCase, dir(fullfile(folder, '*.mat')), 1);
 other = fourToNineteen(2);
-verifyEmpty(testCase, lum.led.loadCalibration(other, folder), 'Channel B on the blue cable is another path');
+verifyEmpty(testCase, lum.led.loadCalibration(other, folder), 'The blue cable is another cable');
 end
 
 function testADamagedFileCountsAsNoCalibration(testCase)
 folder = testCase.TestData.folder;
 path = fourToNineteen(1);
-Calibration = struct('Channel', 'B');  % The wrong path in the right file
+Calibration = struct('Cable', 'blue');  % Another cable's record in orange's file
 save(lum.led.calibrationFile(path, folder), 'Calibration');
 cal = verifyWarning(testCase, @() lum.led.loadCalibration(path, folder), 'lum:led:loadCalibration:unreadable');
 verifyEmpty(testCase, cal);
@@ -187,15 +210,17 @@ cleanup = onCleanup(@() led.close());
 record = lum.led.sessionRecord(S, led, {[], []});
 verifyFalse(testCase, record.Controlled);
 verifyEqual(testCase, record.Mode, 'Manual');
-verifyEqual(testCase, [record.LightPaths.nFibers], [10 9]);
+verifyEqual(testCase, [record.LightPaths.nFibers], [9 10], 'Blue on A, green on B');
 verifyEqual(testCase, record.Settings, S.Doric);
 verifyEqual(testCase, record.Device.CurrentmA, [NaN NaN]);
 end
 
 
 function path = fourToNineteen(k)
+% Channel k's light path with orange on A and blue on B.
 S = lum.defaultSettings;
 S.Light.Bundle = '4-to-19';
+S.Light.Cables = {'orange', 'blue'};
 path = lum.led.lightPath(S, k);
 end
 

@@ -7,17 +7,20 @@ classdef DoricSetup < handle
     %   Doric LED driver  whether the session controls the LED from MATLAB (the DoricLED
     %                     package, found in the folder given or on the path), the
     %                     connection's state, and the driver's own window
-    %   Fiber bundle      the bundle on the animal and, on the 4-to-19 bundle, the cable
-    %                     on each channel (orange on A and blue on B by default)
-    %   Intensity         per channel: the LED current (mW/mm2 when the channel's light
-    %                     path is calibrated, mA when not), its limit in mA, the
-    %                     calibration, and Calibrate..., which measures one
-    %                     (lum.gui.DoricCalibration)
+    %   Fiber bundle      the bundle on the animal and the cable, by colour, on each
+    %                     channel (2-to-19: blue on A and green on B by default;
+    %                     4-to-19: orange on A and blue on B)
+    %   Intensity         per channel: the LED current (mW/mm2 when the cable on it is
+    %                     calibrated, mA when not), its limit in mA, the cable's
+    %                     calibration, and Calibrate..., which measures it through this
+    %                     channel (lum.gui.DoricCalibration)
     %   LED window        whether the session opens the LED window (lum.gui.DoricWindow)
     %
     % The tab shows the protocol's lum.dev.DoricLED, which connects in the background
-    % while the dialog is open. A calibration saved here is used at once, by this dialog
-    % and by every later session of any type on the same channel and cable.
+    % while the dialog is open. A calibration belongs to the cable, not the channel (the two
+    % LED channels are taken to give equal power at equal current). One saved here is used
+    % at once, by this dialog and by every later session of any type with that cable on
+    % either channel.
     %
     % Usage, inside a dialog:
     %   doric = lum.gui.DoricSetup(tab, S, t, @refresh, led);
@@ -73,11 +76,7 @@ classdef DoricSetup < handle
             S.Doric.CurrentmA = [obj.intensity{1}.currentmA(), obj.intensity{2}.currentmA()];
             S.Doric.MaxCurrentmA = [c.MaxCurrent(1).Value, c.MaxCurrent(2).Value];
             S.Light.Bundle = c.Bundle.Value;
-            bundles = lum.fiberBundles();
-            bundle = bundles(strcmp({bundles.Name}, c.Bundle.Value));
-            if ~isempty(bundle) && bundle.Choose
-                S.Light.Cables = {c.CableA.Value, c.CableB.Value};
-            end
+            S.Light.Cables = {c.CableA.Value, c.CableB.Value};
         end
 
         function update(obj, S)
@@ -85,9 +84,6 @@ classdef DoricSetup < handle
             % apply and refreshes the notes.
             c = obj.Controls;
             obj.lightPathChanged(S);
-            bundles = lum.fiberBundles();
-            bundle = bundles(strcmp({bundles.Name}, S.Light.Bundle));
-            lum.gui.Form.setEnable({c.CableA, c.CableB}, ~isempty(bundle) && bundle.Choose);
             on = S.Doric.Enabled;
             lum.gui.Form.setEnable({c.Folder, c.Browse, c.ShowWindow, c.MaxCurrent(1), c.MaxCurrent(2)}, on);
             for k = 1:2
@@ -100,8 +96,9 @@ classdef DoricSetup < handle
                     c.CalibrationNote(k).Text = 'Not calibrated: intensity in mA.';
                     c.CalibrationNote(k).FontColor = obj.theme.Muted;
                 else
-                    c.CalibrationNote(k).Text = sprintf('Calibrated %s, %g-%g mA = %.3g-%.3g mW/mm2.', ...
-                        cal.Date, cal.CurrentmA(1), cal.CurrentmA(end), cal.IrradiancemWmm2(1), ...
+                    c.CalibrationNote(k).Text = sprintf(['%s cable calibrated %s on channel %s, '...
+                        '%g-%g mA = %.3g-%.3g mW/mm2.'], cal.Cable, cal.Date, cal.MeasuredOn, ...
+                        cal.CurrentmA(1), cal.CurrentmA(end), cal.IrradiancemWmm2(1), ...
                         cal.IrradiancemWmm2(end));
                     c.CalibrationNote(k).FontColor = obj.theme.Good;
                 end
@@ -133,7 +130,7 @@ classdef DoricSetup < handle
         end
 
         function cals = calibrations(obj)
-            % calibrations() is the 1 x 2 cell of the light paths' calibrations.
+            % calibrations() is the 1 x 2 cell of the calibrations of the cables on A and B.
             cals = obj.cals;
         end
 
@@ -198,7 +195,8 @@ classdef DoricSetup < handle
             form = lum.gui.Form.panel(left, 'Fiber bundle', 3, t, 170);
             lum.gui.Form.label(form, 'Bundle on the animal', t);
             obj.Controls.Bundle = uidropdown(form, 'Items', {bundles.Name}, 'Value', S.Light.Bundle, ...
-                'Tooltip', 'The fiber bundle on the animal: 2-to-19 (two fixed fibers) or 4-to-19 (two of four cables on the commutator).');
+                'Tooltip', ['The fiber bundle on the animal: 2-to-19 (blue and green cables) or 4-to-19 '...
+                            '(two of black, blue, orange and green on the commutator).']);
             lum.gui.Form.label(form, 'Cable on channel A', t);
             obj.Controls.CableA = uidropdown(form, 'Items', {''}, ...
                 'Tooltip', 'The cable on the commutator lit by channel A (LED channel 1).');
@@ -215,10 +213,12 @@ classdef DoricSetup < handle
                 'Bpod and PulsePal time the light; the driver sets its intensity, the LED current, '...
                 'in external TTL mode: each channel is lit at its current while PulsePal''s output '...
                 'into it is high. The current is changed only between trials (the LED window), '...
-                'sleep blocks or ePhys steps.\n\nCalibrating a channel measures the power leaving its '...
-                'cable at several currents. Irradiance is that power over the area of the cable''s '...
-                'fibers (100 um each). Once a channel and cable are calibrated, every session type '...
-                'shows and takes its intensity in mW/mm2.']), t);
+                'sleep blocks or ePhys steps.\n\nCalibrating measures the power leaving a cable '...
+                'at several currents, lit by the channel it is on. Irradiance is that power over the '...
+                'area of the cable''s fibers (100 um each). The calibration belongs to the cable, not '...
+                'the channel: the two LED channels are taken to give equal power at equal current, '...
+                'so a cable moved to the other channel keeps its calibration. Once a cable is '...
+                'calibrated, every session type shows and takes its intensity in mW/mm2.']), t);
 
             % Intensity, per channel.
             box = uipanel(grid, 'Title', 'Intensity', 'FontWeight', 'bold', ...
@@ -253,14 +253,14 @@ classdef DoricSetup < handle
                 channel = k;
                 obj.Controls.Calibrate(k) = uibutton(form, 'Text', ['Calibrate' char(8230)], ...
                     'ButtonPushedFcn', @(~, ~) obj.calibrate(channel), ...
-                    'Tooltip', ['Measure the power leaving this channel''s cable at several currents '...
-                                'with a power meter. Saving replaces any earlier calibration of this '...
-                                'channel and cable.']);
+                    'Tooltip', ['Measure the power leaving the cable on this channel at several currents '...
+                                'with a power meter. Saving replaces any earlier calibration of that '...
+                                'cable, which is then used on either channel.']);
             end
         end
 
         function lightPathChanged(obj, S)
-            % Calibrations follow the channel and cable.
+            % Calibrations follow the cable on each channel.
             obj.paths = {lum.led.lightPath(S, 1), lum.led.lightPath(S, 2)};
             for k = 1:2
                 obj.cals{k} = lum.led.loadCalibration(obj.paths{k}, obj.calibrationFolder);
@@ -362,7 +362,7 @@ c.CableA.Items = items;
 c.CableA.ItemsData = bundle.Cables;
 c.CableB.Items = items;
 c.CableB.ItemsData = bundle.Cables;
-if bundle.Choose && numel(chosen) == 2 && all(ismember(chosen, bundle.Cables))
+if numel(chosen) == 2 && all(ismember(chosen, bundle.Cables))
     c.CableA.Value = chosen{1};
     c.CableB.Value = chosen{2};
 else

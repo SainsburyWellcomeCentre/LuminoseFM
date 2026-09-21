@@ -57,6 +57,7 @@ selectedTrain = 0;
 
 fig = uifigure('Name', 'LuminoseFM - test-pulse designer', 'Position', [60 40 1360 840], ...
                'Color', t.Background, 'Visible', p.Results.Visible);
+lum.gui.Form.waitForView(fig);  % Before any content (see waitForView)
 outer = uigridlayout(fig, [4 1], 'RowHeight', {54, '1x', 'fit', 34}, 'Padding', [14 10 14 12], ...
                      'RowSpacing', 8, 'BackgroundColor', t.Background);
 buildHeader(outer, rig, t);

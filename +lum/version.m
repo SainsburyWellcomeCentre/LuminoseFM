@@ -33,11 +33,16 @@ function text = version()
 % the settings file again at the end of a session, fits the sync line to the cameras' frame
 % rate (Session.SyncFit), switches the house light at once from PulsePal's output 3, looped
 % back into BNC1 so each switch is a BNC1High/BNC1Low event (Session.HouseLight), and takes
-% the subject from wherever the launch manager kept it.
+% the subject from wherever the launch manager kept it. 0.7.0 adds the Doric LED, LED
+% calibration and ePhys calibration sessions. 0.7.1 waits for each window's view to load
+% before filling it (lum.gui.Form.waitForView): until then the behaviour setup dialog
+% often stopped updating in a desktop session, and MATLAB then hung at the next window.
+% The data format is unchanged. 0.7.2 names the 2-to-19 bundle's cables by colour (blue,
+% green) and keys LED calibrations by bundle and cable, not channel.
 %
 % See also: LuminoseFM
 
-release = '0.7.0';
+release = '0.7.2';
 text = release;
 
 try

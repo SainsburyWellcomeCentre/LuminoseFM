@@ -41,7 +41,7 @@ right — D8 in [`architecture.md`](architecture.md).
 | LED current | The Doric driver's current on LED channel 1 (A) or 2 (B), in mA: how bright a channel is while it is gated (`S.Doric.CurrentmA`, `Data.LEDCurrentA`/`B`, `LightSegments.CurrentmA`). Not "LED power" or "intensity" as a stored value |
 | light path | One optical channel and the bundle cable on it, with that cable's fibers at the tip (`lum.led.lightPath`) |
 | irradiance | Power at the fiber tips over their total area, mW/mm2; shown in place of mA once a light path is calibrated |
-| LED calibration | Power meter readings at several LED currents for one light path, stored per channel and cable in `calibration/` (`lum.led`) |
+| LED calibration | Power meter readings at several LED currents for one cable, stored per bundle and cable (not per channel) in `calibration/` (`lum.led`) |
 | LED window | The window that shows each channel's LED current during a session and changes it between trials (`lum.gui.DoricWindow`) |
 | ePhys calibration | The session type that sends light pulses stepping through intensities and paired-pulse intervals, for the recorded response (`S.Ephys`, D18) |
 | input-output curve | Single pulses at intensities from lowest to highest, one step per level (`S.Ephys.InputOutput`) |
@@ -122,6 +122,19 @@ names.
 | — | the video stops after the final save (`SessionSaved` event), and a second save adds its summary; default format `avi-mjpeg-mt` (SpinCam 1.2.0 engine, multi-core MJPEG), with a note when a single-threaded format cannot keep up; the help line describes the format chosen; a SpinVideo format without SpinVideo is refused when the devices open; `Session.Cameras.EngineVersion` |
 | — | `GUIMeta.<name>.Help` for every runtime parameter; help line in the setup and runtime windows |
 | — | **▶ Play** buttons for the session's sounds in the setup dialog (`lum.testSounds`) |
+
+### 0.7.1 → 0.7.2 — cables by colour, calibrations per cable
+
+| 0.7.1 | 0.7.2 |
+|-------|-------|
+| 2-to-19 cables `ch1 fiber` (10 fibers) and `ch2 fiber` (9), fixed on A and B | **blue** (9) and **green** (10), blue on A and green on B by default, either on either channel (`S.Light.Cables`, as for the 4-to-19). A 2-to-19 settings file gets blue and green on load |
+| a calibration per channel and cable, `DoricLED_<A or B>_<bundle>_<cable>.mat` | per cable, `DoricLED_<bundle>_<cable>.mat`, used on whichever channel the cable is on: the two LED channels are taken to give equal power at equal current. The calibration records the channel it was measured on (`MeasuredOn`, `MeasuredLEDChannel`, in place of `Channel`, `LEDChannel`) |
+
+### 0.7.0 → 0.7.1 — setup windows that keep updating
+
+| 0.7.0 | 0.7.1 |
+|-------|-------|
+| in a desktop MATLAB the behaviour setup dialog often (more than half of launches on the rig) showed its first state and took no change after it (tab counts such as *Cue (1 on)*, the trial timeline); the next window in that MATLAB, such as the setup dialog after a cancelled sleep setup, then hung until MATLAB was killed. Not caused by the Doric LED: the 0.6.1 dialog did the same | every window waits for its view to load before its components are added (`lum.gui.Form.waitForView`); 0 hangs in 16 desktop launches. Data format unchanged |
 
 ### 0.6.1 → 0.7.0 — the Doric LED, LED calibration, ePhys calibration sessions
 

@@ -1,15 +1,16 @@
 classdef DoricCalibration < handle
     % lum.gui.DoricCalibration measures an LED calibration: current against irradiance.
     %
-    % Opened from the Doric LED tab's Calibrate... button, for one optical channel and the
-    % cable on it (lum.led.lightPath). The operator holds a power meter at the cable's tip,
+    % Opened from the Doric LED tab's Calibrate... button, for the cable on one optical
+    % channel (lum.led.lightPath), lit through that channel. The operator holds a power meter at the cable's tip,
     % lights the channel at each current in the table (continuous light, through the
     % connected driver) and types the power read, in mW or uW. The window shows the
     % irradiance, power over the area of the cable's fibers, and draws current against
     % irradiance as the readings come in (lum.led.plotCalibration).
     %
     % Save calibration writes it (lum.led.saveCalibration), replacing any earlier one of
-    % this channel and cable, and every session type uses it from then on. Closing the
+    % this cable, and every session type uses it from then on, on either channel (the two
+    % LED channels are taken to give equal power at equal current). Closing the
     % window switches the channel off; the session puts it back in external TTL mode.
     %
     % Without a connected driver (DoricLED not found, the control off), the Light buttons
@@ -22,7 +23,7 @@ classdef DoricCalibration < handle
     % Options:
     %   'LED'           A connected lum.dev.DoricLED, or [] to take readings only
     %   'MaxCurrentmA'  The highest current offered (default 700; at most 1000)
-    %   'Previous'      The path's calibration so far, to start from its readings
+    %   'Previous'      The cable's calibration so far, to start from its readings
     %   'Folder'        Where to save (default lum.led.calibrationFolder)
     %   'OnSaved'       Called with the saved calibration
     %   'Visible'       'on' (default) or 'off', for tests
@@ -120,7 +121,7 @@ classdef DoricCalibration < handle
         end
 
         function ok = save(obj)
-            % save() writes the calibration, replacing any earlier one of this path.
+            % save() writes the calibration, replacing any earlier one of this cable.
             ok = false;
             try
                 cal = obj.calibration();
@@ -161,16 +162,18 @@ classdef DoricCalibration < handle
         function build(obj, visible, previous)
             t = obj.theme;
             path = obj.Path;
-            obj.Figure = uifigure('Name', sprintf('LuminoseFM - calibrate channel %s', path.Channel), ...
+            obj.Figure = uifigure('Name', sprintf('LuminoseFM - calibrate the %s cable (channel %s)', ...
+                                                  path.Cable, path.Channel), ...
                                   'Position', [120 90 1060 640], 'Color', t.Background, ...
                                   'Visible', visible, 'CloseRequestFcn', @(~, ~) obj.close());
+            lum.gui.Form.waitForView(obj.Figure);
             outer = uigridlayout(obj.Figure, [3 1], 'RowHeight', {44, '1x', 34}, ...
                                  'Padding', [14 10 14 12], 'RowSpacing', 8, 'BackgroundColor', t.Background);
             colours = {t.ChannelA, t.ChannelB};
-            uilabel(outer, 'Text', sprintf(['Channel %s (Doric LED channel %d)  |  %s bundle, %s cable, '...
-                                            '%d fibers of %g um = %.4g mm2'], path.Channel, path.LEDChannel, ...
-                                           path.Bundle, path.Cable, path.nFibers, 1000 * path.FiberDiameter, ...
-                                           path.Area), ...
+            uilabel(outer, 'Text', sprintf(['%s cable, %s bundle: %d fibers of %g um = %.4g mm2  |  '...
+                                            'lit by channel %s (Doric LED channel %d)'], path.Cable, ...
+                                           path.Bundle, path.nFibers, 1000 * path.FiberDiameter, path.Area, ...
+                                           path.Channel, path.LEDChannel), ...
                     'FontSize', 15, 'FontWeight', 'bold', 'FontColor', colours{path.LEDChannel});
 
             body = uigridlayout(outer, [1 2], 'ColumnWidth', {430, '1x'}, 'Padding', 0, ...
@@ -237,7 +240,7 @@ classdef DoricCalibration < handle
             obj.Controls.Status = uilabel(footer, 'Text', '', 'WordWrap', 'on', 'FontSize', 11);
             obj.Controls.Save = uibutton(footer, 'Text', 'Save calibration', 'FontWeight', 'bold', ...
                 'BackgroundColor', t.Accent, 'FontColor', [1 1 1], 'ButtonPushedFcn', @(~, ~) obj.save(), ...
-                'Tooltip', 'Save, replacing any earlier calibration of this channel and cable.');
+                'Tooltip', 'Save, replacing any earlier calibration of this cable. It is used on either channel.');
             uibutton(footer, 'Text', 'Close', 'ButtonPushedFcn', @(~, ~) obj.close());
             obj.showSelected();
         end
@@ -290,6 +293,8 @@ classdef DoricCalibration < handle
             end
             obj.Controls.Table.Data = data;
             partial = obj.Path;
+            partial.MeasuredOn = obj.Path.Channel;
+            partial.MeasuredLEDChannel = obj.Path.LEDChannel;
             partial.CurrentmA = cell2mat(data(:, 1));
             partial.IrradiancemWmm2 = cell2mat(data(:, 3));
             lum.led.plotCalibration(obj.Controls.Axes, partial, obj.theme);

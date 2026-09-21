@@ -23,7 +23,7 @@ platform did not resolve the symlink, read `CLAUDE.md`.
 | SpinCam | `../../SpinCam` — the lab's camera package, its own repository (read its `CLAUDE.md` before touching the camera path). On this machine's saved MATLAB path; sessions name it by `S.Camera.SpinCamFolder`. Engine 1.2.0; `spincam.version()` still returns 1.1.0 (SpinCam's to bump, not ours) |
 | Spinnaker SDK | `C:\Program Files\Teledyne\Spinnaker` 4.2.0.83, .NET assemblies incl. `SpinVideoNET` in `bin64\vs2015`. SpinCam compiles its engine against them with Windows' `csc.exe` (.NET Framework 4.8) |
 | DoricLED | `../../DoricLED` — the Doric LED package (`doric.*`), its own project with its own `CLAUDE.md`; on this machine's saved MATLAB path; sessions name it by `S.Doric.Folder` when it is not. Its bridge `bin/doric_bridge.exe` runs `DoricSystem.dll` out of process. The driver is "LED Driver" on Doric port 4 (a rotary joint on port 3 is skipped by name). Never modify it from here |
-| LED calibrations | `calibration/` at the repo root: one `DoricLED_<A or B>_<bundle>_<cable>.mat` (+ `.png`) per light path; rig-local, git-ignored |
+| LED calibrations | `calibration/` at the repo root: one `DoricLED_<bundle>_<cable>.mat` (+ `.png`) per cable, used on either channel; rig-local, git-ignored |
 | GUI inspiration | `../../luminose_hf` (head-fixed Luminose protocols) — structure only, not its colours |
 | Bpod `ProtocolFolder` | `C:\Users\harrislab\Documents\MATLAB\HarrisLabBpodProtocols\` |
 | Bpod `DataFolder` | `D:\luminoseData\` = `/mnt/d/luminoseData` — session data live **outside** the repo |
@@ -55,9 +55,7 @@ box). Permission covers that request only. Close nothing of theirs: if the MATLA
 light, hearing sound, poking, moving a cable. The operator works remotely at times, so run those checks
 the next time they say they are at the rig. That doc also says how to run a headless session on the
 rig: do what `RunProtocol` does, open `_ANLG.dat` and reset the session clock. **Pending now (all need
-eyes at the rig): P1 the house light lights; P2 light reaches the fiber on A and B at the current set
-(`TestDoricLED`); P3 a current changed mid-session takes effect; P4 the first calibration of each
-light path.**
+eyes at the rig): P4 the first calibration of each cable.** (P1–P3 passed on 2026-09-21.)
 
 ## Stay inside the working folder
 
@@ -204,9 +202,10 @@ stops the session part way through as though the End button had been pressed.
   window. The Doric driver (`LEDFLS_465_465`, USB, "LED Driver" on Doric port 4) runs both channels
   in **external TTL mode** at their LED currents (D17); PulsePal's 5 V is a TTL level, not the
   intensity. LED ch1 → commutator A, ch2 → commutator B.
-- Fiber bundles (`lum.fiberBundles`): 2-to-19 (ch1 fiber 10 spots on A, ch2 fiber 9 on B);
-  4-to-19 with cables black (4 spots), blue, orange, green (5 each), any two on A and B,
-  recorded in `S.Light.Cables`; **orange on A and blue on B** by default (`Defaults`). Each spot is a
+- Fiber bundles (`lum.fiberBundles`), cables named by colour, any two on A and B at the commutator,
+  recorded in `S.Light.Cables` (A then B): 2-to-19 with blue (9 spots) and green (10), **blue on A and
+  green on B** by default; 4-to-19 with black (4 spots), blue, orange, green (5 each), **orange on A
+  and blue on B** by default (`Defaults`). Each spot is a
   100 µm fiber (`CoreDiameter`), so a cable's area is spots × π × (0.05 mm)². The cable is called
   orange everywhere; do not call it red.
 - Flex I/O (`Bpod Local/Settings/FlexConfig.mat`): channel types are 0 = digital in,
@@ -277,8 +276,8 @@ doc that does not:
 | house light | the white light in the box, on PulsePal OUT3, looped back into BNC input 1 (`S.Session.HouseLight`, `S.Sleep.HouseLight`, `S.Ephys.HouseLight`, `Data.HouseLight`, `Session.HouseLight`) | room light, port 5 light |
 | LED current | the Doric driver's current on LED ch1 (A) or ch2 (B), mA: how bright a gated channel is (`S.Doric.CurrentmA`, `Data.LEDCurrentA/B`, `LightSegments.CurrentmA`) | LED power, voltage, intensity (as a stored value) |
 | light path | one optical channel and the bundle cable on it (`lum.led.lightPath`) | fiber (alone) |
-| irradiance | power at the fiber tips over their area, mW/mm², shown in place of mA once a light path is calibrated | power density, intensity (as a stored value) |
-| LED calibration | power meter readings at several currents for one light path (`lum.led`, `calibration/`) | power curve |
+| irradiance | power at the fiber tips over their area, mW/mm², shown in place of mA once the cable is calibrated | power density, intensity (as a stored value) |
+| LED calibration | power meter readings at several currents for one cable, used on either channel (`lum.led`, `calibration/`) | power curve, channel calibration |
 | LED window | the session window that shows and changes each channel's LED current (`lum.gui.DoricWindow`) | runtime window (that is the parameters') |
 | ePhys calibration | the third session type, `'EphysCalibration'` (`S.Ephys`, D18) | calibration session, ephys mode |
 | input-output curve, paired-pulse ratio | the two ePhys calibration protocols (`S.Ephys.InputOutput`, `S.Ephys.PairedPulse`) | IO sweep, PPR (in operator text) |
@@ -311,9 +310,11 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   teardowns close it first (`closeDevices`). Currents change only in the prepare window
   (`applyPending(trial)`, which returns what the next trial runs at) or between blocks
   (`applyPending(block)`; ePhys `setCurrents(step.CurrentmA)`, blocking). Settings and data hold mA;
-  windows show mW/mm² for a calibrated light path through `lum.gui.IntensityField`. A calibration
-  is per channel **and cable** (`lum.led.lightPath`, `calibrationFile`), saved to `calibration/` by
-  `lum.gui.DoricCalibration`, replaced by the next one of that path. `lum.led.validate(S)` is the LED
+  windows show mW/mm² for a channel whose cable is calibrated, through `lum.gui.IntensityField`. A
+  calibration is per **cable** (bundle and colour), not per channel (`lum.led.calibrationFile`): the
+  two LED channels are taken to give equal power at equal current, so a cable swapped to the other
+  channel keeps its calibration. It records the channel it was measured on (`MeasuredOn`). Saved to
+  `calibration/` by `lum.gui.DoricCalibration`, replaced by the next one of that cable. `lum.led.validate(S)` is the LED
   check every session's validation runs (errors cals-independent; notes only when given cals).
   The DoricLED package is optional: without it, or with `S.Doric.Enabled` off, the driver is used as
   set by hand and currents are NaN.
@@ -751,6 +752,13 @@ MATLAB and test gotchas that have already cost time:
   components reads the default 100 × 22 until then. Wait (drawnow and pause) before testing positions.
 - The saved MATLAB path on this machine includes SpinCam, so a `-batch` session run with
   `S.Camera.Enabled` records simulated video; turn it off in tests that are not about video.
+- **A new uifigure waits for its view before it is filled** (`lum.gui.Form.waitForView(fig)`, straight
+  after `uifigure(...)`, in every window). In a desktop MATLAB (R2025b), a window whose web view finished
+  loading while components were still being added sometimes never confirmed the next update: it stayed as
+  first drawn, and the next `drawnow` or `uiwait` in that MATLAB never returned. The behaviour setup dialog
+  did this in more than half of desktop launches (2026-09-21); the operator saw a dialog that did not update
+  and a MATLAB that hung at the next window. `-batch` runs and invisible windows never show it, so the test
+  suite cannot; check a new window from a desktop MATLAB.
 - `exportgraphics` refuses a classic figure holding more than one `uipanel`, and `print` refuses
   any figure with UI components (both plot figures have both). `exportapp` captures them, and the
   uifigure windows, headless under `-batch`.

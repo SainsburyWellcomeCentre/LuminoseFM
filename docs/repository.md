@@ -130,8 +130,9 @@ What it covers:
   move out of the runtime tier.
 - `barcodeTest` also samples fitted barcodes frame by frame at 25–150 Hz, at every phase and with
   the camera 5 % slow, and decodes every one (`lum.sync.fitToCameras`).
-- `ledTest` — light paths and fiber areas, calibrations (units, refusals, saving and replacing,
-  a damaged file), conversions between mA and mW/mm², the LED settings checks, and the session record.
+- `ledTest` — light paths and fiber areas (cables by colour, swapped between channels), calibrations
+  (units, refusals, saving and replacing, one per cable that follows it to the other channel, a damaged
+  file), conversions between mA and mW/mm², the LED settings checks, and the session record.
 - `doricTest` — the Doric LED shim on DoricLED's simulated driver: the emulator's mode, manual mode,
   setting both channels up in external TTL mode, a request sent only at the next prepare window, an
   ePhys step's currents, calibration light, closing; the LED opened alone as the protocol launches;

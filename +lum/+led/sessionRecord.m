@@ -14,7 +14,8 @@ function record = sessionRecord(S, led, cals)
 %   .Mode, .Reason  From lum.dev.DoricLED ('Manual' when set by hand)
 %   .Settings       S.Doric as the session started
 %   .LightPaths     1 x 2 struct from lum.led.lightPath: channel, cable, fibers, area
-%   .Calibrations   1 x 2 cell, a calibration or [] per channel, as used
+%   .Calibrations   1 x 2 cell, A then B: the calibration of the cable on each channel,
+%                   or [], as used
 %   .Device         lum.dev.DoricLED.record(): currents, limits, every change, and the
 %                   package's record of what the driver acknowledged
 %

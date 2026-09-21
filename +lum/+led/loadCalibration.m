@@ -1,9 +1,11 @@
 function cal = loadCalibration(path, folder)
-% lum.led.loadCalibration reads the calibration of one light path, or [] when there is none.
+% lum.led.loadCalibration reads the calibration of a light path's cable, or [] when there is none.
 %
 %   cal = lum.led.loadCalibration(lum.led.lightPath(S, k))
 %
-% A file that cannot be read, or that belongs to another path, counts as none, with a
+% The calibration is the cable's, whichever channel it was measured on
+% (lum.led.calibrationFile). A file that cannot be read, or that belongs to another
+% cable, counts as none, with a
 % warning ('lum:led:loadCalibration:unreadable'), so a damaged file never stops a session;
 % intensities are then in mA until the path is calibrated again.
 %
@@ -24,13 +26,13 @@ end
 try
     loaded = load(file, 'Calibration');
     candidate = loaded.Calibration;
-    if ~strcmp(candidate.Channel, path.Channel) || ~strcmp(candidate.Cable, path.Cable) ...
-            || ~strcmp(candidate.Bundle, path.Bundle) || numel(candidate.CurrentmA) < 2
-        error('lum:led:loadCalibration:otherPath', 'it describes another light path');
+    if ~strcmp(candidate.Cable, path.Cable) || ~strcmp(candidate.Bundle, path.Bundle) ...
+            || numel(candidate.CurrentmA) < 2
+        error('lum:led:loadCalibration:otherPath', 'it describes another cable');
     end
     cal = candidate;
 catch readError
     warning('lum:led:loadCalibration:unreadable', ...
-            'The LED calibration %s could not be used (%s); channel %s is in mA until it is calibrated again.', ...
-            file, readError.message, path.Channel);
+            'The LED calibration %s could not be used (%s); the %s cable is in mA until it is calibrated again.', ...
+            file, readError.message, path.Cable);
 end

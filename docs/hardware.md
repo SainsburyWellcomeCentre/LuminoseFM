@@ -66,8 +66,11 @@ lights B; each goes to the commutator and on to one cable of the bundle on the a
 
 | Bundle | Cables | Spots per cable | Which two are used |
 |--------|--------|-----------------|--------------------|
-| 2-to-19 | ch1 fiber, ch2 fiber | 10, 9 | both, fixed: ch1 on A, ch2 on B |
-| 4-to-19 | black, blue, orange, green | 4, 5, 5, 5 | any two on the commutator: orange on A and blue on B by default; chosen on the setup dialogs' Doric LED tab and recorded with the session |
+| 2-to-19 | blue, green | 9, 10 | both: blue on A and green on B by default |
+| 4-to-19 | black, blue, orange, green | 4, 5, 5, 5 | any two on the commutator: orange on A and blue on B by default |
+
+Which cable is on which channel is chosen on the setup dialogs' Doric LED tab and recorded with the
+session (`S.Light.Cables`, A then B); it must match the commutator.
 
 Each spot is the end of one 100 µm fiber, so a cable's light leaves through its spot count × π × (50 µm)²
 (`lum.led.lightPath`).
@@ -82,13 +85,15 @@ state machine is not involved. Without the package, or with the control off, the
 was set by hand (its front panel or Doric Neuroscience Studio), which must then be external TTL mode;
 PulsePal's voltage (5 V) is a TTL level either way, not the intensity.
 
-**Calibration.** A channel's LED current can be calibrated against irradiance at the fiber tips: the
-Doric LED tab's **Calibrate…** lights the channel continuously at a series of currents while a power
-meter reads the power leaving the cable (mW or µW). Irradiance is that power over the cable's fiber
-area. A calibration belongs to one channel and the cable on it, is kept in `calibration/` in the
-repository (not tracked by git, so each rig keeps its own), and is replaced by the next calibration of
-the same channel and cable. Every session type then shows and takes that channel's intensity in mW/mm²;
-settings and data keep mA.
+**Calibration.** A cable's LED current can be calibrated against irradiance at its fiber tips: the
+Doric LED tab's **Calibrate…** lights the channel the cable is on continuously at a series of currents
+while a power meter reads the power leaving the cable (mW or µW). Irradiance is that power over the
+cable's fiber area. A calibration belongs to the cable (bundle and colour), not to the channel: the two
+LED channels are taken to give equal power at equal current, so a cable keeps its calibration when it is
+moved to the other channel. It is kept in `calibration/` in the repository as
+`DoricLED_<bundle>_<cable>.mat` (not tracked by git, so each rig keeps its own), and is replaced by the
+next calibration of the same cable. Every session type then shows and takes the intensity of the
+channel that cable is on in mW/mm²; settings and data keep mA.
 
 A **light pattern** is the sequence of ON/OFF states of channels A and B over the stimulus
 window. At any instant the pair is in one of four joint states: dark, A only, B only, or A
@@ -290,7 +295,7 @@ use, and both keep state between sessions:
 
 | Utility | What it checks |
 |---------|----------------|
-| `CheckRig` | the DoricLED package and its bridge are there, and which light paths are calibrated |
+| `CheckRig` | the DoricLED package and its bridge are there, and which cables are calibrated |
 | `TestDoricLED` | the whole path: connects the driver, sets both channels to external TTL mode, programs PulsePal and gates BNC1, then BNC2, then both, at each current given (`TestDoricLED('Currents', [20 100 300])`). Watch the fiber: A flashes, then B, then both, brighter at each current |
 | `TestHouseLight` | PulsePal output 3 and its loopback into BNC input 1 |
 

@@ -63,6 +63,7 @@ e = S.Ephys;
 
 fig = uifigure('Name', 'LuminoseFM - ePhys calibration setup', 'Position', [30 50 1580 820], ...
                'Color', t.Background, 'Visible', p.Results.Visible);
+lum.gui.Form.waitForView(fig);  % Before any content (see waitForView)
 outer = uigridlayout(fig, [5 1], 'RowHeight', {58, '1x', 46, 'fit', 34}, ...
                      'Padding', [14 10 14 12], 'RowSpacing', 8, 'BackgroundColor', t.Background);
 buildHeader(outer, S, rig, t);

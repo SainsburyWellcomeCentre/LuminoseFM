@@ -74,6 +74,21 @@ verifyFalse(testCase, isfield(S.Stimulus, 'Waveform'));
 verifyTrue(testCase, any(contains(added, 'Light.Carrier')), 'The operator has to be told');
 end
 
+function testATwoTo19FileGetsTheColouredCables(testCase)
+% Before 0.7.2 the 2-to-19 bundle's cables were fixed and S.Light.Cables was read only
+% for the 4-to-19 bundle, so a 2-to-19 file holds a 4-to-19 pair.
+loaded = lum.defaultSettings;
+loaded.Light.Cables = {'orange', 'blue'};
+[S, added] = lum.mergeSettings(lum.defaultSettings, loaded);
+verifyEqual(testCase, S.Light.Cables, {'blue', 'green'});
+verifyTrue(testCase, any(contains(added, 'Light.Cables')), 'The operator has to be told');
+loaded.Light.Cables = {'green', 'blue'};   % A valid choice is kept
+verifyEqual(testCase, lum.mergeSettings(lum.defaultSettings, loaded).Light.Cables, {'green', 'blue'});
+loaded.Light.Bundle = '4-to-19';
+loaded.Light.Cables = {'black', 'orange'};   % Other bundles are left alone
+verifyEqual(testCase, lum.mergeSettings(lum.defaultSettings, loaded).Light.Cables, {'black', 'orange'});
+end
+
 function testALegacyPerChannelVoltageIsKeptPerChannel(testCase)
 loaded = rmfield(lum.defaultSettings, 'Light');
 loaded.Stimulus.Waveform = struct('Frequency', 20, 'PulseWidth', 0.005, 'Voltage', [2 7]);

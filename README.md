@@ -42,7 +42,7 @@ CheckRig            % preflight report — worth reading before the first animal
 
 `CheckRig` prints one line per check: the state machine, the behaviour ports, the optogenetic BNC
 lines, the house light's BNC input, the HiFi module, the Flex I/O configuration, PulsePal, the Doric
-LED (the DoricLED package, its bridge, and which light paths are calibrated), the liquid calibration
+LED (the DoricLED package, its bridge, and which cables are calibrated), the liquid calibration
 and the data folder. Failures name the exact thing to change and where. The protocol runs it at startup too.
 
 ```matlab
@@ -492,8 +492,9 @@ their LED current while PulsePal's output into them is high.
   mode. The tab says where the package was found and whether the driver is connected; **Connect**
   tries again after a replug, and **Doric controls…** opens the package's own window on the same
   connection.
-- **Fiber bundle** — the bundle on the animal, and on the 4-to-19 bundle the cable on each channel
-  (orange on A and blue on B by default).
+- **Fiber bundle** — the bundle on the animal, and the cable, by colour, on each channel: blue on A and
+  green on B by default on the 2-to-19 bundle, orange on A and blue on B on the 4-to-19. If you swap
+  the cables at the commutator, swap them here too.
 - **Intensity** — per channel: the intensity (mA, or mW/mm² when calibrated), the **limit** in mA
   (700 by default, at most 1000, the LED's rating; anything above is refused, never reduced), the
   light path (cable, fibers, area), the calibration, and **Calibrate…**.
@@ -503,8 +504,8 @@ connect: check its USB cable and power and that Doric Neuroscience Studio is clo
 control. The protocol switches both channels off when the session ends.
 
 **Calibrating.** Irradiance is the power leaving a cable divided by the area of its fibers at the tip
-(each 100 µm across: 10 or 9 fibers on the 2-to-19 bundle's two, 4 or 5 on the 4-to-19 bundle's).
-**Calibrate…** opens a window for that channel and cable:
+(each 100 µm across: blue 9 and green 10 on the 2-to-19 bundle; black 4, the others 5 on the
+4-to-19). **Calibrate…** opens a window for the cable on that channel, lit through that channel:
 
 1. Hold the power meter at the cable's tip (set to 465 nm). Keep the fiber away from any animal: the
    light is continuous.
@@ -514,10 +515,13 @@ control. The protocol switches both channels off when the session ends.
    Without a connected driver, set each current on the driver by hand.
 4. The graph (current against mW/mm²) fills in as you type. **Save calibration** writes it.
 
-A calibration belongs to one channel and the cable on it. It is saved in `calibration/` in the
-protocol folder (with a `.png` of the graph), which git does not track, so each rig keeps its own.
-Calibrating the same channel and cable again replaces it. From then on every session type, and the LED
-window, shows and takes that channel's intensity in mW/mm², converting with the calibration; a value
+A calibration belongs to the cable, not the channel: the two LED channels are taken to give equal power
+at equal current, so a cable moved to the other channel at the commutator keeps its calibration. Each
+cable used needs one calibration, on either channel. It is saved in `calibration/` in the protocol
+folder (`DoricLED_<bundle>_<cable>.mat`, with a `.png` of the graph), which git does not track, so each
+rig keeps its own. Calibrating the same cable again replaces it. From then on every session type, and
+the LED window, shows and takes the intensity of whichever channel that cable is on in mW/mm²,
+converting with the calibration; a value
 outside the currents measured is refused. Settings and data keep mA, and each data file stores the
 calibration it used, so irradiance can always be worked out again.
 

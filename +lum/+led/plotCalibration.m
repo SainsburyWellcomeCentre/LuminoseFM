@@ -8,8 +8,9 @@ function plotCalibration(ax, cal, t)
 %
 % Arguments:
 %   ax   Axes to draw into (cleared first)
-%   cal  From lum.led.makeCalibration, or a struct with CurrentmA and IrradiancemWmm2
-%        and the path fields (partial readings are fine); [] draws empty axes
+%   cal  From lum.led.makeCalibration, or a struct with CurrentmA, IrradiancemWmm2,
+%        MeasuredOn, MeasuredLEDChannel and the path fields (partial readings are
+%        fine); [] draws empty axes
 %   t    lum.gui.theme
 %
 % See also: lum.led.makeCalibration, lum.gui.DoricCalibration
@@ -19,15 +20,15 @@ colours = {t.ChannelA, t.ChannelB};
 colour = t.Ink;
 titleText = 'No readings yet';
 if ~isempty(cal) && isfield(cal, 'CurrentmA') && ~isempty(cal.CurrentmA)
-    if isfield(cal, 'LEDChannel')
-        colour = colours{cal.LEDChannel};
+    if isfield(cal, 'MeasuredLEDChannel')
+        colour = colours{cal.MeasuredLEDChannel};
     end
     x = cal.CurrentmA(:);
     y = cal.IrradiancemWmm2(:);
     keep = ~isnan(x) & ~isnan(y);
     plot(ax, x(keep), y(keep), '-o', 'Color', colour, 'MarkerFaceColor', colour, 'LineWidth', 1.5);
-    titleText = sprintf('Channel %s (LED ch%d), %s cable, %d fibers, %.4g mm^2', cal.Channel, ...
-                        cal.LEDChannel, cal.Cable, cal.nFibers, cal.Area);
+    titleText = sprintf('%s cable (%s), %d fibers, %.4g mm^2, measured on channel %s', cal.Cable, ...
+                        cal.Bundle, cal.nFibers, cal.Area, cal.MeasuredOn);
     if isfield(cal, 'Date') && ~isempty(cal.Date)
         titleText = sprintf('%s  |  %s', titleText, cal.Date);
     end

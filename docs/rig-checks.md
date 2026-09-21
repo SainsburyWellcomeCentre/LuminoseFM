@@ -10,48 +10,41 @@ and move each one to *Done* with its result and session names.
 
 ## Pending — needs the operator at the rig
 
-### P1. House light: does the light turn on?
+### P4. First calibration of each cable
 
-The loopback works since 2026-09-21 (see *Done*): every switch reaches BNC1. Nobody has seen the light
-itself. With Bpod running and no protocol:
-
-```matlab
-TestHouseLight('Count', 5, 'On', 2, 'Off', 2)   % 20 s, slow enough to watch
-```
-
-The light should be on for 2 s five times. If it does not light while BNC1 reports every edge, check
-the splitter's leg into the LED driver, and the driver's power.
-
-### P2. Light reaches the fiber on channels A and B, at the current set
-
-Bpod, PulsePal and the Doric driver all took their commands on 2026-09-21 (`TestDoricLED`, three
-sessions), but nobody watched the fiber. With the bundle's tip where it can be seen (or on a power
-meter), no animal attached:
-
-```matlab
-TestDoricLED('Currents', [20 100 300], 'Count', 3)
-```
-
-- Channel A flashes 3 times, then B, then both together; each set brighter than the last.
-- A flash on the wrong channel: swap PulsePal OUT1/OUT2 at the driver's TTL inputs, or LED channel
-  1/2 at the commutator, so that LED channel 1 lights channel A.
-- No light at all while the report says every gate ran: check PulsePal OUT1/OUT2 into the driver's
-  TTL inputs, and that nothing else (Doric Neuroscience Studio) holds the driver.
-
-### P3. A current changed during a session takes effect
-
-The LED window sends a new current between trials with the driver's fast path (`ls_send_current`)
-while the channel runs in external TTL mode. The driver acknowledges it; whether the brightness
-follows needs a look. In a behaviour or sleep session with light, change a channel's current in the
-LED window and watch the next trial's (or block's) light, or use a power meter.
-
-### P4. First calibration of each light path
-
-Calibrate channel A and channel B on the cables in use (Doric LED tab, **Calibrate…**) with a power
-meter at the bundle's tip, set to 465 nm. Then check the tab shows mW/mm² and the sessions print
-irradiance.
+Calibrate each cable in use once (Doric LED tab, **Calibrate…** on the channel it is on) with a power
+meter at its tip, set to 465 nm: blue and green on the 2-to-19 bundle; on the 4-to-19, each of black,
+blue, orange and green that will be used. A calibration belongs to the cable and holds on either
+channel, which assumes the two LED channels give equal power at equal current: to check that, read
+both of the driver's outputs directly (bundle off) at the same current. Then check the tab shows
+mW/mm² and the sessions print irradiance.
 
 ## Done
+
+### 2026-09-21 — P1, P2 and P3, operator at the rig, run by an agent (0.7.1)
+
+| Check | Result |
+|-------|--------|
+| P1 `TestHouseLight('Count', 5, 'On', 2, 'Off', 2)` | the operator saw the house light on for 2 s five times; 10 of 10 switches reached BNC1, 19–32 ms after each command (median 25 ms) |
+| Desktop launches of the protocol by the operator (0.7.1) | behaviour setup: the cue count and trial timeline follow a cue tick at once; launch → sleep → cancel → launch → behaviour opens and updates (where MATLAB hung in 0.7.0) |
+| P3 sleep session with test pulses and the LED window, channel A's current changed mid-session | the operator saw the brightness change from the next block |
+| P2 `TestDoricLED('Currents', [20 100 300], 'Count', 3)` | the operator saw A flash, then B, then both, brighter at each current; LED in Device mode ("LED Driver", Doric port 4), 27 of 27 gates, every command acknowledged. The first attempt stopped before sending anything: Bpod connected on COM3 but `BpodSystem.HW.n` was never filled in, straight after the P1 run had released the port. It ran after the state machine and PulsePal were power-cycled |
+
+### 2026-09-21 — 0.7.0 → 0.7.1, setup windows hanging in the desktop, run by an agent with the operator's permission
+
+The operator reported that the behaviour setup dialog did not update (the *Cue (1 on)* count, the trial
+timeline) and that MATLAB hung at the next window after a cancelled sleep setup. No animal; Bpod in
+emulator mode throughout (no COM ports).
+
+- Doric driver, real, through DoricLED's bridge: three cycles of connect, sleep setup dialog, cancel, close,
+  connect again, behaviour setup dialog, cancel, close, headless. No hang: each close took 0.7–1.8 s, and the
+  dialog updated on a cue click (0.04–0.12 s). The driver was still *Connecting* 7 s after each connect
+  (INIT and OPEN wait up to 5 s each), so a dialog opened straight after launch shows that state.
+- Desktop MATLAB, no LED at all: the behaviour setup dialog was fully drawn but its view never confirmed the
+  next update, so `drawnow` did not return, in more than half of the launches; the 0.6.1 code did the
+  same (2 of 3). The cause was not a component, the axes toolbars, Bpod's console or a timer. It happened
+  when the window's view finished loading while components were still being added. With `lum.gui.Form.waitForView` (0.7.1):
+  0 of 16 hung, the type → sleep (cancelled) → type → behaviour sequence included.
 
 ### 2026-09-21 — 0.7.0, no animal, run by an agent with the operator's permission
 

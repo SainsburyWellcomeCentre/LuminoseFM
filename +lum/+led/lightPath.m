@@ -5,9 +5,9 @@ function path = lightPath(S, k)
 % docs/hardware.md). Each drives one cable of the fiber bundle on the animal
 % (S.Light.Bundle, S.Light.Cables, lum.fiberBundles), and that cable ends in Spots
 % fibers of CoreDiameter each. An LED calibration measures the power leaving that cable
-% and divides it by the fibers' total area, so the calibration belongs to the channel
-% and the cable together: moving the power meter to another cable is another
-% calibration (lum.led.calibrationFile).
+% and divides it by the fibers' total area, so it belongs to the cable, whichever channel
+% it is on: the two LED channels are taken to give equal power at equal current
+% (lum.led.calibrationFile).
 %
 % Arguments:
 %   S  Settings struct; reads S.Light.Bundle and S.Light.Cables
@@ -37,15 +37,11 @@ bundle = bundles(strcmp({bundles.Name}, S.Light.Bundle));
 if isempty(bundle)
     error('lum:led:lightPath:unknownBundle', 'Unknown fiber bundle "%s".', char(string(S.Light.Bundle)));
 end
-if bundle.Choose
-    cables = S.Light.Cables;
-    if ~iscell(cables) || numel(cables) ~= 2
-        error('lum:led:lightPath:badCables', 'S.Light.Cables must name two cables, A then B.');
-    end
-    cable = char(cables{k});
-else
-    cable = bundle.Cables{k};
+cables = S.Light.Cables;
+if ~iscell(cables) || numel(cables) ~= 2
+    error('lum:led:lightPath:badCables', 'S.Light.Cables must name two cables, A then B.');
 end
+cable = char(cables{k});
 index = find(strcmp(bundle.Cables, cable), 1);
 if isempty(index)
     error('lum:led:lightPath:unknownCable', 'The %s bundle has no %s cable.', bundle.Name, cable);

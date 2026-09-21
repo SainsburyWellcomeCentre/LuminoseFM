@@ -5,7 +5,7 @@ function [file, imageFile] = saveCalibration(cal, folder)
 %
 % The calibration goes to lum.led.calibrationFile (variable Calibration), and its graph,
 % current against irradiance, beside it as a .png of the same name. The folder is created
-% if it is missing. Every later session, of any type, whose channel is on the same cable
+% if it is missing. Every later session, of any type, with the same cable on either channel
 % reads it (lum.led.loadCalibration).
 %
 % Arguments:

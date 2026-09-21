@@ -231,12 +231,11 @@ bundle = bundles(strcmp({bundles.Name}, S.Light.Bundle));
 if isempty(bundle)
     fail('badBundle', 'Unknown fiber bundle ''%s''.', S.Light.Bundle);
 end
-if bundle.Choose
-    cables = S.Light.Cables;
-    if numel(cables) ~= 2 || ~all(ismember(cables, bundle.Cables)) || strcmp(cables{1}, cables{2})
-        fail('badCables', ...
-             'Choose two different cables of the %s bundle for channels A and B.', bundle.Name);
-    end
+cables = S.Light.Cables;
+if ~iscell(cables) || numel(cables) ~= 2 || ~all(ismember(cables, bundle.Cables)) ...
+        || strcmp(cables{1}, cables{2})
+    fail('badCables', ...
+         'Choose two different cables of the %s bundle for channels A and B.', bundle.Name);
 end
 carrier = S.Light.Carrier;
 [carrier.MaxDuration] = deal(window + lum.stim.OptoPattern.TrainMargin);

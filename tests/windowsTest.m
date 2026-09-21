@@ -691,7 +691,7 @@ path = lum.led.lightPath(candidate, 1);
 cal = lum.led.makeCalibration(path, [0 200], [0 2], 'mW');
 lum.led.saveCalibration(cal, folder);
 app.refresh();
-verifySubstring(testCase, c.CalibrationNote(1).Text, 'Calibrated');
+verifySubstring(testCase, c.CalibrationNote(1).Text, 'orange cable calibrated');
 verifySubstring(testCase, app.status(), 'Ready to start');
 candidate = app.collect();
 verifyEqual(testCase, candidate.Doric.CurrentmA, S.Doric.CurrentmA, 'The current itself is unchanged');

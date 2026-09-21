@@ -74,6 +74,35 @@ classdef Form
             state = matlab.lang.OnOffSwitchState(tf);
         end
 
+        function waitForView(fig, timeoutSeconds)
+            % waitForView(fig) waits until a new visible uifigure's web view has loaded,
+            % before anything is put in it. Call it right after uifigure().
+            %
+            % In a desktop session (R2025b), a window whose view finished loading while
+            % MATLAB was still adding its components sometimes never confirmed the
+            % next update: the window stayed as first drawn, took no further change, and
+            % the next drawnow or uiwait in the session never returned, so MATLAB had
+            % to be killed. The behaviour setup dialog did this in more than half of
+            % desktop launches on the rig (2026-09-21); with the view loaded first, in
+            % none. The wait uses the figure's FigureViewReady, as MATLAB's own publish
+            % does before exporting a figure. Invisible figures (tests) and releases
+            % without that property are not waited for.
+            if nargin < 2
+                timeoutSeconds = 20;
+            end
+            if string(fig.Visible) ~= "on"
+                return
+            end
+            waited = tic;
+            try
+                while string(get(fig, 'FigureViewReady')) ~= "on" && toc(waited) < timeoutSeconds
+                    pause(0.05);
+                end
+            catch
+                % No FigureViewReady in this release: nothing to wait for.
+            end
+        end
+
         function setEnable(handles, on)
             % setEnable(handles, on) enables or disables a cell array of controls.
             for i = 1:numel(handles)

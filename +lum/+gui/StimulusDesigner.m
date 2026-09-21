@@ -50,6 +50,7 @@ baseline = lum.pattern.withGeneratorDefaults(S.Stimulus.Generator);
 
 fig = uifigure('Name', 'LuminoseFM - stimulus designer', 'Position', [70 50 1300 840], ...
                'Color', t.Background, 'Visible', p.Results.Visible);
+lum.gui.Form.waitForView(fig);  % Before any content (see waitForView)
 outer = uigridlayout(fig, [3 1], 'RowHeight', {54, '1x', 34}, 'Padding', [14 10 14 12], ...
                      'RowSpacing', 8, 'BackgroundColor', t.Background);
 

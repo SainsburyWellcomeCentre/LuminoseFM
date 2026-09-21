@@ -23,7 +23,11 @@ function cal = makeCalibration(path, currents, powers, powerUnit, varargin)
 %   'Date'     datetime of the calibration (default now)
 %   'Notes'    Free text, e.g. the power meter and its wavelength setting
 %
-% Returns a struct: Channel, LEDChannel, Bundle, Cable, nFibers, FiberDiameter (mm),
+% The calibration belongs to the cable (Bundle, Cable), not to the channel it was measured
+% on: the two LED channels are taken to give equal power at equal current.
+% MeasuredOn and MeasuredLEDChannel record which channel lit it.
+%
+% Returns a struct: MeasuredOn ('A' or 'B'), MeasuredLEDChannel, Bundle, Cable, nFibers, FiberDiameter (mm),
 % Area (mm2), CurrentmA and PowermW and IrradiancemWmm2 (column vectors, sorted by
 % current), PowerUnit and PowerTyped (as read), Date ('yyyy-MM-dd HH:mm:ss'), Notes and
 % ProtocolVersion.
@@ -79,7 +83,7 @@ if powers(end) <= powers(1)
     fail('flat', 'The power does not rise over the currents measured, so it cannot be calibrated.');
 end
 
-cal = struct('Channel', path.Channel, 'LEDChannel', path.LEDChannel, 'Bundle', path.Bundle, ...
+cal = struct('MeasuredOn', path.Channel, 'MeasuredLEDChannel', path.LEDChannel, 'Bundle', path.Bundle, ...
              'Cable', path.Cable, 'nFibers', path.nFibers, 'FiberDiameter', path.FiberDiameter, ...
              'Area', path.Area, 'CurrentmA', currents, 'PowermW', powers, ...
              'IrradiancemWmm2', powers / path.Area, 'PowerUnit', char(powerUnit), ...
