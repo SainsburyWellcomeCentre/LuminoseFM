@@ -184,8 +184,10 @@ S.Session.Type = 'Sleep';
 S.Sleep.Sync.Interval = testCase.TestData.interval;
 S.Sleep.Sync.IntervalJitter = 0.05;
 % Video would load the emulator loop these timings are checked against; cameraTest runs
-% a sleep session with simulated cameras.
+% a sleep session with simulated cameras. The LED window's first drawing can hold the loop
+% up too; windowsTest covers it.
 S.Camera.Enabled = false;
+S.Doric.ShowWindow = false;
 end
 
 function S = withTestPulses(S)

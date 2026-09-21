@@ -26,6 +26,11 @@ classdef NullPulsePal < lum.dev.PulsePal
             obj.note('would stop ch%d and switch its continuous playback off', channel);
         end
 
+        function sendOutputVoltage(obj, channel, volts)
+            % sendOutputVoltage() records the voltage a real device would have written.
+            obj.note('would write ch%d output = %g V', channel, volts);
+        end
+
         function tf = handshake(obj) %#ok<MANU> % No device to ask
             % handshake() stands in for an answer, so a session runs as it would on the rig.
             tf = true;

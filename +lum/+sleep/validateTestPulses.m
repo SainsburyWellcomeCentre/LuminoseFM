@@ -30,30 +30,7 @@ if ~S.Sleep.TestPulses.Enabled
     return
 end
 
-sync = S.Sleep.Sync;
-if sync.Mode == lum.SyncMode.FixedWidth
-    longestPulse = sync.FixedWidth;
-else
-    longestPulse = sync.MeanWidth + sync.WidthJitter;
-end
-shortestInterval = max(sync.Interval - sync.IntervalJitter, 1e-3);
-
-if plan.ShortestDark - longestPulse < 1e-3
-    error('lum:sleep:validate:epochsCrowdSync', ...
-          ['An epoch is followed by only %g s of darkness, too little for a sync pulse of up to '...
-           '%g s with 1 ms to spare, so the session could not pause between epochs. Lengthen '...
-           'the inter-epoch or train interval, or shorten the sync pulses.'], ...
-          plan.ShortestDark, longestPulse);
-end
-
-statesNeeded = 2 * plan.MostSegmentsPerEpoch + 2 * (ceil(plan.LongestEpoch / shortestInterval) + 1) + 1;
-if statesNeeded > rig.Limits.MaxStates - 2
-    error('lum:sleep:validate:epochTooBusy', ...
-          ['The longest epoch (%g s, %d gates of light) and the sync pulses that can fall in it '...
-           'need %d states in one state machine, which holds %d. Shorten the epoch or train, or '...
-           'lengthen the sync interval.'], plan.LongestEpoch, plan.MostSegmentsPerEpoch, ...
-          statesNeeded, rig.Limits.MaxStates - 2);
-end
+lum.sleep.checkTimeline(plan, S.Sleep.Sync, rig);
 
 notes{end+1} = sprintf(['With test pulses on, the recording lasts as long as their schedule, '...
                         '%.4g min, and needs PulsePal.'], plan.Duration / 60);

@@ -10,46 +10,71 @@ and move each one to *Done* with its result and session names.
 
 ## Pending — needs the operator at the rig
 
-### P1. House light loopback into BNC input 1 — **failing**
+### P1. House light: does the light turn on?
 
-**Found 2026-09-17 (0.6.1).** Every switch reaches PulsePal, and none reaches Bpod. Across
-`TestHouseLight` twice (26 switches) and the two sessions below (11 switches), PulsePal confirmed
-every `ch3 param 17 = 5 / 0` command, BNC1 is enabled in the console's port settings
-(`InputsEnabled(10) = 1`) and `CheckRig` is clean, but **no `BNC1High` or `BNC1Low` event arrived**.
-The software path is confirmed up to PulsePal's acknowledgement: soft code → `houseLight.set` →
-`ProgramPulsePalParam(3, 17, V)` → firmware v21, which writes the DAC as soon as parameter 17 arrives.
-Nobody was at the rig, so it is not known whether the light blinked.
-
-Until it is fixed, rig sessions have `Session.HouseLight.Edges` empty and every `HouseLight` value
-per trial or block read from MATLAB's clock (the level PulsePal held when the trial started), not from
-Bpod's; `Switches` on the camera clock are unaffected.
-
-At the rig, with Bpod running and no protocol:
+The loopback works since 2026-09-21 (see *Done*): every switch reaches BNC1. Nobody has seen the light
+itself. With Bpod running and no protocol:
 
 ```matlab
 TestHouseLight('Count', 5, 'On', 2, 'Off', 2)   % 20 s, slow enough to watch
 ```
 
-- **The light blinks, no edges.** Follow the splitter's second leg: it must go into Bpod's
-  **BNC IN 1**, not BNC OUT 1 (which drives PulsePal IN1, channel A). Check the splitter and cable
-  with a meter or scope (≈ 5 V on, 0 V off at the Bpod end).
-- **The light does not blink.** Check that the cable leaves PulsePal **OUT3** (not OUT4), and the LED
-  driver's input and power. A scope on OUT3 should show 5 V / 0 V following the test.
-- If a cable or channel had to change, update `hardware/RigConfig.m` (`rig.HouseLight`) and
-  [`hardware.md`](hardware.md) §2.3 to match, then re-run the test: every switch should report an
-  edge a few ms after its command.
+The light should be on for 2 s five times. If it does not light while BNC1 reports every edge, check
+the splitter's leg into the LED driver, and the driver's power.
 
-### P2. Light reaches the LEDs on channels A and B
+### P2. Light reaches the fiber on channels A and B, at the current set
 
-Bpod's side is confirmed. A sleep session sent all 102 of 102 planned gates, and PulsePal was
-programmed and checked for each step. But nobody saw the fiber output or scoped PulsePal OUT1 / OUT2.
-At the rig, run a short sleep session with test pulses (probes on A and B, one train) and watch the
-bundle's output, or scope OUT1 and OUT2. Each probe should show as two 10 ms flashes, and each train
-as bursts.
+Bpod, PulsePal and the Doric driver all took their commands on 2026-09-21 (`TestDoricLED`, three
+sessions), but nobody watched the fiber. With the bundle's tip where it can be seen (or on a power
+meter), no animal attached:
 
----
+```matlab
+TestDoricLED('Currents', [20 100 300], 'Count', 3)
+```
+
+- Channel A flashes 3 times, then B, then both together; each set brighter than the last.
+- A flash on the wrong channel: swap PulsePal OUT1/OUT2 at the driver's TTL inputs, or LED channel
+  1/2 at the commutator, so that LED channel 1 lights channel A.
+- No light at all while the report says every gate ran: check PulsePal OUT1/OUT2 into the driver's
+  TTL inputs, and that nothing else (Doric Neuroscience Studio) holds the driver.
+
+### P3. A current changed during a session takes effect
+
+The LED window sends a new current between trials with the driver's fast path (`ls_send_current`)
+while the channel runs in external TTL mode. The driver acknowledges it; whether the brightness
+follows needs a look. In a behaviour or sleep session with light, change a channel's current in the
+LED window and watch the next trial's (or block's) light, or use a power meter.
+
+### P4. First calibration of each light path
+
+Calibrate channel A and channel B on the cables in use (Doric LED tab, **Calibrate…**) with a power
+meter at the bundle's tip, set to 465 nm. Then check the tab shows mW/mm² and the sessions print
+irradiance.
 
 ## Done
+
+### 2026-09-21 — 0.7.0, no animal, run by an agent with the operator's permission
+
+Bpod r2_Plus, firmware 23, COM3; PulsePal firmware v21 on COM9; Doric LEDFLS_465_465 ("LED Driver",
+Doric port 4) through DoricLED's bridge; HiFi1 on COM8; both cameras. The operator had replaced the
+BNC cable from the house light's splitter into Bpod's BNC input 1 beforehand.
+
+| Check | Result |
+|-------|--------|
+| `CheckRig` | all 11 checks ok, the Doric LED included |
+| `TestHouseLight` (5 switches, 1 s) as in 0.6.1 | 0 of 10 switches reached BNC1 |
+| Every Bpod input read directly (`'I'` command) while PulsePal OUT3 was driven | resting voltage (parameter 17) 5 V: BNC1 stays 0. A software-triggered 5 V train on OUT3: BNC1 reads 1. OUT4 reaches no input. **The cable is right; the resting voltage alone never changes the output.** Firmware v21 (`PulsePal_2_0_1.ino`) stores parameter 17 and calls `dacWrite()` without setting that output's `DACFlags`, so the DAC is not updated until a stop or abort kills the channel |
+| Parameter 17 then op 79 (`SetPulsePalVoltage`) | BNC1 follows at once; the level survives op 82 (stop, every output) and op 80 (abort). 10 op 79 in 134 ms. `lum.dev.PulsePal.holdVoltage` now sends both |
+| `TestHouseLight` (5 switches, 1 s) after the fix | **10 of 10 switches reached BNC1**, latency 18–33 ms (median 28 ms) |
+| `TestDoricLED('Currents', [50 200], 'Count', 3)` | connected in the background, both channels in external TTL mode at 50 mA, then 200 mA; every command acknowledged; PulsePal gated with constant light; 18 of 18 gates ran (A, B, both). Light not watched: P2 |
+| Behaviour session `FakeSubject_LuminoseFM_20260921_133846`: 4 trials, no animal (each lapsed), LED A 80 mA, B 120 mA | ran and saved; `LEDCurrentA` [80 80 80 80], `LEDCurrentB` [120 120 120 120]; `Session.DoricLED.Mode` Device; the driver released at teardown |
+| Sleep session `FakeSubject_LuminoseFM_20260921_133929`: paired probes on A and B every 1 s, 15 s, LED 60 mA | 60 of 60 gates, each `LightSegments.CurrentmA` 60; schedule completed |
+| ePhys calibration session `FakeSubject_LuminoseFM_20260921_134051`: A and B, input-output 0–200 mA in 4 levels, paired pulses 20/50/100 ms at 100 mA, 3 repeats, 0.5 s apart, video at 100 Hz | 7 steps, 60 of 60 gates, completed. The LED stepped 0, 67, 133, 200 mA, then 100 mA, between blocks; every gate's recorded current is its step's. **Barcode `0CA552FB` decoded from both cameras' `TTL_State`, kind EphysCalibration**, and all 11 sync pulses logged; 1863 / 1862 frames, none dropped |
+
+One MATLAB process ended in an access violation (0xc0000005) during the first attempt at these
+sessions, which stopped at a validation error in the test settings; no crash dump was written, and
+the same path, closing the LED while it connects (six times), and the three sessions then ran without
+it. If it happens again, note what was running and look for `matlab_crash_dump.*` in `%TEMP%`.
 
 ### 2026-09-17 — 0.6.1, no animal, run by an agent with the operator's permission
 

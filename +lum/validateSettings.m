@@ -241,6 +241,7 @@ end
 carrier = S.Light.Carrier;
 [carrier.MaxDuration] = deal(window + lum.stim.OptoPattern.TrainMargin);
 lum.dev.PulsePal.validateCarrier(carrier);
+lum.led.validate(S);   % The LED currents and their limits (D17)
 
 %% Video
 lum.dev.Cameras.validateSettings(S.Camera);

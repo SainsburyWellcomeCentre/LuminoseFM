@@ -1,5 +1,5 @@
 function [sessionType, app] = SessionTypeDialog(varargin)
-% lum.gui.SessionTypeDialog asks what kind of session is starting: behaviour or sleep.
+% lum.gui.SessionTypeDialog asks what kind of session is starting: behaviour, sleep or ePhys calibration.
 %
 % The first window LuminoseFM opens (D11). The choice decides everything after it:
 %
@@ -8,18 +8,21 @@ function [sessionType, app] = SessionTypeDialog(varargin)
 %   Sleep      a home-cage sleep recording — a reduced setup dialog, then the session
 %              barcode (with sleep markers) and sync pulses on a clock, with a plot
 %              of the pulses sent
+%   EphysCalibration  light pulses of rising intensity and paired pulses of rising
+%              interval, for input-output curves and paired-pulse ratios recorded on
+%              the probe (D18); its own barcode marker
 %
 % The kind chosen last for this subject is preselected, because it is saved with the
 % subject's settings (S.Session.Type).
 %
 % Options:
-%   'Default'  'Behaviour' (default) or 'Sleep': the preselected choice
+%   'Default'  'Behaviour' (default), 'Sleep' or 'EphysCalibration': the preselected choice
 %   'Subject'  The subject chosen in the launch manager, shown in the header
 %   'Wait'     false to return at once with the window open (for tests); default true
 %   'Visible'  'on' (default) or 'off'
 %
 % Returns:
-%   sessionType  'Behaviour', 'Sleep', or '' if the operator cancelled
+%   sessionType  'Behaviour', 'Sleep', 'EphysCalibration', or '' if the operator cancelled
 %   app          .Figure, .choose(type), .cancel() and .choice() — the choice so far,
 %                for tests that do not wait
 %
@@ -42,9 +45,11 @@ if ~ismember(preselected, types)
 end
 descriptions = struct( ...
     'Behaviour', 'The 2-AFC task in the behaviour box: cue, stimulus, choice and reward.', ...
-    'Sleep', 'A home-cage sleep recording: a sleep barcode, then sync pulses only.');
+    'Sleep', 'A home-cage sleep recording: a sleep barcode, sync pulses, and test pulses if chosen.', ...
+    'EphysCalibration', ['Light pulses of rising intensity (input-output) and paired pulses of rising '...
+                         'interval (paired-pulse ratio), for the recorded response.']);
 
-fig = uifigure('Name', 'LuminoseFM - new session', 'Position', [300 300 560 280], ...
+fig = uifigure('Name', 'LuminoseFM - new session', 'Position', [300 300 780 300], ...
                'Color', t.Background, 'Visible', p.Results.Visible, ...
                'CloseRequestFcn', @(~, ~) onCancel());
 grid = uigridlayout(fig, [4 1], 'RowHeight', {52, 26, '1x', 30}, 'Padding', [16 12 16 14], ...
@@ -76,7 +81,7 @@ options = uigridlayout(grid, [2 numel(types)], 'RowHeight', {44, '1x'}, 'Padding
 buttons = struct();
 for i = 1:numel(types)
     name = types{i};
-    buttons.(name) = uibutton(options, 'Text', name, 'FontSize', 14, 'FontWeight', 'bold', ...
+    buttons.(name) = uibutton(options, 'Text', lum.gui.Form.sessionLabel(name), 'FontSize', 14, 'FontWeight', 'bold', ...
                               'ButtonPushedFcn', @(~, ~) choose(name));
     buttons.(name).Layout.Row = 1;
     buttons.(name).Layout.Column = i;
@@ -91,7 +96,8 @@ end
 
 footer = uigridlayout(grid, [1 2], 'ColumnWidth', {'1x', 100}, 'Padding', 0, ...
                       'ColumnSpacing', 8, 'BackgroundColor', t.Background);
-lum.gui.Form.note(footer, sprintf('Last used for this subject: %s.', lower(preselected)), t);
+lum.gui.Form.note(footer, sprintf('Last used for this subject: %s.', ...
+                                  lum.gui.Form.sessionLabel(preselected, true)), t);
 uibutton(footer, 'Text', 'Cancel', 'ButtonPushedFcn', @(~, ~) onCancel());
 
 app = struct('Figure', fig, 'choose', @choose, 'cancel', @onCancel, 'choice', @currentChoice);

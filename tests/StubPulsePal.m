@@ -41,6 +41,14 @@ classdef StubPulsePal < lum.dev.PulsePal
             obj.note('stub stop ch%d', channel);
         end
 
+        function sendOutputVoltage(obj, channel, volts)
+            if obj.RefuseParams
+                error('StubPulsePal:refused', 'PulsePal did not acknowledge %g V on output %d.', ...
+                      volts, channel);
+            end
+            obj.note('stub write ch%d output = %g V', channel, volts);
+        end
+
         function tf = handshake(obj)
             if ~isempty(obj.DuringHandshake)
                 callback = obj.DuringHandshake;

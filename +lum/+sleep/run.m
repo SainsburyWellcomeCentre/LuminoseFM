@@ -1,5 +1,12 @@
-function run(S, rig, subject, headless)
-% lum.sleep.run runs a home-cage sleep session: a sleep barcode, sync pulses and test pulses.
+function run(S, rig, subject, headless, doricLED)
+% lum.sleep.run runs a clock session: a sleep session, or an ePhys calibration session.
+%
+% S.Session.Type says which. An ePhys calibration session (D18) runs the same way as a
+% sleep session with test pulses: its steps (lum.ephys.plan) change the LED current or
+% the pairing of pulses, the current is set between blocks before each step's first
+% epoch, and its barcode has the ePhys marker. What follows describes the sleep session;
+% the ePhys session differs only in its dialog (lum.gui.EphysSetupDialog), its settings
+% (S.Ephys, S.Ephys.Sync, S.Ephys.HouseLight) and its record (Data.Session.Ephys).
 %
 % The sleep half of LuminoseFM (D11), called by it once the operator has chosen a
 % sleep session. There is no task: the session puts a timeline on the acquisition
@@ -35,16 +42,21 @@ function run(S, rig, subject, headless)
 %                       SyncSent, StartTime, EndTime, Barcode (Value, Hex, Kind, Sent,
 %                       Params), TestPulses (Enabled, Steps, Duration, Completed,
 %                       StoppedReason), Cameras (lum.dev.Cameras.sessionRecord),
-%                       ProtocolVersion, DeviceLog (PulsePal, FlexIO, Cameras, HouseLight),
+%                       ProtocolVersion, DeviceLog (PulsePal, FlexIO, Cameras, HouseLight,
+%                       DoricLED), DoricLED (lum.led.sessionRecord: the LED's mode,
+%                       currents, limits, light paths and calibrations),
+%                       Ephys (ePhys calibration only: Settings, Steps, Duration,
+%                       Completed, StoppedReason) in place of TestPulses,
 %                       HouseLight (lum.dev.HouseLight.record: every switch, and every
 %                       edge on Bpod's clock),
 %                       PlotsImage (lum.gui.savePlotsImage), SyncFit (what
 %                       lum.sync.fitToCameras widened)
 %   Data.SyncPulses     .Onset (s, state machine clock), .Width (s) and .Block, one value
 %                       per pulse sent
-%   Data.LightSegments  With test pulses: .Onset (s, state machine clock), .Duration (s),
-%                       .Channel (1 A, 2 B), .Step, .Epoch and .Block, one value per gate
-%                       of light sent (lum.sleep.epochShape gives the pulses in it)
+%   Data.LightSegments  With light: .Onset (s, state machine clock), .Duration (s),
+%                       .Channel (1 A, 2 B), .Step, .Epoch, .Block and .CurrentmA (the LED
+%                       current of the gate's channel; NaN when set by hand), one value per
+%                       gate of light sent (lum.sleep.epochShape gives the pulses in it)
 %   Data.HouseLight     1 or 0 per block: whether the house light was on as it started;
 %                       switches during a block are BNC1High (on) and BNC1Low (off) in
 %                       its events, and Data.Session.HouseLight lists every switch
@@ -58,17 +70,34 @@ function run(S, rig, subject, headless)
 %   rig       Channel map from RigConfig
 %   subject   Subject chosen in the launch manager
 %   headless  true to skip the setup dialog and use S as it is (tests)
+%   doricLED  The lum.dev.DoricLED the protocol opened as it launched, or [] to open one
+%             here. Released here either way.
 %
 % See also: LuminoseFM, lum.gui.SleepSetupDialog, lum.sleep.Plots, lum.sleep.validate,
 %           lum.sleep.testPulsePlan, lum.sleep.nextBlock
 
 global BpodSystem %#ok<GVMIS> % Bpod's own session object
 
+if nargin < 5
+    doricLED = [];
+end
+kind = S.Session.Type;
+isEphys = strcmp(kind, 'EphysCalibration');
+if ~isEphys
+    kind = 'Sleep';
+end
+label = lum.gui.Form.sessionLabel(kind, true);
+
 %% Settings
 if ~headless
-    [S, accepted] = lum.gui.SleepSetupDialog(S, rig, 'Subject', subject);
+    if isEphys
+        [S, accepted] = lum.gui.EphysSetupDialog(S, rig, 'Subject', subject, 'DoricLED', doricLED);
+    else
+        [S, accepted] = lum.gui.SleepSetupDialog(S, rig, 'Subject', subject, 'DoricLED', doricLED);
+    end
     if ~accepted
-        fprintf('LuminoseFM: sleep session setup cancelled.\n');
+        fprintf('LuminoseFM: %s session setup cancelled.\n', label);
+        releaseLED(doricLED);
         BpodSystem.Status.BeingUsed = 0;
         return
     end
@@ -77,18 +106,30 @@ end
 % Kept, because the console's End button clears BpodSystem.Path.Settings before the
 % teardown writes the settings back.
 settingsFile = BpodSystem.Path.Settings;
-S.Session.Type = 'Sleep';
+S.Session.Type = kind;
 % With video, the barcode and sync pulses are widened until the cameras can read them
 % (lum.sync.fitToCameras); the session runs and records the fitted values, and the
 % settings file keeps what was typed.
 typedSync = S.Sync;
 typedSleepSync = S.Sleep.Sync;
+typedEphysSync = S.Ephys.Sync;
 [S, syncFit] = lum.sync.fitToCameras(S);
 if ~isempty(syncFit)
     fprintf('LuminoseFM: sync line widened so the %g Hz cameras can read it: %s.\n', ...
             S.Camera.FrameRate, strjoin(syncFit, ', '));
 end
-notes = lum.sleep.validate(S, rig);
+cals = lum.led.calibrations(S);
+try
+    if isEphys
+        [plan, notes] = lum.ephys.validate(S, rig, cals);
+    else
+        notes = lum.sleep.validate(S, rig);
+    end
+catch validationError
+    releaseLED(doricLED);
+    BpodSystem.Status.BeingUsed = 0;
+    rethrow(validationError);
+end
 for i = 1:numel(notes)
     fprintf('LuminoseFM: note: %s\n', notes{i});
 end
@@ -97,12 +138,22 @@ end
 % Every sync pulse and every gate of light is laid out now, in session time, so the
 % blocks can be cut between them.
 testPulses = S.Sleep.TestPulses;
-plan = lum.sleep.testPulsePlan(testPulses);
-sync = S.Sleep.Sync;
-if testPulses.Enabled
+if isEphys
+    sync = S.Ephys.Sync;
     durationSeconds = plan.Duration;
+    lightOn = true;
+    description = lum.ephys.describe(S, plan);
 else
-    durationSeconds = 60 * S.Sleep.DurationMinutes;
+    plan = lum.sleep.testPulsePlan(testPulses);
+    sync = S.Sleep.Sync;
+    lightOn = logical(testPulses.Enabled);
+    if lightOn
+        durationSeconds = plan.Duration;
+        description = lum.sleep.describeTestPulses(testPulses, plan);
+    else
+        durationSeconds = 60 * S.Sleep.DurationMinutes;
+        description = {};
+    end
 end
 syncPulses = lum.sleep.syncPulseTimes(sync, durationSeconds);
 cycle = plan.CyclePeriod;
@@ -114,8 +165,9 @@ cycle = plan.CyclePeriod;
 % lum.dev.openHouseLight). Bpod runs the protocol file with no try/catch of its own,
 % so the console is released here before the error is shown.
 try
-    devices = lum.dev.open(rig, lum.sleep.deviceSettings(S));
+    devices = lum.dev.open(rig, lum.sleep.deviceSettings(S), 'DoricLED', doricLED);
 catch openError
+    releaseLED(doricLED);
     BpodSystem.Status.BeingUsed = 0;
     rethrow(openError);
 end
@@ -133,31 +185,39 @@ if S.Session.UseSync && devices.flex.hasSync()
     syncChannel = rig.Sync.Channel;
 end
 lines = {syncChannel, '', ''};
-if testPulses.Enabled
+if lightOn
     lines(2:3) = rig.Opto.Channels;
 end
 
 plots = lum.sleep.Plots(S, 'Subject', subject, 'MaxPulses', size(syncPulses, 1), 'Plan', plan, ...
-                        'HouseLight', devices.houseLight);
+                        'HouseLight', devices.houseLight, 'Kind', kind, 'Sync', sync, ...
+                        'Description', description);
 cameraWindow = [];
 if S.Camera.ShowWindow && devices.cameras.canPreview()
     cameraWindow = lum.gui.CameraWindow(devices.cameras, S.Camera, 'Subject', subject);
 end
+ledWindow = [];
+if S.Doric.ShowWindow && lightOn
+    ledWindow = lum.gui.DoricWindow(devices.doricLED, S, 'Subject', subject, 'Editable', ~isEphys, ...
+                                    'Calibrations', cals);
+end
 
 %% Session barcode
 startTime = datetime('now');
-barcode = lum.sync.barcode(lum.sync.barcodeValue(startTime), S.Sync.Barcode, 'Sleep');
+barcode = lum.sync.barcode(lum.sync.barcodeValue(startTime), S.Sync.Barcode, kind);
 barcodeSent = false;
 if S.Session.UseSync && S.Sync.Barcode.Enabled
     barcodeSent = devices.flex.sendBarcode(barcode);
 end
 plots.showBarcode(barcode, barcodeSent);
-fprintf('LuminoseFM: sleep session, %.4g min, a %s sync pulse every %g s%s.\n', ...
+fprintf('LuminoseFM: %s session, %.4g min, a %s sync pulse every %g s%s.\n', label, ...
         durationSeconds / 60, lower(S.Sync.ModeNames{sync.Mode}), sync.Interval, ...
         barcodeText(barcode, barcodeSent));
-if testPulses.Enabled
-    fprintf('LuminoseFM: test pulses on channels A and B through PulsePal.\n  %s\n', ...
-            strjoin(lum.sleep.describeTestPulses(testPulses, plan), sprintf('\n  ')));
+if lightOn
+    fprintf('LuminoseFM: light on channels A and B through PulsePal; LED A %s, B %s.\n  %s\n', ...
+            lum.led.describe(cals{1}, devices.doricLED.CurrentmA(1)), ...
+            lum.led.describe(cals{2}, devices.doricLED.CurrentmA(2)), ...
+            strjoin(description, sprintf('\n  ')));
 end
 
 %% Blocks
@@ -168,6 +228,7 @@ syncWidths = syncPulses(:, 2)' * cycle;
 syncBlocks = NaN(1, nSync);
 segmentOnsets = NaN(1, nSegments);
 segmentBlocks = NaN(1, nSegments);
+segmentCurrents = NaN(1, nSegments);   % LED current of each gate's channel, mA
 nSyncSent = 0;
 nSegmentsSent = 0;
 nBlocks = 0;
@@ -183,18 +244,24 @@ while BpodSystem.Status.BeingUsed == 1 && cursor.Time < cursor.End
     [block, cursor] = lum.sleep.nextBlock(plan, syncPulses, cursor, rig.Limits.MaxStates);
     if block.Step > 0
         % The step's carrier goes to PulsePal between blocks, with every line low, and
-        % only to a PulsePal that still answers.
+        % only to a PulsePal that still answers; an ePhys step's LED current goes to the
+        % driver at the same moment, and the driver must take it.
         carrier = plan.Steps(block.Step).Carrier;
-        if devices.pulsePal.needsReprogramming(carrier)
-            try
+        try
+            if devices.pulsePal.needsReprogramming(carrier)
                 devices.pulsePal.checkConnection();
                 devices.pulsePal.configure(carrier);
-            catch pulsePalError
-                stoppedReason = pulsePalError.message;
-                break
             end
+            if isEphys
+                devices.doricLED.setCurrents(plan.Steps(block.Step).CurrentmA, nBlocks + 1);
+            end
+        catch deviceError
+            stoppedReason = deviceError.message;
+            break
         end
     end
+    % A current asked for from the LED window, sent while every line is low.
+    ledCurrents = devices.doricLED.applyPending(nBlocks + 1);
     SendStateMachine(lum.sleep.blockStateMachine(block, lines));
     rawEvents = RunStateMachine;
     arrivedAt = devices.houseLight.sessionTime();  % For the block's house light level
@@ -220,16 +287,19 @@ while BpodSystem.Status.BeingUsed == 1 && cursor.Time < cursor.End
     trialStart = BpodSystem.Data.TrialStartTimestamp(nBlocks);
     [syncOnsets, syncBlocks, nSyncSent] = recordStarts(syncOnsets, syncBlocks, nSyncSent, ...
         trial, trialStart, block.SyncIndices, block.SyncStates, block.StateNames, nBlocks);
+    firstNew = nSegmentsSent + 1;
     [segmentOnsets, segmentBlocks, nSegmentsSent] = recordStarts(segmentOnsets, segmentBlocks, ...
         nSegmentsSent, trial, trialStart, block.SegmentIndices, block.SegmentStates, ...
         block.StateNames, nBlocks);
+    newRows = firstNew:nSegmentsSent;
+    segmentCurrents(newRows) = ledCurrents(plan.Segments(newRows, 3));
     plots.update(struct('Onset', syncOnsets, 'Width', syncWidths, 'n', nSyncSent), ...
                  struct('Onset', segmentOnsets, 'n', nSegmentsSent), toc(sessionTimer), ...
                  cursor.Time * cycle);
 
     HandlePauseCondition;
     if mod(nBlocks, saveEveryNBlocks) == 0
-        if testPulses.Enabled
+        if lightOn
             try
                 devices.pulsePal.checkConnection();
             catch pulsePalError
@@ -237,7 +307,7 @@ while BpodSystem.Status.BeingUsed == 1 && cursor.Time < cursor.End
             end
         end
         BpodSystem.Data = publishPulses(BpodSystem.Data, syncOnsets, syncWidths, syncBlocks, ...
-            nSyncSent, plan, segmentOnsets, segmentBlocks, nSegmentsSent, testPulses.Enabled);
+            nSyncSent, plan, segmentOnsets, segmentBlocks, segmentCurrents, nSegmentsSent, lightOn);
         BpodSystem.Data.CameraTime = cameraTimes(1:min(nBlocks, numel(cameraTimes)));
         BpodSystem.Data.HouseLight = houseLights(1:min(nBlocks, numel(houseLights)));
         SaveBpodSessionData;
@@ -249,8 +319,9 @@ end
 completed = isempty(stoppedReason) && nSyncSent == nSync && nSegmentsSent == nSegments;
 if ~isempty(stoppedReason)
     warning('lum:sleep:run:pulsePalStopped', ...
-            ['The sleep session stopped early, after %d of %d gates of light, because PulsePal '...
-             'stopped answering: %s\nWhat was sent is saved.'], nSegmentsSent, nSegments, stoppedReason);
+            ['The %s session stopped early, after %d of %d gates of light, because PulsePal or the '...
+             'LED driver stopped answering: %s\nWhat was sent is saved.'], label, nSegmentsSent, ...
+            nSegments, stoppedReason);
 end
 
 %% Teardown
@@ -258,6 +329,9 @@ end
 % RunProtocol('Stop'), which removes +lum from the path.
 if ~isempty(cameraWindow)
     cameraWindow.close();
+end
+if ~isempty(ledWindow)
+    ledWindow.close();
 end
 saved = false;
 plotsImage = '';
@@ -270,7 +344,7 @@ if nBlocks > 0
 end
 try
     BpodSystem.Data = publishPulses(BpodSystem.Data, syncOnsets, syncWidths, syncBlocks, ...
-        nSyncSent, plan, segmentOnsets, segmentBlocks, nSegmentsSent, testPulses.Enabled);
+        nSyncSent, plan, segmentOnsets, segmentBlocks, segmentCurrents, nSegmentsSent, lightOn);
     BpodSystem.Data.CameraTime = cameraTimes(1:min(nBlocks, numel(cameraTimes)));
     BpodSystem.Data.HouseLight = houseLights(1:min(nBlocks, numel(houseLights)));
     if isfield(BpodSystem.Data, 'Session')
@@ -279,11 +353,18 @@ try
         BpodSystem.Data.Session.DeviceLog = struct('PulsePal', {devices.pulsePal.log()}, ...
                                                    'FlexIO', {devices.flex.log()}, ...
                                                    'Cameras', {devices.cameras.log()}, ...
-                                                   'HouseLight', {devices.houseLight.log()});
+                                                   'HouseLight', {devices.houseLight.log()}, ...
+                                                   'DoricLED', {devices.doricLED.log()});
+        BpodSystem.Data.Session.DoricLED = lum.led.sessionRecord(S, devices.doricLED, cals);
         BpodSystem.Data.Session.Cameras = devices.cameras.sessionRecord();
         BpodSystem.Data.Session.EndTime = char(datetime('now'), 'yyyy-MM-dd HH:mm:ss');
-        BpodSystem.Data.Session.TestPulses.Completed = testPulses.Enabled && completed;
-        BpodSystem.Data.Session.TestPulses.StoppedReason = stoppedReason;
+        if isEphys
+            BpodSystem.Data.Session.Ephys.Completed = completed;
+            BpodSystem.Data.Session.Ephys.StoppedReason = stoppedReason;
+        else
+            BpodSystem.Data.Session.TestPulses.Completed = testPulses.Enabled && completed;
+            BpodSystem.Data.Session.TestPulses.StoppedReason = stoppedReason;
+        end
     end
     BpodSystem.Data = devices.flex.mergeAnalogData(BpodSystem.Data);
     if nBlocks > 0
@@ -291,18 +372,27 @@ try
         saved = true;
     end
 catch teardownError
-    warning('lum:sleep:run:teardownFailed', 'Saving the sleep session failed: %s', ...
+    warning('lum:sleep:run:teardownFailed', 'Saving the %s session failed: %s', label, ...
             teardownError.message);
 end
 
-% The house light as the operator left it is where the next sleep session starts; a session
-% that could not switch it keeps what the settings asked for.
+% The house light as the operator left it is where the next session of this type starts; a
+% session that could not switch it keeps what the settings asked for. So does an LED current
+% changed from the LED window in a sleep session.
 if ~headless
     if devices.houseLight.Switchable
-        S.Sleep.HouseLight = devices.houseLight.On;
+        if isEphys
+            S.Ephys.HouseLight = devices.houseLight.On;
+        else
+            S.Sleep.HouseLight = devices.houseLight.On;
+        end
+    end
+    if ~isEphys && devices.doricLED.isControlled() && all(~isnan(devices.doricLED.CurrentmA))
+        S.Doric.CurrentmA = devices.doricLED.CurrentmA;
     end
     S.Sync = typedSync;             % What was typed, not what was fitted to the cameras
     S.Sleep.Sync = typedSleepSync;
+    S.Ephys.Sync = typedEphysSync;
     try
         ProtocolSettings = S;
         save(settingsFile, 'ProtocolSettings');
@@ -336,8 +426,8 @@ plots.close();  % Only hidden by the console's End button, so it could be saved 
 closeDevices(devices);
 clear devices plots cameraWindow  % No lum.* object may outlive RunProtocol('Stop')
 
-fprintf('LuminoseFM: sleep session ended after %d sync pulse(s) in %d block(s).\n', nSyncSent, nBlocks);
-if testPulses.Enabled
+fprintf('LuminoseFM: %s session ended after %d sync pulse(s) in %d block(s).\n', label, nSyncSent, nBlocks);
+if lightOn
     fprintf('  %d of %d gates of light sent; the schedule was %s.\n', nSegmentsSent, nSegments, ...
             completionText(completed));
 end
@@ -346,9 +436,17 @@ if nBlocks > 0
 end
 
 
+function releaseLED(led)
+% The LED the protocol opened, released when the session ends before lum.dev.open has it.
+if ~isempty(led)
+    led.close();
+end
+
+
 function closeDevices(devices)
 % Release every device, whatever happened to the session.
-for name = {'cameras', 'houseLight', 'pulsePal', 'hifi', 'flex'}  % The light off before PulsePal goes
+names = {'doricLED', 'cameras', 'houseLight', 'pulsePal', 'hifi', 'flex'};  % LED and house light off before PulsePal goes
+for name = names
     try
         devices.(name{1}).close();
     catch closeError
@@ -375,22 +473,23 @@ end
 
 
 function sessionData = publishPulses(sessionData, syncOnsets, syncWidths, syncBlocks, nSync, ...
-                                     plan, segmentOnsets, segmentBlocks, nSegments, testPulsesOn)
+                                     plan, segmentOnsets, segmentBlocks, segmentCurrents, nSegments, lightOn)
 % The pulse and light records, trimmed to what was sent.
 sessionData.SyncPulses = struct('Onset', syncOnsets(1:nSync), 'Width', syncWidths(1:nSync), ...
                                 'Block', syncBlocks(1:nSync));
-if testPulsesOn
+if lightOn
     rows = plan.Segments(1:nSegments, :);
     sessionData.LightSegments = struct('Onset', segmentOnsets(1:nSegments), ...
         'Duration', rows(:, 2)' * plan.CyclePeriod, 'Channel', rows(:, 3)', 'Step', rows(:, 4)', ...
-        'Epoch', rows(:, 5)', 'Block', segmentBlocks(1:nSegments));
+        'Epoch', rows(:, 5)', 'Block', segmentBlocks(1:nSegments), ...
+        'CurrentmA', segmentCurrents(1:nSegments));
 end
 
 
 function record = sessionRecord(S, rig, devices, startTime, barcode, barcodeSent, syncChannel, plan)
 % Session-level information, written once.
 record = struct();
-record.Type = 'Sleep';
+record.Type = S.Session.Type;
 record.Subject = S.Meta.Subject;
 record.Settings = S;
 record.Rig = rig;
@@ -399,14 +498,20 @@ record.DevicesAvailable = struct('PulsePal', devices.pulsePal.Available, ...
                                  'FlexAnalog', devices.flex.hasAnalog(), ...
                                  'FlexSync', devices.flex.hasSync(), ...
                                  'Cameras', devices.cameras.Available, ...
-                                 'HouseLight', devices.houseLight.Available);
+                                 'HouseLight', devices.houseLight.Available, ...
+                                 'DoricLED', devices.doricLED.Available);
 record.Cameras = devices.cameras.sessionRecord();  % Brought up to date at teardown
 record.SyncSent = ~isempty(syncChannel);
 record.StartTime = char(startTime, 'yyyy-MM-dd HH:mm:ss');
 record.Barcode = struct('Value', barcode.Value, 'Hex', barcode.Hex, 'Kind', barcode.Kind, ...
                         'Sent', barcodeSent, 'Params', barcode.Params);
-record.TestPulses = struct('Enabled', S.Sleep.TestPulses.Enabled, 'Steps', plan.Steps, ...
-                           'Duration', plan.Duration, 'Completed', false, 'StoppedReason', '');
+if strcmp(S.Session.Type, 'EphysCalibration')
+    record.Ephys = struct('Settings', S.Ephys, 'Steps', plan.Steps, 'Duration', plan.Duration, ...
+                          'Completed', false, 'StoppedReason', '');
+else
+    record.TestPulses = struct('Enabled', S.Sleep.TestPulses.Enabled, 'Steps', plan.Steps, ...
+                               'Duration', plan.Duration, 'Completed', false, 'StoppedReason', '');
+end
 record.ProtocolVersion = lum.version();
 
 

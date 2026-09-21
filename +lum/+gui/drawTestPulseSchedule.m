@@ -43,6 +43,9 @@ for s = 1:numel(plan.Steps)
             alpha = 0.85;
             label = step.Kind;
         end
+        if isfield(step, 'Label') && ~isempty(step.Label)
+            label = step.Label;   % An ePhys calibration step (lum.ephys.plan)
+        end
         switch step.Channels
             case 'A'
                 used = 1;

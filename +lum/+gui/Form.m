@@ -57,6 +57,18 @@ classdef Form
             end
         end
 
+        function label = sessionLabel(kind, inSentence)
+            % sessionLabel(kind) is a session type as the windows write it: 'Behaviour',
+            % 'Sleep', 'ePhys calibration'. sessionLabel(kind, true) is the same inside a
+            % sentence: 'behaviour', 'sleep', 'ePhys calibration'.
+            labels = struct('Behaviour', 'Behaviour', 'Sleep', 'Sleep', ...
+                            'EphysCalibration', 'ePhys calibration');
+            label = labels.(kind);
+            if nargin > 1 && inSentence && ~strcmp(kind, 'EphysCalibration')
+                label = lower(label);
+            end
+        end
+
         function state = onOff(tf)
             % onOff(tf) is a logical as the on/off value an Enable property wants.
             state = matlab.lang.OnOffSwitchState(tf);
@@ -89,8 +101,9 @@ classdef Form
             set(ax, 'XLim', [0 edges(end)], 'YLim', [0 1.15], 'YTick', [], 'Color', t.Panel, ...
                 'XColor', t.Muted, 'YColor', 'none', 'TickDir', 'out', 'Box', 'off');
             xlabel(ax, 'Seconds from the first edge');
-            title(ax, sprintf('A %s session started now: 0x%s, %.2f s, %g ms markers', ...
-                              lower(kind), code.Hex, code.TotalDuration, 1000 * code.MarkerWidth), ...
+            title(ax, sprintf('%s session started now: 0x%s, %.2f s, %g ms markers', ...
+                              lum.gui.Form.sessionLabel(kind), code.Hex, code.TotalDuration, ...
+                              1000 * code.MarkerWidth), ...
                   'FontWeight', 'normal', 'FontSize', 10, 'Color', t.Ink);
             hold(ax, 'off');
         end

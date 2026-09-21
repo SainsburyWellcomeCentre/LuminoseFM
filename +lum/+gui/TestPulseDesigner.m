@@ -85,7 +85,7 @@ controls.InterEpochInterval = lum.gui.Form.number(form, probe.InterEpochInterval
 lum.gui.Form.label(form, '', t);
 controls.ProbeNote = lum.gui.Form.note(form, '', t);
 
-form = lum.gui.Form.panel(left, 'LED drive (constant light for probes, pulse height for trains)', 2, t, 250);
+form = lum.gui.Form.panel(left, 'PulsePal output into the LED driver''s TTL inputs (intensity: Doric LED tab)', 2, t, 250);
 lum.gui.Form.label(form, 'Channel A (V)', t);
 controls.VoltageA = lum.gui.Form.number(form, testPulses.Voltage(1), [-10 10], @refresh, false);
 lum.gui.Form.label(form, 'Channel B (V)', t);

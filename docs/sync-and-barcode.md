@@ -22,7 +22,9 @@ that records it:
 - a closing marker.
 
 The markers say what kind of session it is: **100 ms for a behaviour session, 200 ms for a sleep
-session**. These are the defaults, and minimums: with video they are widened to what the cameras
+session, 300 ms for an ePhys calibration session** (`MarkerWidth`, `SleepMarkerWidth`,
+`EphysMarkerWidth`). A continuous Neuropixels or camera recording can therefore say which kind of
+session each stretch holds. These are the defaults, and minimums: with video they are widened to what the cameras
 can read (below). Before 0.6.1 the bits were 10 and 30 ms. Its 32 bits are the seconds from 2020-01-01 to the session start, which is also in the
 data file's name.
 
@@ -30,7 +32,7 @@ To read it from a recording:
 
 ```matlab
 [value, ~, kind] = lum.sync.decodeBarcode(risingEdges, fallingEdges, SessionData.Session.Barcode.Params);
-startTime = lum.sync.barcodeTime(value);   % kind is 'Behaviour' or 'Sleep'
+startTime = lum.sync.barcodeTime(value);   % kind is 'Behaviour', 'Sleep' or 'EphysCalibration'
 ```
 
 The barcode is sent as its own state machine before the trial runner is created, which is why
@@ -91,7 +93,8 @@ session's sync pulses is treated as a minimum, and at session time whatever the 
 | 1 bit | ≥ 0 bit + 3 *T* | 50 ms | 166.7 ms |
 | behaviour marker | ≥ 1 bit + 3 *T* | 100 ms | 266.7 ms |
 | sleep marker | ≥ behaviour marker + 3 *T* | 200 ms | 366.7 ms |
-| trial or sleep pulse | shortest ≥ 2 *T*; a jittered range keeps its spread | 20–100 ms | 66.7–146.7 ms |
+| ePhys calibration marker | ≥ sleep marker + 3 *T* | 300 ms | 466.7 ms |
+| trial, sleep or ePhys pulse | shortest ≥ 2 *T*; a jittered range keeps its spread | 20–100 ms | 66.7–146.7 ms |
 
 A high or low time of *n T* is seen as *n* − 1 to *n* + 1 frames, so 2 *T* is never missed, and 3 *T*
 between neighbouring widths keeps them apart at the decoder's thresholds even when the camera runs
@@ -111,12 +114,17 @@ pulse's width to Bpod's within a frame. The code to align frames to Bpod's clock
 
 ---
 
-## Sleep sessions
+## Sleep and ePhys calibration sessions
 
 A sleep session sends the sleep barcode and then one sync pulse every interval (fixed or jittered
 width, with an optional jitter on the interval), recorded in `SessionData.SyncPulses`. Test
 pulses of light share the same timeline; both are laid out before the first block and sent as
 state machines of about 10 s. See D13 in [`architecture.md`](architecture.md).
+
+An ePhys calibration session does the same with its own barcode marker and its own sync pulses
+(`S.Ephys.Sync`), and its light is the steps of an input-output curve and a paired-pulse ratio (D18).
+On 2026-09-21 both cameras decoded an ePhys calibration barcode (kind `EphysCalibration`) and logged
+all 11 of its sync pulses ([`rig-checks.md`](rig-checks.md)).
 
 ---
 

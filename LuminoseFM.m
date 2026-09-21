@@ -13,15 +13,20 @@ function LuminoseFM
 %              clock and, if chosen, test pulses of light on channels A and B through
 %              PulsePal, with its own setup dialog, test-pulse designer and plots
 %              (lum.sleep.run, D13)
+%   EphysCalibration  light pulses stepping through intensities and paired-pulse
+%              intervals, for input-output curves and paired-pulse ratios on the probe;
+%              run by lum.sleep.run too, with its own dialog and barcode (D18)
+% The Doric LED driver starts connecting as the protocol launches, so the setup
+% dialogs can use it (their Doric LED tab); each session sets its channels up (D17).
 % Either runs end to end under Bpod('EMU') on a machine with no hardware, with working
 % GUI, plots and data saving; hardware calls fall back to shims that log what they
 % would have done. The data file records which kind it was, in Data.Session.Type.
 %
 % This file is deliberately thin. It sequences a session and owns nothing else:
-%   setup      settings, preflight, session type, stimulus set, devices, video,
-%              sounds, windows, barcode
-%   trial loop generate, build, upload, run, mark the camera clock, score, record,
-%              plot, save
+%   setup      settings, preflight, the LED connecting, session type, stimulus set,
+%              devices, video, sounds, windows, barcode
+%   trial loop generate, build, send any LED current asked for, upload, run, mark the
+%              camera clock, score, record, plot, save
 %   teardown   save the plots as an image, merge the analog stream, write the final
 %              file, keep the settings as they ended for the next session, stop the
 %              video and add its summary to the file, release devices
@@ -55,6 +60,12 @@ CheckRig;
 % settings file. Nothing else in the protocol behaves differently.
 headless = isequal(getappdata(0, 'LuminoseFM_Headless'), true);
 
+%% The Doric LED
+% Connecting takes several seconds, so it starts now and runs while the operator chooses
+% and sets the session up (lum.dev.openDoricLED). Every way out of the protocol from here
+% releases it.
+doricLED = openLED(rig, S);
+
 %% Session type
 if headless
     fprintf('LuminoseFM: headless mode; a %s session with the settings file as-is.\n', ...
@@ -63,16 +74,19 @@ else
     sessionType = lum.gui.SessionTypeDialog('Default', S.Session.Type, 'Subject', subject);
     if isempty(sessionType)
         fprintf('LuminoseFM: session cancelled.\n');
+        releaseLED(doricLED);
         BpodSystem.Status.BeingUsed = 0;
         return
     end
     S.Session.Type = sessionType;
 end
 
-if strcmp(S.Session.Type, 'Sleep')
-    % Everything a sleep session holds is released inside lum.sleep.run, so nothing
-    % from +lum is left for RunProtocol('Stop') to strand when it removes the path.
-    lum.sleep.run(S, rig, subject, headless);
+if ismember(S.Session.Type, {'Sleep', 'EphysCalibration'})
+    % Everything a sleep or ePhys calibration session holds, the LED included, is
+    % released inside lum.sleep.run, so nothing from +lum is left for RunProtocol('Stop')
+    % to strand when it removes the path.
+    lum.sleep.run(S, rig, subject, headless, doricLED);
+    clear doricLED
     if BpodSystem.Status.BeingUsed == 1
         RunProtocol('Stop');
     end
@@ -82,9 +96,10 @@ end
 %% Behaviour setup
 S = lum.pattern.prepareSeed(S);  % A new trial order, unless the settings fix the seed
 if ~headless
-    [S, accepted] = lum.gui.SetupDialog(S, rig, 'Subject', subject);
+    [S, accepted] = lum.gui.SetupDialog(S, rig, 'Subject', subject, 'DoricLED', doricLED);
     if ~accepted
         fprintf('LuminoseFM: session setup cancelled.\n');
+        releaseLED(doricLED);
         BpodSystem.Status.BeingUsed = 0;
         return
     end
@@ -105,11 +120,18 @@ if ~isempty(syncFit)
 end
 
 % Validated here as well as in the dialog, so a headless session cannot start on a
-% settings file the dialog would have refused. Nothing is open yet to release.
-[stimulusSet, ~, notes] = lum.validateSettings(S, rig);
+% settings file the dialog would have refused. Only the LED is open yet to release.
+try
+    [stimulusSet, ~, notes] = lum.validateSettings(S, rig);
+catch settingsError
+    releaseLED(doricLED);
+    BpodSystem.Status.BeingUsed = 0;
+    rethrow(settingsError);
+end
 for i = 1:numel(notes)
     fprintf('LuminoseFM: note: %s\n', notes{i});
 end
+cals = lum.led.calibrations(S);  % Each channel's light path's calibration, or none
 
 %% Hardware
 % A session that delivers light refuses to start without PulsePal; one without light runs
@@ -118,11 +140,13 @@ end
 % Bpod runs the protocol file with no try/catch of its own, so the console is released
 % here before the error is shown.
 try
-    devices = lum.dev.open(rig, S);
+    devices = lum.dev.open(rig, S, 'DoricLED', doricLED);
 catch openError
+    releaseLED(doricLED);
     BpodSystem.Status.BeingUsed = 0;
     rethrow(openError);
 end
+clear doricLED  % devices.doricLED from here on
 
 % Video starts before anything is sent to the rig, so the barcode is on it. spincam
 % records on threads of its own; the trial loop only marks each trial's end on its clock.
@@ -135,6 +159,11 @@ catch recordError
 end
 
 fprintf('LuminoseFM: %s\n', lum.trainingStageNote(S));
+if S.Session.UseOpto
+    fprintf('LuminoseFM: LED channel A %s, channel B %s.\n', ...
+            lum.led.describe(cals{1}, devices.doricLED.CurrentmA(1)), ...
+            lum.led.describe(cals{2}, devices.doricLED.CurrentmA(2)));
+end
 fprintf('LuminoseFM: %s\n', lum.HoldShaping.describe(S));
 fprintf('LuminoseFM: %s\n', lum.HoldShaping.describeBreak(S));
 fprintf('LuminoseFM: %s stimulus set, %d group(s), %d trial(s) ordered (seed %d)\n', ...
@@ -170,6 +199,10 @@ cameraWindow = [];
 if S.Camera.ShowWindow && devices.cameras.canPreview()
     cameraWindow = lum.gui.CameraWindow(devices.cameras, S.Camera, 'Subject', subject);
 end
+ledWindow = [];
+if S.Doric.ShowWindow && S.Session.UseOpto
+    ledWindow = lum.gui.DoricWindow(devices.doricLED, S, 'Subject', subject, 'Calibrations', cals);
+end
 
 %% Session barcode
 % One barcode before the first trial identifies the session on every acquisition
@@ -199,13 +232,14 @@ queue = stimulusSet.TrialPattern;
 runner = lum.SessionRunner(devices.emulated, lum.triggerStates(S));
 fprintf('LuminoseFM: running in %s mode, %s runtime window.\n', runner.Mode, lower(windowMode));
 
-[S, spec, sma, valveCache, queue] = prepareTrial(S, rig, devices, history, stimulusSet, queue, ...
+[S, spec, sma, valveCache, queue, ledCurrent] = prepareTrial(S, rig, devices, history, stimulusSet, queue, ...
     sounds, cueComponents, stimulusComponents, 1, valveCache, runtime);
 % What the first trials will deliver is known now, so it is shown before trial 1 starts
 % rather than after it ends.
 plots.showNext(spec, queue);
 runtime.showStatus(sprintf('Session started  |  %s', runningText(spec, stimulusSet)));
 nextSpec = spec;
+nextLEDCurrent = ledCurrent;
 
 %% Trial loop
 % Wrapped, because a session that fails part way through must still be torn down:
@@ -219,14 +253,16 @@ try
     runner.begin(sma);
     for currentTrial = 1:maxTrials
         spec = nextSpec;
+        ledCurrent = nextLEDCurrent;
 
         runner.awaitPrepareWindow();
         if BpodSystem.Status.BeingUsed == 0; break; end
 
         prepareTimer = tic;
         if currentTrial < maxTrials
-            [S, nextSpec, sma, valveCache, queue] = prepareTrial(S, rig, devices, history, stimulusSet, ...
-                queue, sounds, cueComponents, stimulusComponents, currentTrial + 1, valveCache, runtime);
+            [S, nextSpec, sma, valveCache, queue, nextLEDCurrent] = prepareTrial(S, rig, devices, history, ...
+                stimulusSet, queue, sounds, cueComponents, stimulusComponents, currentTrial + 1, ...
+                valveCache, runtime);
         else
             nextSpec = [];
         end
@@ -271,6 +307,8 @@ try
         history = lum.updateHistory(history, currentTrial, spec, result);
         data = recordTrial(data, currentTrial, spec, result, S);
         data.CameraTime(currentTrial) = cameraTime;
+        data.LEDCurrentA(currentTrial) = ledCurrent(1);
+        data.LEDCurrentB(currentTrial) = ledCurrent(2);
         data.HouseLight(currentTrial) = houseLightAtStart(devices.houseLight, currentTrial, arrivedAt);
 
         plotTimer = tic;
@@ -309,6 +347,9 @@ summary = 'no trials completed';
 if ~isempty(cameraWindow)
     cameraWindow.close();
 end
+if ~isempty(ledWindow)
+    ledWindow.close();
+end
 saved = false;
 % The plots as the operator last saw them, beside the data file; written before the
 % final save so the file can say where the image is.
@@ -325,6 +366,7 @@ try
     if isfield(BpodSystem.Data, 'Session')
         BpodSystem.Data.Session.PlotsImage = plotsImage;
         BpodSystem.Data.Session.HouseLight = devices.houseLight.record(BpodSystem.Data);
+        BpodSystem.Data.Session.DoricLED = lum.led.sessionRecord(S, devices.doricLED, cals);
         BpodSystem.Data.Session.DeviceLog = deviceLogs(devices);
         BpodSystem.Data.Session.Cameras = devices.cameras.sessionRecord();
         BpodSystem.Data.Session.EndTime = char(datetime('now'), 'yyyy-MM-dd HH:mm:ss');
@@ -356,6 +398,9 @@ if ~headless
     if devices.houseLight.Switchable
         S.Session.HouseLight = devices.houseLight.On;  % Where the operator left it
     end
+    if devices.doricLED.isControlled() && all(~isnan(devices.doricLED.CurrentmA))
+        S.Doric.CurrentmA = devices.doricLED.CurrentmA;  % As changed from the LED window
+    end
     saveSettings(settingsFile, S);
 end
 
@@ -367,7 +412,7 @@ finishVideo(devices, nCompleted, saved);
 runtime.close();
 plots.close();  % Only hidden by the console's End button, so it could be saved above
 closeDevices(devices);
-clear runner runtime devices plots cueComponents stimulusComponents cameraWindow  % No lum.* object may outlive Stop
+clear runner runtime devices plots cueComponents stimulusComponents cameraWindow ledWindow  % No lum.* object may outlive Stop
 
 fprintf('LuminoseFM: session ended after %d trial(s).\n', nCompleted);
 if nCompleted > 0
@@ -391,10 +436,14 @@ end
 
 %% ---------------------------------------------------------------------------
 
-function [S, spec, sma, valveCache, queue] = prepareTrial(S, rig, devices, history, stimulusSet, ...
-    queue, sounds, cueComponents, stimulusComponents, trialNumber, valveCache, runtime)
+function [S, spec, sma, valveCache, queue, ledCurrent] = prepareTrial(S, rig, devices, history, ...
+    stimulusSet, queue, sounds, cueComponents, stimulusComponents, trialNumber, valveCache, runtime)
 % Everything needed to run one trial, done inside the previous trial's window.
 S = runtime.sync(S);
+
+% An LED current asked for from the LED window goes to the driver now, after the running
+% trial's stimulus, and is what the trial prepared here runs at (NaN when set by hand).
+ledCurrent = devices.doricLED.applyPending(trialNumber);
 
 [spec, queue] = lum.nextTrialSpec(S, stimulusSet, queue, history, trialNumber);
 
@@ -481,7 +530,7 @@ function names = trialSeriesNames()
 names = {'StimulusGroup', 'PatternIndex', 'CorrectSide', 'Choice', 'Correct', 'Rewarded', ...
          'Outcome', 'ReactionTime', 'OptoOn', 'SoundOn', 'HouseLight', 'SyncMode', 'SyncPulseWidth', ...
          'BiasTargetPLeft', 'TrainingStage', 'HoldDuration', 'HoldGrace', 'HoldBreaks', ...
-         'HoldAttempts', 'EarlyWithdrawals', 'CameraTime'};
+         'HoldAttempts', 'EarlyWithdrawals', 'CameraTime', 'LEDCurrentA', 'LEDCurrentB'};
 
 
 function data = recordTrial(data, trialNumber, spec, result, S)
@@ -548,7 +597,8 @@ record.DevicesAvailable = struct('PulsePal', devices.pulsePal.Available, ...
                                  'FlexAnalog', devices.flex.hasAnalog(), ...
                                  'FlexSync', devices.flex.hasSync(), ...
                                  'Cameras', devices.cameras.Available, ...
-                                 'HouseLight', devices.houseLight.Available);
+                                 'HouseLight', devices.houseLight.Available, ...
+                                 'DoricLED', devices.doricLED.Available);
 record.Cameras = devices.cameras.sessionRecord();  % Brought up to date at teardown
 record.StartTime = char(startTime, 'yyyy-MM-dd HH:mm:ss');
 record.StoppedReason = '';  % Filled in at teardown if the session ended in an error
@@ -564,7 +614,8 @@ logs = struct('PulsePal', {devices.pulsePal.log()}, ...
               'HiFi', {devices.hifi.log()}, ...
               'FlexIO', {devices.flex.log()}, ...
               'Cameras', {devices.cameras.log()}, ...
-              'HouseLight', {devices.houseLight.log()});
+              'HouseLight', {devices.houseLight.log()}, ...
+              'DoricLED', {devices.doricLED.log()});
 
 
 function finishVideo(devices, nCompleted, saved)
@@ -613,10 +664,29 @@ catch settingsError
 end
 
 
+function doricLED = openLED(rig, S)
+% The Doric LED, connecting in the background (lum.dev.open with 'Only'). A failure here
+% only means the session opens it again later, and says why then.
+doricLED = [];
+try
+    early = lum.dev.open(rig, S, 'Only', 'DoricLED');
+    doricLED = early.doricLED;
+catch ledError
+    warning('lum:LuminoseFM:ledNotOpened', 'The Doric LED could not be opened yet: %s', ledError.message);
+end
+
+
+function releaseLED(doricLED)
+% The LED opened at launch, released when the protocol ends before the session has it.
+if ~isempty(doricLED)
+    doricLED.close();
+end
+
+
 function closeDevices(devices)
 % Release every device, whatever happened to the session. Safe to call twice: the
 % shims' close methods are idempotent.
-names = {'cameras', 'houseLight', 'pulsePal', 'hifi', 'flex'};  % The light off before PulsePal goes
+names = {'doricLED', 'cameras', 'houseLight', 'pulsePal', 'hifi', 'flex'};  % The lights off before PulsePal goes
 for i = 1:numel(names)
     try
         devices.(names{i}).close();

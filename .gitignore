@@ -9,3 +9,6 @@ Data/
 
 # Local tool settings
 .claude/settings.local.json
+
+# LED calibrations belong to the rig they were measured on (lum.led.calibrationFolder)
+calibration/

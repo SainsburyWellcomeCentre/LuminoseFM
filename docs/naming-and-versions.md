@@ -19,7 +19,7 @@ right — D8 in [`architecture.md`](architecture.md).
 | latency | `S.Stimulus.Latency`: from the poke to stimulus onset, held with the cue on |
 | hold, hold break, grace | The centre-port hold; leaving during it; how long a break may last unpunished |
 | hold window | `HoldWindow`: the time from trial start in which a hold must be completed, restarts included |
-| session type | Behaviour or sleep; `Session.Type` |
+| session type | Behaviour, sleep or ePhys calibration; `Session.Type` is `'Behaviour'`, `'Sleep'` or `'EphysCalibration'` |
 | carrier | What PulsePal does on a channel while it is on (frequency, pulse width, voltage) |
 | centre | British spelling, in identifiers as well as text: `CentreHold`, `WaitForCentrePoke` |
 | test pulses | Light during a sleep recording, probes and plasticity trains on a schedule: `S.Sleep.TestPulses` |
@@ -38,6 +38,14 @@ right — D8 in [`architecture.md`](architecture.md).
 | help line | The strip at the foot of a setup or runtime window describing the field under the pointer |
 | house light | The white light inside the box, on PulsePal output 3 and looped back into BNC input 1: `S.Session.HouseLight` (behaviour), `S.Sleep.HouseLight` (sleep), `Data.HouseLight`, `Session.HouseLight`; switched from the live figure's header. Not "room light" or "port 5 light" |
 | plots image | The online figure saved at the end of a session, `<data file name>_plots.png` (`Session.PlotsImage`) |
+| LED current | The Doric driver's current on LED channel 1 (A) or 2 (B), in mA: how bright a channel is while it is gated (`S.Doric.CurrentmA`, `Data.LEDCurrentA`/`B`, `LightSegments.CurrentmA`). Not "LED power" or "intensity" as a stored value |
+| light path | One optical channel and the bundle cable on it, with that cable's fibers at the tip (`lum.led.lightPath`) |
+| irradiance | Power at the fiber tips over their total area, mW/mm2; shown in place of mA once a light path is calibrated |
+| LED calibration | Power meter readings at several LED currents for one light path, stored per channel and cable in `calibration/` (`lum.led`) |
+| LED window | The window that shows each channel's LED current during a session and changes it between trials (`lum.gui.DoricWindow`) |
+| ePhys calibration | The session type that sends light pulses stepping through intensities and paired-pulse intervals, for the recorded response (`S.Ephys`, D18) |
+| input-output curve | Single pulses at intensities from lowest to highest, one step per level (`S.Ephys.InputOutput`) |
+| paired-pulse ratio | Pairs of pulses at one intensity, one step per inter-pulse interval (`S.Ephys.PairedPulse`) |
 
 ---
 
@@ -114,6 +122,21 @@ names.
 | — | the video stops after the final save (`SessionSaved` event), and a second save adds its summary; default format `avi-mjpeg-mt` (SpinCam 1.2.0 engine, multi-core MJPEG), with a note when a single-threaded format cannot keep up; the help line describes the format chosen; a SpinVideo format without SpinVideo is refused when the devices open; `Session.Cameras.EngineVersion` |
 | — | `GUIMeta.<name>.Help` for every runtime parameter; help line in the setup and runtime windows |
 | — | **▶ Play** buttons for the session's sounds in the setup dialog (`lum.testSounds`) |
+
+### 0.6.1 → 0.7.0 — the Doric LED, LED calibration, ePhys calibration sessions
+
+| 0.6.1 | 0.7.0 |
+|-------|-------|
+| the Doric LED driver was set by hand | controlled from MATLAB through the DoricLED package (D17): the protocol connects as it launches, each session puts both channels in external TTL mode at `S.Doric.CurrentmA`, and the LED window changes the current between trials or blocks. Without the package, or with the control off, the driver is used as set by hand |
+| — | **Doric LED** tab in every setup dialog: the driver, the fiber bundle and cables (moved from the Light path tab), each channel's current and limit, and **Calibrate…** |
+| — | LED calibration per channel and cable (`calibration/`, not tracked by git); a calibrated channel's intensity is shown and typed in mW/mm2 |
+| — | per-trial `LEDCurrentA`, `LEDCurrentB`; sleep `LightSegments.CurrentmA`; `Session.DoricLED`; `DeviceLog.DoricLED`; `DevicesAvailable.DoricLED` |
+| two session types | a third, **ePhys calibration** (`S.Ephys`, D18): an input-output curve and a paired-pulse ratio, run by `lum.sleep.run`; `Session.Ephys` |
+| two barcode markers | a third: `S.Sync.Barcode.EphysMarkerWidth` (300 ms; the sleep marker plus the behaviour marker in older settings files); `decodeBarcode` returns `'EphysCalibration'` |
+| 4-to-19 default cables blue on A, green on B | orange on A, blue on B (existing settings files keep theirs) |
+| `S.Light.Carrier.Voltage`, `S.Sleep.TestPulses.Voltage` "LED drive" | the TTL level into the driver's inputs (5 V); intensity is the LED current |
+| the house light never switched on: firmware v21 does not write an output on its resting voltage alone | `holdVoltage` sends the resting voltage and then the voltage itself (op 79); checked on the rig 2026-09-21, every switch reaches BNC1 |
+| sleep validation in one function | `lum.sleep.validateClock` (sync pulses, barcode, drug, cameras) and `lum.sleep.checkTimeline` (light against sync pulses), shared with ePhys calibration |
 
 ### 0.6.0 → 0.6.1 — house light, plots image, settings kept, cameras on the sync line
 

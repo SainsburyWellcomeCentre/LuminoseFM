@@ -1,8 +1,8 @@
 classdef Plots < handle
-    % lum.sleep.Plots is a sleep session's live figure: the sync pulses and test pulses sent.
+    % lum.sleep.Plots is a clock session's live figure: the sync pulses and light sent.
     %
-    % A sleep session has no trials and no choices, so the figure shows what it puts on
-    % its lines (D11, D13):
+    % A sleep session, or an ePhys calibration session (D18), has no trials and no choices,
+    % so the figure shows what it puts on its lines (D11, D13):
     %   Header        subject, session length and pulse rule, the test pulses, the
     %                 barcode and whether it was sent, pulses so far and time elapsed,
     %                 and the house light switch, which acts at once
@@ -43,7 +43,8 @@ classdef Plots < handle
         laneHeight = 1
         durationMinutes
 
-        plan                % From lum.sleep.testPulsePlan
+        plan                % From lum.sleep.testPulsePlan or lum.ephys.plan
+        kind = 'Sleep'      % 'Sleep' or 'EphysCalibration'
         hasLight = false
         nLightTrace         % Most gates of light the trace can hold
         lightX              % 2 x (4 nLightTrace + 2): A's trace, then B's
@@ -54,6 +55,7 @@ classdef Plots < handle
         shownEpoch = [0 0]  % Step and epoch on the latest-epoch panel
         maxGates
         maxEpochPulses
+        syncSettings        % The session's sync pulses (S.Sleep.Sync or S.Ephys.Sync)
     end
 
     methods
@@ -62,23 +64,36 @@ classdef Plots < handle
             %
             % Options:
             %   'Subject'    Shown in the header
-            %   'Plan'       From lum.sleep.testPulsePlan (default: compiled from S)
+            %   'Plan'       From lum.sleep.testPulsePlan (default: compiled from S) or
+            %                lum.ephys.plan
+            %   'Kind'       'Sleep' (default) or 'EphysCalibration'
+            %   'Sync'       The session's sync pulses (default S.Sleep.Sync)
+            %   'Description'  Lines describing the light, for the header (default from
+            %                lum.sleep.describeTestPulses)
             %   'MaxPulses'  Sync pulses to preallocate for (default: the session's worth)
             %   'HouseLight' The session's lum.dev.HouseLight, for the header's switch
             %                (lum.gui.houseLightSwitch); none without it
             %   'Visible'    'on' (default) or 'off', for tests
             global BpodSystem %#ok<GVMIS> % Figures are registered so Bpod can close them
 
-            sync = S.Sleep.Sync;
-            shortestInterval = max(sync.Interval - sync.IntervalJitter, 1e-3);
             p = inputParser;
             p.FunctionName = 'lum.sleep.Plots';
             addParameter(p, 'Subject', '', @(x) ischar(x) || isstring(x));
             addParameter(p, 'Plan', [], @(x) isempty(x) || isstruct(x));
+            addParameter(p, 'Kind', 'Sleep', @(x) ischar(x) || isstring(x));
+            addParameter(p, 'Sync', [], @(x) isempty(x) || isstruct(x));
+            addParameter(p, 'Description', {}, @iscell);
             addParameter(p, 'MaxPulses', [], @(x) isempty(x) || (isnumeric(x) && isscalar(x) && x >= 1));
             addParameter(p, 'HouseLight', [], @(x) isempty(x) || isa(x, 'lum.dev.HouseLight'));
             addParameter(p, 'Visible', 'on');
             parse(p, varargin{:});
+            obj.kind = char(p.Results.Kind);
+            sync = p.Results.Sync;
+            if isempty(sync)
+                sync = S.Sleep.Sync;
+            end
+            obj.syncSettings = sync;
+            shortestInterval = max(sync.Interval - sync.IntervalJitter, 1e-3);
 
             t = lum.gui.theme();
             obj.theme = t;
@@ -112,7 +127,8 @@ classdef Plots < handle
             obj.maxGates = max(1, plan.MostSegmentsPerEpoch);
             obj.maxEpochPulses = max(1, min(plan.MostPulsesPerEpoch, 5000));
 
-            obj.Figure = figure('Name', 'LuminoseFM - sleep', 'NumberTitle', 'off', ...
+            obj.Figure = figure('Name', ['LuminoseFM - ' lum.gui.Form.sessionLabel(obj.kind, true)], ...
+                                'NumberTitle', 'off', ...
                                 'MenuBar', 'none', 'ToolBar', 'none', 'Color', t.Background, ...
                                 'Position', [80 60 1200 780], 'Visible', p.Results.Visible, ...
                                 'CloseRequestFcn', @hideInstead);
@@ -120,7 +136,7 @@ classdef Plots < handle
                 BpodSystem.ProtocolFigures.LuminoseSleepPlots = obj.Figure;
             end
 
-            obj.buildHeader(S, char(p.Results.Subject), p.Results.HouseLight);
+            obj.buildHeader(S, char(p.Results.Subject), p.Results.HouseLight, p.Results.Description);
             body = uipanel(obj.Figure, 'Units', 'normalized', 'Position', [0 0 1 0.86], ...
                            'BorderType', 'none', 'BackgroundColor', t.Background);
             if obj.hasLight
@@ -128,12 +144,12 @@ classdef Plots < handle
                 obj.buildSchedulePanel(nexttile(tiles, 1, [1 3]));
                 obj.buildTracePanel(nexttile(tiles, 4, [1 2]));
                 obj.buildEpochPanel(nexttile(tiles, 6));
-                obj.buildWidthPanel(nexttile(tiles, 7, [1 2]), S);
+                obj.buildWidthPanel(nexttile(tiles, 7, [1 2]));
                 obj.buildStepPanel(nexttile(tiles, 9));
             else
                 tiles = tiledlayout(body, 2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
                 obj.buildTracePanel(nexttile(tiles, 1));
-                obj.buildWidthPanel(nexttile(tiles, 2), S);
+                obj.buildWidthPanel(nexttile(tiles, 2));
             end
             drawnow;
         end
@@ -318,7 +334,7 @@ classdef Plots < handle
                                       obj.plan.Steps(step).Kind, epoch);
         end
 
-        function buildHeader(obj, S, subject, houseLight)
+        function buildHeader(obj, S, subject, houseLight, description)
             t = obj.theme;
             header = uipanel(obj.Figure, 'Units', 'normalized', 'Position', [0 0.86 1 0.14], ...
                              'BorderType', 'none', 'BackgroundColor', t.Background);
@@ -332,18 +348,21 @@ classdef Plots < handle
             if isempty(subject)
                 subject = '-';
             end
-            sync = S.Sleep.Sync;
+            sync = obj.syncSettings;
             if sync.Mode == lum.SyncMode.FixedWidth
                 widthText = sprintf('%g ms', 1000 * sync.FixedWidth);
             else
                 widthText = sprintf('%g +/- %g ms', 1000 * sync.MeanWidth, 1000 * sync.WidthJitter);
             end
-            titleText = sprintf('LuminoseFM  |  %s  |  sleep session, %.4g min  |  a %s pulse every %g s', ...
-                                subject, obj.durationMinutes, widthText, sync.Interval);
+            titleText = sprintf('LuminoseFM  |  %s  |  %s session, %.4g min  |  a %s pulse every %g s', ...
+                                subject, lum.gui.Form.sessionLabel(obj.kind, true), obj.durationMinutes, ...
+                                widthText, sync.Interval);
             if sync.IntervalJitter > 0
                 titleText = sprintf('%s +/- %g s', titleText, sync.IntervalJitter);
             end
-            if obj.hasLight
+            if ~isempty(description)
+                lightText = strjoin(description(1:min(2, end)), '  |  ');
+            elseif obj.hasLight
                 description = lum.sleep.describeTestPulses(S.Sleep.TestPulses, obj.plan);
                 lightText = strjoin(description(1:2), '  |  ');
             else
@@ -368,7 +387,11 @@ classdef Plots < handle
 
         function buildSchedulePanel(obj, ax)
             t = obj.theme;
-            styleAxes(ax, t, 'Test-pulse schedule');
+            if strcmp(obj.kind, 'EphysCalibration')
+                styleAxes(ax, t, 'ePhys calibration steps');
+            else
+                styleAxes(ax, t, 'Test-pulse schedule');
+            end
             obj.axesOf.schedule = ax;
             lum.gui.drawTestPulseSchedule(ax, obj.plan, t);
             hold(ax, 'on');
@@ -415,13 +438,13 @@ classdef Plots < handle
             xlabel(ax, 'ms from the epoch''s onset');
         end
 
-        function buildWidthPanel(obj, ax, S)
+        function buildWidthPanel(obj, ax)
             t = obj.theme;
             styleAxes(ax, t, 'Pulses sent');
             obj.axesOf.widths = ax;
             obj.handles.widths = line(ax, obj.minutes, obj.widthsMs, 'LineStyle', 'none', ...
                 'Marker', '.', 'MarkerSize', 8, 'Color', t.Accent);
-            sync = S.Sleep.Sync;
+            sync = obj.syncSettings;
             if sync.Mode == lum.SyncMode.FixedWidth
                 limits = 1000 * sync.FixedWidth * [0.5 1.5];
             else

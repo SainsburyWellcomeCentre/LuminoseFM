@@ -16,8 +16,9 @@ classdef PulsePal < lum.dev.Device
     %
     % PulsePal also drives the house light, on an output no trigger reaches (OUT3,
     % rig.HouseLight): holdVoltage() sets that output's resting voltage, which the
-    % firmware writes at once and returns to after every stop, abort and disconnect,
-    % so the level holds whatever else PulsePal is told (lum.dev.HouseLight, D15). The
+    % firmware returns to after every stop, abort and disconnect, and then writes the
+    % voltage to the output (op 79), so the level holds whatever else PulsePal is told
+    % (lum.dev.HouseLight, D15). The
     % switch is clicked by the operator, and MATLAB runs a click's callback inside any
     % pause or drawnow — including those in PulsePal's serial code and its handshake.
     % So a voltage asked for while another command is talking to the device is sent
@@ -106,10 +107,13 @@ classdef PulsePal < lum.dev.Device
         function holdVoltage(obj, channel, volts, done)
             % holdVoltage(channel, volts, done) holds an output no trigger drives at a voltage.
             %
-            % Sets the output's resting voltage, which the firmware writes to the output at
-            % once and returns to after every stop, abort and disconnect, and unlinks the
-            % output from both trigger inputs first, so no gate on BNC1 or BNC2 can play a
-            % train on it. Only outputs 3 and 4: 1 and 2 carry channels A and B.
+            % Unlinks the output from both trigger inputs, so no gate on BNC1 or BNC2 can
+            % play a train on it; sets its resting voltage, which the firmware returns to
+            % after every stop, abort and disconnect; and writes the voltage to the output
+            % (op 79). Firmware v21 does not update the output on the resting voltage alone
+            % (PulsePal_2_0_1.ino: parameter 17 calls dacWrite without setting that
+            % output's DACFlags), so both are sent. Only outputs 3 and 4: 1 and 2 carry
+            % channels A and B.
             %
             % done (optional) is called once the device has it, as done([]), or as
             % done(err) when the device refused it. When another command is talking to the
@@ -246,6 +250,11 @@ classdef PulsePal < lum.dev.Device
             % sendStopOutput() stops one output and its continuous playback.
             error('lum:dev:PulsePal:abstract', 'sendStopOutput() must be implemented by a subclass.');
         end
+
+        function sendOutputVoltage(obj, channel, volts) %#ok<INUSD> % Overridden by subclasses
+            % sendOutputVoltage() writes a voltage to one output now (op 79).
+            error('lum:dev:PulsePal:abstract', 'sendOutputVoltage() must be implemented by a subclass.');
+        end
     end
 
     methods (Access = private)
@@ -292,7 +301,8 @@ classdef PulsePal < lum.dev.Device
         end
 
         function problem = sendHeld(obj, channel, volts)
-            % sendHeld() unlinks an output from both triggers and holds it at a voltage.
+            % sendHeld() unlinks an output from both triggers and holds it at a voltage:
+            % the resting voltage, for every later stop, and the output itself, now.
             % Returns the error, or [] when the device took it.
             problem = [];
             p = obj.Param;
@@ -300,6 +310,7 @@ classdef PulsePal < lum.dev.Device
                 obj.set(channel, p.LinkedToTriggerCH1, 0);
                 obj.set(channel, p.LinkedToTriggerCH2, 0);
                 obj.set(channel, p.RestingVoltage, volts);
+                obj.sendOutputVoltage(channel, volts);
             catch sendError
                 problem = sendError;
                 obj.note('ch%d could not be held at %g V: %s', channel, volts, sendError.message);

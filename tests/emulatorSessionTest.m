@@ -59,13 +59,31 @@ sessionData = testCase.TestData.sessionData;
 series = {'StimulusGroup', 'PatternIndex', 'CorrectSide', 'Choice', 'Correct', 'Rewarded', ...
           'Outcome', 'ReactionTime', 'OptoOn', 'SoundOn', 'HouseLight', 'SyncMode', 'SyncPulseWidth', ...
           'BiasTargetPLeft', 'TrainingStage', 'HoldDuration', 'HoldGrace', 'HoldBreaks', ...
-          'HoldAttempts', 'EarlyWithdrawals', 'CameraTime'};
+          'HoldAttempts', 'EarlyWithdrawals', 'CameraTime', 'LEDCurrentA', 'LEDCurrentB'};
 for i = 1:numel(series)
     verifyTrue(testCase, isfield(sessionData, series{i}), sprintf('Data.%s is missing', series{i}));
     verifyLength(testCase, sessionData.(series{i}), sessionData.nTrials, ...
                  sprintf('Data.%s is not one value per trial', series{i}));
 end
 verifyLength(testCase, sessionData.TrialSettings, sessionData.nTrials);
+end
+
+function testEachTrialRecordsTheLEDCurrentItRanAt(testCase)
+% The emulator's LED is the DoricLED package's simulated driver, set up at the settings'
+% currents; with no change asked for, every trial ran at them. Without the package the
+% LED is set by hand and the currents are unknown (NaN).
+sessionData = testCase.TestData.sessionData;
+record = sessionData.Session.DoricLED;
+if record.Controlled
+    expected = record.Settings.CurrentmA;
+    verifyEqual(testCase, record.Mode, 'Simulated');
+    verifyTrue(testCase, any(contains(sessionData.Session.DeviceLog.DoricLED, 'external TTL mode')));
+else
+    expected = [NaN NaN];
+end
+verifyEqual(testCase, unique(sessionData.LEDCurrentA), expected(1));
+verifyEqual(testCase, unique(sessionData.LEDCurrentB), expected(2));
+verifyEqual(testCase, [record.LightPaths.nFibers], [10 9]);
 end
 
 function testTheStimulusSetIsStoredOnceAndIndexed(testCase)

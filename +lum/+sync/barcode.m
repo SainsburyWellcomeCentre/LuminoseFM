@@ -16,23 +16,25 @@ function code = barcode(value, params, kind)
 % The closing marker lets a decoder check it has the whole code and read it in the
 % right direction.
 %
-% The markers say what kind of session the barcode opens (D11): params.MarkerWidth
-% for a behaviour session, params.SleepMarkerWidth — longer — for a sleep session.
-% lum.sync.decodeBarcode reads the kind back from the opening marker.
+% The markers say what kind of session the barcode opens (D11, D18): params.MarkerWidth
+% for a behaviour session, params.SleepMarkerWidth — longer — for a sleep session, and
+% params.EphysMarkerWidth — longer again — for an ePhys calibration session
+% (lum.sync.markerWidth). lum.sync.decodeBarcode reads the kind back from the opening
+% marker.
 %
 % Arguments:
 %   value   Non-negative integer to encode; reduced modulo 2^nBits. The session
 %           uses lum.sync.barcodeValue, the seconds since 2020-01-01 at session
 %           start, so the code decodes to when the session began.
-%   params  S.Sync.Barcode: nBits, MarkerWidth, ZeroWidth, OneWidth, Gap and
-%           SleepMarkerWidth (seconds). Without SleepMarkerWidth — settings from
-%           before 0.3 — it is twice MarkerWidth.
-%   kind    'Behaviour' (default) or 'Sleep'
+%   params  S.Sync.Barcode: nBits, MarkerWidth, ZeroWidth, OneWidth, Gap,
+%           SleepMarkerWidth and EphysMarkerWidth (seconds). Settings that lack the last
+%           two get them from lum.sync.markerWidth.
+%   kind    'Behaviour' (default), 'Sleep' or 'EphysCalibration'
 %
 % Returns a struct:
 %   .Value          The encoded value
 %   .Hex            The value in hexadecimal, for logs
-%   .Kind           'Behaviour' or 'Sleep'
+%   .Kind           'Behaviour', 'Sleep' or 'EphysCalibration'
 %   .MarkerWidth    The marker width this kind uses, seconds
 %   .Bits           1 x nBits logical, most significant first
 %   .Levels         1 x nElements line level of each element, 0 or 1
@@ -53,7 +55,8 @@ if ~(isscalar(nBits) && nBits >= 1 && nBits <= 48 && mod(nBits, 1) == 0)
     error('lum:sync:barcode:badBitCount', 'The barcode needs between 1 and 48 bits.');
 end
 sleepMarker = lum.sync.sleepMarkerWidth(params);
-widths = [params.ZeroWidth, params.OneWidth, params.MarkerWidth, sleepMarker, params.Gap];
+ephysMarker = lum.sync.markerWidth(params, 'EphysCalibration');
+widths = [params.ZeroWidth, params.OneWidth, params.MarkerWidth, sleepMarker, ephysMarker, params.Gap];
 if any(~isfinite(widths)) || any(widths < 1e-3)
     error('lum:sync:barcode:badWidths', ...
           'Barcode widths and gaps must each be at least 1 ms, so every edge is resolvable.');
@@ -68,14 +71,12 @@ if ~(sleepMarker > params.MarkerWidth)
           ['The sleep marker (%g s) must be longer than the behaviour marker (%g s), or the '...
            'two kinds of session could not be told apart.'], sleepMarker, params.MarkerWidth);
 end
-switch kind
-    case 'Behaviour'
-        marker = params.MarkerWidth;
-    case 'Sleep'
-        marker = sleepMarker;
-    otherwise
-        error('lum:sync:barcode:badKind', 'The barcode kind must be ''Behaviour'' or ''Sleep''.');
+if ~(ephysMarker > sleepMarker)
+    error('lum:sync:barcode:badWidths', ...
+          ['The ePhys calibration marker (%g s) must be longer than the sleep marker (%g s), '...
+           'or the two kinds of session could not be told apart.'], ephysMarker, sleepMarker);
 end
+marker = lum.sync.markerWidth(params, char(kind));
 if ~(isscalar(value) && isfinite(value) && value >= 0)
     error('lum:sync:barcode:badValue', 'The barcode value must be a non-negative number.');
 end

@@ -39,15 +39,19 @@ LuminoseFM/
 │   ├── +pattern/                 stimulus generator, stimulus set, light patterns
 │   ├── +stim/                    cue and stimulus components
 │   ├── +sync/                    session barcode; the sync line fitted to the cameras' frame rate
-│   ├── +sleep/                   sleep sessions: run, sync and test pulses, blocks, validation, plots
-│   ├── +dev/                     device shims, real and null; cameras through SpinCam; the house light on PulsePal
-│   └── +gui/                     session type, setup dialogs, camera tab and window, help line, designers, runtime window, theme, plots image
+│   ├── +sleep/                   sleep and ePhys calibration sessions: run, sync and test pulses, blocks, validation, plots
+│   ├── +ephys/                   ePhys calibration: the steps of light, their checks and description
+│   ├── +led/                     LED light paths, calibrations, mA and mW/mm2, the LED checks and session record
+│   ├── +dev/                     device shims, real and null; cameras through SpinCam; the house light on PulsePal; the Doric LED
+│   └── +gui/                     session type, setup dialogs, Doric LED tab, calibration and LED windows, camera tab and window, help line, designers, runtime window, theme, plots image
 ├── hardware/
 │   ├── RigConfig.m               the channel map — the single source of truth
 │   ├── CheckRig.m                preflight report
 │   ├── TestHiFiSound.m           play a test sound through the HiFi module
 │   ├── TestSyncLine.m            drive the sync TTL, from states and from a global timer
-│   └── TestHouseLight.m          switch the house light through PulsePal, check each switch reaches BNC1
+│   ├── TestHouseLight.m          switch the house light through PulsePal, check each switch reaches BNC1
+│   └── TestDoricLED.m            light A, then B, then both, through Bpod, PulsePal and the Doric driver
+├── calibration/                  LED calibrations of this rig (not tracked by git; made by Calibrate...)
 ├── tests/
 │   ├── runLuminoseTests.m        the whole suite; needs no hardware
 │   └── Stub*.m                   test doubles: HiFi, PulsePal, SpinCam's CameraManager
@@ -116,7 +120,8 @@ What it covers:
   video stops after the final save and the file still carries the recording summary (skipped without SpinCam:
   on the path, in `SPINCAM_FOLDER`, or beside the MATLAB folder). The other session tests run
   without video, whose load would stretch the emulator's timings they check.
-- `emulatorSessionTest`, `sleepSessionTest` — a whole behaviour session and two sleep sessions
+- `emulatorSessionTest`, `sleepSessionTest` — a whole behaviour session (with the LED current per
+  trial) and two sleep sessions
   (with and without test pulses) under `Bpod('EMU')`, checking the files they produce — the house
   light clicked off from the live figure part way through (`startHouseLightClicker`): the edge in the
   trial or block, the level per trial or block and the session's record — and the plots image beside
@@ -125,6 +130,18 @@ What it covers:
   move out of the runtime tier.
 - `barcodeTest` also samples fitted barcodes frame by frame at 25–150 Hz, at every phase and with
   the camera 5 % slow, and decodes every one (`lum.sync.fitToCameras`).
+- `ledTest` — light paths and fiber areas, calibrations (units, refusals, saving and replacing,
+  a damaged file), conversions between mA and mW/mm², the LED settings checks, and the session record.
+- `doricTest` — the Doric LED shim on DoricLED's simulated driver: the emulator's mode, manual mode,
+  setting both channels up in external TTL mode, a request sent only at the next prepare window, an
+  ePhys step's currents, calibration light, closing; the LED opened alone as the protocol launches;
+  and `TestDoricLED` end to end under `Bpod('EMU')` (skipped without the package).
+- `ephysTest` — the ePhys calibration schedule (levels even in mA or, calibrated, in irradiance;
+  paired-pulse intervals; order; refusals), its validation with its own sync pulses, the
+  EphysCalibration barcode and its fitting to the cameras. `ephysSessionTest` runs a whole ePhys
+  calibration session under `Bpod('EMU')` and checks each gate's current against its step.
+- `windowsTest` also covers the Doric LED tab (light path, calibration turning mA into mW/mm², a
+  limit stopping Start), the calibration window, the LED window and the ePhys calibration dialog.
 - `lintTest` — keeps the repository at zero MATLAB Code Analyzer messages.
 
 Add a test with any behaviour change; the pure functions are the cheap place to do it.

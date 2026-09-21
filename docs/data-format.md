@@ -72,7 +72,7 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
   and per camera `FramesLogged`, `FramesWritten`, `FramesMissed`, `WriterDrops`,
   `FramesIncomplete`, `QueuePeak`, `VideoFiles`, `Error`)
 - the protocol version and the device log (`DeviceLog.PulsePal`, `DeviceLog.HiFi`,
-  `DeviceLog.FlexIO`, `DeviceLog.Cameras`)
+  `DeviceLog.FlexIO`, `DeviceLog.Cameras`, `DeviceLog.DoricLED`)
 - `StoppedReason` — empty for a session that ran to its end or was stopped from the console, and
   the error message otherwise
 - `PlotsImage` — full path of the `_plots.png` saved at teardown, or `''`
@@ -83,13 +83,24 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
   also a `HouseLight` row in `_events.csv`) and `WallTime` (text); and `Edges`, one per edge of the
   loopback input among the trial events: `Time` (s, Bpod's clock: `TrialStartTimestamp` plus the
   event time), `On` (logical) and `Trial`. A switch made while no state machine ran is in
-  `Switches` but has no edge. Rig sessions from 2026-09-17 have no edges at all, because the
-  loopback did not reach BNC input 1 (P1 in [`rig-checks.md`](rig-checks.md))
+  `Switches` but has no edge. Rig sessions before 0.7.0 have no edges at all, because the light
+  was never switched on: PulsePal did not change its output on the resting voltage alone (P1 in
+  [`rig-checks.md`](rig-checks.md))
 - `DeviceLog.HouseLight`, and `DevicesAvailable.HouseLight` (false in the emulator, and when the light
   could not be switched). PulsePal is opened in every session on the rig, since it drives the light:
   `DevicesAvailable.PulsePal` is true with or without light when it connected, and
-  `DeviceLog.PulsePal` has a `set ch3 param 17 = 5` (on) or `= 0` (off) line for the start and every
-  switch
+  `DeviceLog.PulsePal` has a `set ch3 param 17 = 5` (on) or `= 0` (off) line, followed from 0.7.0 by
+  `ch3 output = 5 V` (or `0 V`), for the start and every switch
+- `DoricLED` — the LED (D17), from `lum.led.sessionRecord`: `Controlled` (true when the session set
+  the driver), `Mode` (`'Device'`, `'Simulated'` in the emulator, `'Manual'` when set by hand) and
+  `Reason`; `Settings` (`S.Doric`); `LightPaths`, one per channel: `Channel`, `LEDChannel`, `Bundle`,
+  `Cable`, `nFibers`, `FiberDiameter` (mm), `Area` (mm²); `Calibrations`, a 1 × 2 cell holding each
+  path's calibration as used, or `[]` (`CurrentmA`, `PowermW`, `IrradiancemWmm2`, `PowerUnit`,
+  `PowerTyped`, `Date`, `Notes`); and `Device`: `CurrentmA` and `MaxCurrentmA` at the end, `Changes`
+  (one row per current sent: session seconds on the LED's clock, channel 1 = A, mA, trial or block)
+  and `Package`, the DoricLED package's record of what the driver acknowledged (without its log).
+  Irradiance for any current: `lum.led.irradiance(Session.DoricLED.Calibrations{k}, mA)`.
+  `DevicesAvailable.DoricLED` is true when the real driver was used
 - `SyncFit` — what `lum.sync.fitToCameras` widened so the cameras could read the sync line, one text
   per value (e.g. `'0 bit 20 -> 66.7 ms'`); empty when nothing was. `Settings` and `Barcode.Params`
   hold the fitted values; the settings file keeps the typed ones
@@ -98,8 +109,8 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
 
 `StimulusGroup`, `PatternIndex`, `CorrectSide`, `Choice`, `Correct`, `Rewarded`, `Outcome`,
 `ReactionTime`, `OptoOn`, `SoundOn`, `HouseLight`, `SyncMode`, `SyncPulseWidth`, `BiasTargetPLeft`,
-`TrainingStage`, `HoldDuration`, `HoldGrace`, `HoldBreaks`, `HoldAttempts`, `EarlyWithdrawals` and
-`CameraTime`, plus `TrialSettings` (the runtime parameters only) and `OutcomeNames` for decoding
+`TrainingStage`, `HoldDuration`, `HoldGrace`, `HoldBreaks`, `HoldAttempts`, `EarlyWithdrawals`,
+`CameraTime`, `LEDCurrentA` and `LEDCurrentB`, plus `TrialSettings` (the runtime parameters only) and `OutcomeNames` for decoding
 `Outcome`.
 
 Outcome codes are never renumbered. `HoldAttempts` counts how many times the stimulus started on
@@ -113,7 +124,9 @@ Bpod's BNC input 1, so a switch during a trial is an event in it: `BNC1High` (sw
 `BNC1Low` (switched off) in `RawEvents.Trial{k}.Events`, on the trial's clock (all of them, on the
 session's clock, are `Session.HouseLight.Edges`). `HouseLight` is read from those events when there are
 any (the first edge gives the level before it), and otherwise is the level PulsePal held as the trial
-started.
+started. `LEDCurrentA` and `LEDCurrentB` are the LED currents, in mA, the trial ran at on channels A
+and B (NaN when the driver was set by hand); a change made in the LED window takes effect from the
+next trial prepared after it.
 
 To get trial *k*'s light:
 
@@ -136,7 +149,9 @@ sent, start and end time, barcode, `TestPulses`, version, PulsePal and Flex logs
 - `SessionData.SyncPulses` — `Onset` (state machine clock, s), `Width` (s) and `Block`, one value
   per pulse sent. Each block is one Bpod trial in `RawEvents`.
 - `SessionData.LightSegments` (with test pulses) — `Onset` (state machine clock, s), `Duration`
-  (s), `Channel` (1 = A, 2 = B), `Step`, `Epoch` and `Block`, one value per gate of light sent.
+  (s), `Channel` (1 = A, 2 = B), `Step`, `Epoch`, `Block` and `CurrentmA` (the LED current of the
+  gate's channel as its block was sent; NaN when the driver was set by hand, and absent before
+  0.7.0), one value per gate of light sent.
   For a probe step the gate is the pulse; for a train step it is a burst, and
 
   ```matlab
@@ -153,10 +168,29 @@ sent, start and end time, barcode, `TestPulses`, version, PulsePal and Flex logs
   block's events reached MATLAB (`NaN` without video); `Session.Cameras` as for behaviour.
 - `SessionData.HouseLight` — one value per block: 1 when the block started with the house light on,
   0 when off; switches during a block are `BNC1High`/`BNC1Low` events in it.
-- `Session.PlotsImage`, `Session.SyncFit`, `Session.HouseLight`, `DeviceLog.HouseLight` — as for
-  behaviour.
+- `Session.PlotsImage`, `Session.SyncFit`, `Session.HouseLight`, `DeviceLog.HouseLight`,
+  `Session.DoricLED`, `DeviceLog.DoricLED` — as for behaviour.
 
 Per-pulse carrier copies are never stored: the compiled steps are written once.
+
+---
+
+## An ePhys calibration session file
+
+Laid out as a sleep session with test pulses (D18): `Session.Type` is `'EphysCalibration'`,
+`Session.Barcode.Kind` is `'EphysCalibration'`, and `SyncPulses`, `LightSegments` (with `CurrentmA`),
+`CameraTime`, `HouseLight`, `Session.DoricLED` and the logs are as above. In place of `TestPulses`:
+
+- `Session.Ephys` — `Settings` (`S.Ephys`), `Steps`, `Duration`, `Completed` and `StoppedReason`
+  (when PulsePal or the LED driver stopped answering). Each step has, beside the fields of a probe
+  step: `Protocol` (`'Input-output'` or `'Paired-pulse ratio'`), `Label` (e.g. `'IO 3/8'`,
+  `'PPR 50 ms'`), `CurrentmA` and `IrradiancemWmm2` (1 × 2, A then B; NaN for a channel not used, or
+  without a calibration) and `InterPulseInterval` (s, onset to onset; NaN for single pulses).
+
+Each gate's `Step` indexes `Session.Ephys.Steps`, so an input-output curve is the response to each
+gate grouped by `LightSegments.CurrentmA` (or the step's irradiance), and a paired-pulse ratio the
+second response over the first, grouped by the step's `InterPulseInterval`. Onsets are on Bpod's
+clock; the barcode and sync pulses put them on the probe's.
 
 ---
 
@@ -272,6 +306,9 @@ the null device shims swallowed is recorded in `Data.Session.DeviceLog`. See
 
 ## Reading older files
 
+- **Sessions before 0.7.0** have no `LEDCurrentA`/`LEDCurrentB`, `LightSegments.CurrentmA` or
+  `Session.DoricLED`: the LED was set by hand. Their barcode parameters have no `EphysMarkerWidth`,
+  and their house light never switched on at the rig (see `Session.HouseLight` above).
 - **Trial sync pulses in sessions from 0.2 to 0.5.0** are ~100 µs glitches, not the recorded
   widths. Align those sessions by the barcode and `Data.TrialStartTimestamp`; see
   [`sync-and-barcode.md`](sync-and-barcode.md).

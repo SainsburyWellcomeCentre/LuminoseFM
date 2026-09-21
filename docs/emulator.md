@@ -37,6 +37,13 @@ again on the next trial. A sleep session needs no clicks.
 - **PulsePal and the HiFi module are unavailable**, so sound states run silently and no light is
   delivered. The runtime window opens in its reduced, single-page form (Bpod's own parameter
   window, relabelled). The setup dialog's **▶ Play** buttons play through the PC's speakers.
+- **The Doric LED is simulated.** With the DoricLED package found, the session runs the package's
+  `SimulatedTransport`: the same `doric.LightSource`, answering like the driver and logging every
+  command (`Session.DoricLED.Mode = 'Simulated'`, `DeviceLog.DoricLED`), so the Doric LED tab, the
+  calibration window, the LED window, `TestDoricLED` and an ePhys calibration session all run.
+  Without the package the LED is 'Manual' and the currents in the data are NaN. The LED window's
+  first drawing can hold up the emulator's loop for a moment, so the tests that check emulated
+  intervals run without it.
 - **Cameras are simulated.** With SpinCam found, the session records SpinCam's synthetic cameras
   (640 × 512 frames through the real engine, into real files in `Session Videos`,
   `Session.Cameras.Backend = 'mock'`); without it, no video, logged. Encoding simulated video loads
@@ -66,9 +73,9 @@ again on the next trial. A sleep session needs no clicks.
 
 ---
 
-## Sleep sessions in the emulator
+## Sleep and ePhys calibration sessions in the emulator
 
-A sleep session runs the same way: it drives BNC1 and BNC2 on the console but no sync line, logs
+A sleep or ePhys calibration session runs the same way: it drives BNC1 and BNC2 on the console but no sync line, logs
 PulsePal's programming instead of sending it, and records the barcode and every pulse it would
 have sent. Because the emulator keeps no millisecond time, emulated intervals are lower bounds.
 
@@ -78,7 +85,8 @@ have sent. Because the emulator keeps no millisecond time, emulated intervals ar
 
 The protocol detects emulator mode in exactly **one** place — `lum.dev.open` — which builds real
 or null device shims once at startup; for cameras, `lum.dev.openCameras` picks SpinCam's simulated
-backend there. Every hardware call on a null shim is logged rather than
+backend there, and for the LED `lum.dev.openDoricLED` picks DoricLED's simulated driver (the protocol
+opens the LED early through `lum.dev.open(rig, S, 'Only', 'DoricLED')`, so this still holds). Every hardware call on a null shim is logged rather than
 sent, and the log is written into the data file as `Data.Session.DeviceLog`. Anything else that
 must behave differently is told so through `devices.emulated`.
 
@@ -86,4 +94,5 @@ Emulated sessions still produce a complete, correctly structured data file, mark
 `Data.Info.EmulatorMode = 1` so it is never mistaken for real behaviour.
 
 The test suite (`tests/runLuminoseTests.m`) starts `Bpod('EMU')` itself and **refuses to run against
-a real state machine**; `emulatorSessionTest` and `sleepSessionTest` run whole sessions this way.
+a real state machine**; `emulatorSessionTest`, `sleepSessionTest` and `ephysSessionTest` run whole
+sessions this way.

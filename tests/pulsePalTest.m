@@ -308,8 +308,9 @@ end
 %% Holding an output: the house light -------------------------------------------------
 
 function testAHeldVoltageIsTheRestingVoltageOfAnUntriggeredOutput(testCase)
-% The firmware writes a resting voltage at once and returns to it after every stop, abort
-% and disconnect; unlinking both triggers keeps a gate on BNC1 or BNC2 off the output.
+% The firmware returns to a resting voltage after every stop, abort and disconnect, but v21
+% does not write it to the output on its own, so the voltage follows as op 79; unlinking
+% both triggers keeps a gate on BNC1 or BNC2 off the output.
 pulsePal = lum.dev.NullPulsePal('test');
 p = lum.dev.PulsePal.Param;
 done = containers.Map();
@@ -319,7 +320,11 @@ verifyEqual(testCase, pulsePal.sentValue(3, p.LinkedToTriggerCH1), 0);
 verifyEqual(testCase, pulsePal.sentValue(3, p.LinkedToTriggerCH2), 0);
 verifyEmpty(testCase, done('last'), 'Called back, without a problem');
 lines = pulsePal.log();
-verifyEqual(testCase, lines(end), {'would set ch3 param 17 = 5'}, 'Unlinked first, then held');
+verifyEqual(testCase, lines(end-1:end), {'would set ch3 param 17 = 5', 'would write ch3 output = 5 V'}, ...
+            'Unlinked first, then the resting voltage, then the output itself');
+pulsePal.holdVoltage(3, 5);
+verifyEqual(testCase, pulsePal.log(), [lines, {'would write ch3 output = 5 V'}], ...
+            'The output is written again even when the resting voltage has not changed');
 pulsePal.holdVoltage(3, 0);
 verifyEqual(testCase, pulsePal.sentValue(3, p.RestingVoltage), 0);
 pulsePal.configure(waveform(20, 0.005));

@@ -14,13 +14,14 @@ function [value, startIndex, kind] = decodeBarcode(risingTimes, fallingTimes, pa
 % Returns:
 %   value       The decoded value, or NaN if no complete barcode was found
 %   startIndex  Index into risingTimes of the barcode's opening marker, or NaN
-%   kind        'Behaviour' or 'Sleep', from the opening marker's width; '' when no
-%               barcode was found
+%   kind        'Behaviour', 'Sleep' or 'EphysCalibration', from the opening marker's
+%               width; '' when no barcode was found
 %
 % The first pair of markers that encloses exactly nBits pulses is the barcode, so
 % trial pulses recorded afterwards do not confuse it. A trial pulse as long as the
-% marker could, which is why the marker defaults to twice the longest bit. Behaviour
-% and sleep markers are both markers here; which one opened the code is the kind.
+% marker could, which is why the marker defaults to twice the longest bit. Behaviour,
+% sleep and ePhys calibration markers are all markers here; which one opened the code
+% is the kind, read at the midpoints between their widths.
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
@@ -43,6 +44,7 @@ end
 markerThreshold = (params.OneWidth + params.MarkerWidth) / 2;
 bitThreshold = (params.ZeroWidth + params.OneWidth) / 2;
 sleepThreshold = (params.MarkerWidth + lum.sync.sleepMarkerWidth(params)) / 2;
+ephysThreshold = (lum.sync.sleepMarkerWidth(params) + lum.sync.markerWidth(params, 'EphysCalibration')) / 2;
 markers = find(widths > markerThreshold);
 for m = 1:numel(markers) - 1
     first = markers(m);
@@ -57,7 +59,9 @@ for m = 1:numel(markers) - 1
     bits = bitWidths > bitThreshold;
     value = sum(bits .* 2 .^ (params.nBits - 1:-1:0));
     startIndex = first;
-    if widths(first) > sleepThreshold
+    if widths(first) > ephysThreshold
+        kind = 'EphysCalibration';
+    elseif widths(first) > sleepThreshold
         kind = 'Sleep';
     else
         kind = 'Behaviour';

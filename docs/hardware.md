@@ -60,14 +60,35 @@ Channel A:  Bpod BNC1 → PulsePal IN1 → PulsePal OUT1 → Doric LED ch1
 Channel B:  Bpod BNC2 → PulsePal IN2 → PulsePal OUT2 → Doric LED ch2
 ```
 
-Each channel drives one cable of the bundle on the animal:
+The driver is a Doric 2-channel LED fiber light source, `LEDFLS_465_465` (2 × 465 nm), USB, shown to
+the DoricLED package as "LED Driver" on Doric port 4. LED channel 1 lights channel A and LED channel 2
+lights B; each goes to the commutator and on to one cable of the bundle on the animal:
 
 | Bundle | Cables | Spots per cable | Which two are used |
 |--------|--------|-----------------|--------------------|
 | 2-to-19 | ch1 fiber, ch2 fiber | 10, 9 | both, fixed: ch1 on A, ch2 on B |
-| 4-to-19 | black, blue, orange, green | 4, 5, 5, 5 | any two on the commutator; chosen on the setup dialog's Light path tab and recorded with the session |
+| 4-to-19 | black, blue, orange, green | 4, 5, 5, 5 | any two on the commutator: orange on A and blue on B by default; chosen on the setup dialogs' Doric LED tab and recorded with the session |
 
-The design drawing colours the orange cable red.
+Each spot is the end of one 100 µm fiber, so a cable's light leaves through its spot count × π × (50 µm)²
+(`lum.led.lightPath`).
+
+**Who sets what.** Bpod and PulsePal time the light (D1); the driver sets how bright it is. Both LED
+channels run in **external TTL mode**: a channel is lit at its LED current while PulsePal's output
+into its TTL input is high. With the DoricLED package found and **Control the LED from MATLAB** ticked
+(`S.Doric.Enabled`, the default), the protocol connects to the driver as it launches, each session sets
+both channels up at `S.Doric.CurrentmA` (limit `S.Doric.MaxCurrentmA`, at most 1000 mA, the LED's
+rating), and currents change only between trials, sleep blocks or ePhys calibration steps (D17). The
+state machine is not involved. Without the package, or with the control off, the driver is used as it
+was set by hand (its front panel or Doric Neuroscience Studio), which must then be external TTL mode;
+PulsePal's voltage (5 V) is a TTL level either way, not the intensity.
+
+**Calibration.** A channel's LED current can be calibrated against irradiance at the fiber tips: the
+Doric LED tab's **Calibrate…** lights the channel continuously at a series of currents while a power
+meter reads the power leaving the cable (mW or µW). Irradiance is that power over the cable's fiber
+area. A calibration belongs to one channel and the cable on it, is kept in `calibration/` in the
+repository (not tracked by git, so each rig keeps its own), and is replaced by the next calibration of
+the same channel and cable. Every session type then shows and takes that channel's intensity in mW/mm²;
+settings and data keep mA.
 
 A **light pattern** is the sequence of ON/OFF states of channels A and B over the stimulus
 window. At any instant the pair is in one of four joint states: dark, A only, B only, or A
@@ -110,12 +131,13 @@ The white light inside the box is driven by **PulsePal output 3** (`rig.HouseLig
 during it from the **House light** box in the plots' header (D15 in
 [`architecture.md`](architecture.md)).
 
-- **PulsePal holds the level** as output 3's *resting voltage*. The firmware writes it the moment it
-  arrives and returns every output to its resting voltage after a stop, an abort or a disconnect, so
-  the light stays where the operator left it through programming, trials, sleep blocks and the gaps
-  between them. No trigger input reaches output 3 (the protocol unlinks it from both), so gates on
-  BNC1/BNC2 never play on it. The session switches it off when it ends; after a crash, power-cycling
-  PulsePal (§3) puts it at 0 V.
+- **PulsePal holds the level.** Each switch sets output 3's *resting voltage*, which the firmware
+  returns every output to after a stop, an abort or a disconnect, and then writes the voltage to the
+  output (op 79): firmware v21 does not update an output on its resting voltage alone. The light
+  stays where the operator left it through programming, trials, sleep blocks and the gaps between
+  them. No trigger input reaches output 3 (the protocol unlinks it from both), so gates on BNC1/BNC2
+  never play on it. The session switches it off when it ends; after a crash, power-cycling PulsePal
+  (§3) puts it at 0 V.
 - **Bpod times each switch.** The splitter's second leg goes into Bpod's **BNC input 1**, so a switch
   made while a state machine runs is an event of the trial, `BNC1High` (on) or `BNC1Low` (off), on
   Bpod's clock. BNC input 1 must be **enabled** in the console's port settings (`CheckRig` says so);
@@ -129,10 +151,11 @@ during it from the **House light** box in the plots' header (D15 in
 switches the light through PulsePal from a state machine and reports each `BNC1High` / `BNC1Low`
 edge and its latency; the light should blink, and every switch should arrive.
 
-**Status (2026-09-17): the loopback is not working.** PulsePal confirmed every switch, but no
-`BNC1High` / `BNC1Low` reached Bpod in `TestHouseLight` or in two rig sessions. Nobody was at the rig
-to see whether the light blinked. Until the cable is checked, rig sessions record switches on the
-camera clock only. See P1 in [`rig-checks.md`](rig-checks.md).
+**Status (2026-09-21): the loopback works.** Every switch in `TestHouseLight` reached BNC1, 18–33 ms
+after its command. Until then no switch had changed the output at all: 0.6.1 set only the resting
+voltage, which firmware v21 stores without writing (see [`rig-checks.md`](rig-checks.md), P1). Sessions
+up to 0.6.1 on this rig never lit the house light. Whether the light itself turns on is still to be
+seen at the rig.
 
 The light moved here from port 5's LED line (`PWM5`) during 0.6.1, where a global timer had to hold it
 in every state machine and it went dark between them.
@@ -213,6 +236,7 @@ one program only.
 | Data folder | `D:\luminoseData\` (Bpod's `DataFolder`) |
 | Bpod_Gen2, Bpod Local, PulsePal | cloned into `...\MATLAB\`; Bpod_Gen2 is on the MATLAB path, PulsePal must be added to the path before use |
 | SpinCam | `...\MATLAB\SpinCam` (its own repository); set up once with `spincam.setup`, then named in the Cameras tab (`S.Camera.SpinCamFolder`) or left on the MATLAB path. Needs Spinnaker with its .NET components (4.2.0.83 here) |
+| DoricLED | `...\MATLAB\DoricLED` (its own package, on the saved MATLAB path here); its bridge is built once with `doric.build()`. Named on the Doric LED tab (`S.Doric.Folder`) when not on the path |
 | Spinnaker SDK | `C:\Program Files\Teledyne\Spinnaker` (4.2.0.83), .NET assemblies in `bin64\vs2015` |
 | Protocol examples | `...\MATLAB\Bpod_Gen2\Examples\Protocols` |
 
@@ -230,6 +254,7 @@ SpinCam outside the repository).
 | Bpod_Gen2 | every session | 1.9.0, on the saved path | Flex I/O and `BpodTrialManager` as in 1.9.0; the emulator is a state machine r0.7–1.0 ([`emulator.md`](emulator.md)) |
 | PulsePal (MATLAB) | sessions with light; the house light | cloned beside Bpod_Gen2 | Not on the saved path: the session adds it for itself. A light session refuses to start without the device; one without light runs without the house light |
 | SpinCam | video | engine 1.2.0 (`spincam.version` still says 1.1.0) | Its own repository, never modified from here. `Session.Cameras` records both versions |
+| DoricLED | the LED current from MATLAB, calibration, ePhys calibration sessions | as of 2026-09-21, `DoricSystem.dll` 1.3.0, bridge `bin\doric_bridge.exe` | Its own package, never modified from here. Optional: without it the driver is used as set by hand, and ePhys calibration sessions do not run on the rig. `Session.DoricLED.Device.Package` records its version |
 | Spinnaker SDK with .NET components | video on the rig | 4.2.0.83 | Install the .NET components. SpinVideo (`SpinVideoNET`) is needed only for `avi-mjpeg`, `mp4-h264` and `avi-raw`; the default `avi-mjpeg-mt` and `raw` do without it. Not needed for the emulator's simulated cameras |
 | .NET Framework 4.8 and `csc.exe` | building SpinCam's engine | ship with Windows 10/11 | `spincam.setup` compiles the engine once, and again after a Spinnaker or SpinCam update (restart MATLAB after) |
 | SpinView | nothing during a session | — | Close it: a camera can be streamed by one program only. FlyCapture2 is not used; do not move the cameras to its driver |
@@ -241,9 +266,8 @@ SpinCam outside the repository).
 
 Close MATLAB, then power-cycle the Bpod state machine and PulsePal (unplug their USB, or switch
 the powered hub off and on) before the first session of a run, and again after any session that
-ended in an error. This is not superstition, and it is not optional after a failure. Both devices
-talk over a USB serial port that only the process holding it can use, and both keep state between
-sessions:
+ended in an error. Both devices talk over a USB serial port that only the process holding it can
+use, and both keep state between sessions:
 
 - A MATLAB that was killed, or a protocol that errored, can leave the port open. Bpod's own
   scan lists only *free* ports, so the next session either cannot find the device or opens it
@@ -257,12 +281,18 @@ sessions:
   even a dead one, so a stale object hides a disconnected device.
 - A stale `BpodSystem` also keeps the old Flex I/O configuration and module list, so a channel
   reconfigured in the console since startup may not be the one the protocol sees.
+- The Doric driver is opened by one program at a time. Close Doric Neuroscience Studio, and any other
+  MATLAB using DoricLED, before a session. The protocol switches both LED channels off when it ends.
 
 ---
 
-## 4. Later: controlling the Doric LED from MATLAB
+## 4. Checking the light path
 
-*Not in scope yet.* The API for controlling the Doric LEDs lives in
-`C:\Users\harrislab\Documents\MATLAB\DoricSystemDLL`. It would let the operator set LED power and
-other parameters directly from MATLAB. Open question: should this live in its own package, or be
-integrated into this protocol folder?
+| Utility | What it checks |
+|---------|----------------|
+| `CheckRig` | the DoricLED package and its bridge are there, and which light paths are calibrated |
+| `TestDoricLED` | the whole path: connects the driver, sets both channels to external TTL mode, programs PulsePal and gates BNC1, then BNC2, then both, at each current given (`TestDoricLED('Currents', [20 100 300])`). Watch the fiber: A flashes, then B, then both, brighter at each current |
+| `TestHouseLight` | PulsePal output 3 and its loopback into BNC input 1 |
+
+The driver cannot be read back and nothing loops its output into Bpod, so whether light comes out is
+checked by eye or with a power meter.

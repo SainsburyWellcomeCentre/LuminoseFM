@@ -93,6 +93,17 @@ classdef RealPulsePal < lum.dev.PulsePal
             obj.note('ch%d stopped, continuous playback off', channel);
         end
 
+        function sendOutputVoltage(obj, channel, volts)
+            % sendOutputVoltage() writes a voltage to one output now (op 79) and checks the
+            % confirm byte.
+            confirmed = SetPulsePalVoltage(channel, volts);
+            if ~isequal(confirmed, 1)
+                error('lum:dev:RealPulsePal:notConfirmed', ...
+                      'PulsePal did not acknowledge %g V on output %d.', volts, channel);
+            end
+            obj.note('ch%d output = %g V', channel, volts);
+        end
+
         function tf = handshake(obj) %#ok<MANU> % The connection lives in PulsePal's global
             % handshake() asks the device for its firmware version on the open port.
             tf = lum.dev.RealPulsePal.answersHandshake();

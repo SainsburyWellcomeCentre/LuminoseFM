@@ -12,8 +12,9 @@ function [S, accepted, app] = SleepSetupDialog(S, rig, varargin)
 % field then shows. The house light's level at the start is set here (S.Sleep.HouseLight);
 % during the session it is switched from the sleep window, at once.
 %
-% A Cameras tab sets up the session's video, with a live preview (lum.gui.CameraSetup),
-% and a help line at the foot of the window describes the field under the pointer
+% A Doric LED tab sets the LED driver, the fiber bundle and each channel's intensity, with
+% its calibration (lum.gui.DoricSetup); a Cameras tab sets up the session's video, with a
+% live preview (lum.gui.CameraSetup); and a help line at the foot of the window describes the field under the pointer
 % (lum.gui.HelpLine).
 %
 % Everything is validated on every edit by lum.sleep.validate, and Start stays
@@ -27,12 +28,15 @@ function [S, accepted, app] = SleepSetupDialog(S, rig, varargin)
 %   'Subject'  The subject chosen in the launch manager
 %   'Wait'     false to return at once with the dialog open (for tests); default true
 %   'Visible'  'on' (default) or 'off'
+%   'DoricLED' The protocol's lum.dev.DoricLED, for the Doric LED tab; [] for none
+%   'CalibrationFolder'  Where LED calibrations are read and saved (default
+%              lum.led.calibrationFolder; tests pass their own)
 %
 % Returns:
 %   S         The edited settings, with S.Session.Type 'Sleep'
 %   accepted  True if the operator started the session, false if they cancelled
 %   app       With 'Wait' false: .Figure, .collect(), .refresh(), .start(),
-%             .cancel(), .status(), .controls, .helpLine and .cameras
+%             .cancel(), .status(), .controls, .helpLine, .cameras and .doric
 %
 % See also: lum.sleep.run, lum.sleep.validate, lum.gui.SessionTypeDialog,
 %           lum.gui.TestPulseDesigner
@@ -42,6 +46,8 @@ p.FunctionName = 'lum.gui.SleepSetupDialog';
 addParameter(p, 'Subject', '', @(x) ischar(x) || isstring(x));
 addParameter(p, 'Wait', true, @(x) islogical(x) || isnumeric(x));
 addParameter(p, 'Visible', 'on');
+addParameter(p, 'DoricLED', []);
+addParameter(p, 'CalibrationFolder', '');
 parse(p, varargin{:});
 if strlength(string(p.Results.Subject)) > 0
     S.Meta.Subject = char(p.Results.Subject);
@@ -66,6 +72,7 @@ buildHeader(outer, S, rig, t);
 
 tabGroup = uitabgroup(outer);
 sessionTab = uitab(tabGroup, 'Title', 'Sleep session', 'BackgroundColor', t.Background);
+doricTab = uitab(tabGroup, 'Title', 'Doric LED', 'BackgroundColor', t.Background);
 cameraTab = uitab(tabGroup, 'Title', 'Cameras', 'BackgroundColor', t.Background);
 body = uigridlayout(sessionTab, [1 3], 'ColumnWidth', {470, '1x', 480}, 'Padding', 8, ...
                     'ColumnSpacing', 12, 'BackgroundColor', t.Background);
@@ -155,6 +162,9 @@ lum.gui.Form.note(grid, ['Light goes out through PulsePal, programmed as for beh
 
 cameras = lum.gui.CameraSetup(cameraTab, S.Camera, t, @refresh, 'Subject', S.Meta.Subject);
 controls.Tabs.Cameras = cameraTab;
+doric = lum.gui.DoricSetup(doricTab, S, t, @refresh, p.Results.DoricLED, ...
+                           'CalibrationFolder', p.Results.CalibrationFolder);
+controls.Tabs.Doric = doricTab;
 
 controls.Help = uilabel(outer, 'Text', '', 'WordWrap', 'on', 'FontSize', 11, ...
                         'FontColor', t.Ink, 'BackgroundColor', t.AccentSoft, ...
@@ -178,7 +188,7 @@ cameras.useHelpLine(helpLine);  % The format's description follows the choice
 refresh();
 app = struct('Figure', fig, 'collect', @collectSettings, 'refresh', @refresh, ...
              'start', @onStart, 'cancel', @onCancel, 'status', @statusText, ...
-             'controls', controls, 'helpLine', helpLine, 'cameras', cameras);
+             'controls', controls, 'helpLine', helpLine, 'cameras', cameras, 'doric', doric);
 if p.Results.Wait
     uiwait(fig);
 end
@@ -206,6 +216,7 @@ end
         accepted = true;
         ok = true;
         cameras.close();  % The session opens the cameras itself
+        doric.close();
         delete(fig);
     end
 
@@ -263,6 +274,24 @@ end
             message = sprintf('%s  Test pulses: %d epoch(s) of light in %d step(s).', message, ...
                               size(designedPlan.Epochs, 1), numel(designedPlan.Steps));
         end
+        if candidate.Sleep.TestPulses.Enabled
+            cals = doric.calibrations();
+            try
+                notes = [notes lum.led.validate(candidate, cals)];
+            catch ledError
+                setStatus(ledError.message, false);
+                return
+            end
+            if candidate.Doric.Enabled
+                message = sprintf('%s  LED: A %s, B %s.', message, ...
+                                  lum.led.describe(cals{1}, candidate.Doric.CurrentmA(1)), ...
+                                  lum.led.describe(cals{2}, candidate.Doric.CurrentmA(2)));
+            end
+            doricNote = doric.problem(candidate);
+            if ~isempty(doricNote)
+                notes{end+1} = doricNote;
+            end
+        end
         cameraNote = cameras.problem(candidate.Camera);
         if ~isempty(cameraNote)
             notes{end+1} = cameraNote;
@@ -307,12 +336,14 @@ end
         candidate.Sync.Barcode.OneWidth = c.BarcodeOne.Value;
         candidate.Sync.Barcode.Gap = c.BarcodeGap.Value;
         candidate.Camera = cameras.read(candidate.Camera);
+        candidate = doric.read(candidate);
     end
 
     function updateAppearance(candidate)
         c = controls;
         lum.gui.ExperimentForm.update(c, candidate.Meta);
         cameras.update(candidate.Camera);
+        doric.update(candidate);
         mode = candidate.Sleep.Sync.Mode;
         lum.gui.Form.setEnable({c.FixedWidth}, mode == lum.SyncMode.FixedWidth);
         lum.gui.Form.setEnable({c.MeanWidth, c.WidthJitter}, mode == lum.SyncMode.JitteredWidth);

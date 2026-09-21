@@ -24,7 +24,9 @@ function [S, accepted, app] = SetupDialog(S, rig, varargin)
 %               and trial order (the stimulus designer opens from
 %               here), P(left) per group, every trial of the session to scroll
 %               through, and the timing of the other stimulus components
-%   Light path  The fiber bundle and its cables, and each channel's carrier
+%   Light path  Each channel's carrier (PulsePal)
+%   Doric LED   The LED driver, the fiber bundle and its cables, each channel's
+%               intensity and its calibration (lum.gui.DoricSetup)
 %   Left/Right  Side port light, side tone and guide light for each side
 %   Sync        Trial sync pulses and the session barcode
 %   Cameras     Video: SpinCam, cameras and views, image settings, with a live preview
@@ -49,13 +51,17 @@ function [S, accepted, app] = SetupDialog(S, rig, varargin)
 %   'Visible'  'on' (default) or 'off'
 %   'SoundPlayer'  Function called with one TestHiFiSound argument list per sound a Play
 %              button plays; default TestHiFiSound itself (tests pass a recorder)
+%   'DoricLED' The protocol's lum.dev.DoricLED, for the Doric LED tab; [] for none
+%   'CalibrationFolder'  Where LED calibrations are read and saved (default
+%              lum.led.calibrationFolder; tests pass their own)
 %
 % Returns:
 %   S         The edited settings
 %   accepted  True if the operator started the session, false if they cancelled
 %   app       With 'Wait' false: .Figure, .collect(), .refresh(), .start(),
 %             .cancel(), .status(), .playSound(which), .controls, .helpLine (the
-%             lum.gui.HelpLine) and .cameras (the lum.gui.CameraSetup)
+%             lum.gui.HelpLine), .cameras (the lum.gui.CameraSetup) and .doric (the
+%             lum.gui.DoricSetup)
 %
 % See also: lum.defaultSettings, lum.validateSettings, lum.gui.StimulusDesigner,
 %           lum.gui.RuntimeWindow
@@ -67,6 +73,8 @@ addParameter(p, 'Wait', true, @(x) islogical(x) || isnumeric(x));
 addParameter(p, 'Visible', 'on');
 addParameter(p, 'SoundPlayer', @(varargin) TestHiFiSound(varargin{:}), ...
              @(x) isa(x, 'function_handle'));
+addParameter(p, 'DoricLED', []);
+addParameter(p, 'CalibrationFolder', '');
 parse(p, varargin{:});
 soundPlayer = p.Results.SoundPlayer;
 if strlength(string(p.Results.Subject)) > 0
@@ -98,6 +106,10 @@ controls = buildTaskTab(tabGroup, S, controls, runtime, t, @refresh, @stageChose
 controls = buildCueTab(tabGroup, S, controls, t, @refresh, @playSound);
 controls = buildStimulusTab(tabGroup, S, controls, t, @refresh, @openDesigner, @newTrialOrder, @playSound);
 controls = buildLightPathTab(tabGroup, S, controls, t, @refresh);
+doricTab = uitab(tabGroup, 'Title', 'Doric LED', 'BackgroundColor', t.Background);
+controls.Tabs.Doric = doricTab;
+doric = lum.gui.DoricSetup(doricTab, S, t, @refresh, p.Results.DoricLED, ...
+                           'CalibrationFolder', p.Results.CalibrationFolder);
 controls = buildSideTab(tabGroup, S, 'Left', controls, choices, t, @refresh, @playSound);
 controls = buildSideTab(tabGroup, S, 'Right', controls, choices, t, @refresh, @playSound);
 controls = buildSyncTab(tabGroup, S, controls, t, @refresh);
@@ -134,7 +146,8 @@ cameras.useHelpLine(helpLine);  % The format's description follows the choice
 refresh();
 app = struct('Figure', fig, 'collect', @collectSettings, 'refresh', @refresh, ...
              'start', @onStart, 'cancel', @onCancel, 'status', @statusText, ...
-             'playSound', @playSound, 'controls', controls, 'helpLine', helpLine, 'cameras', cameras);
+             'playSound', @playSound, 'controls', controls, 'helpLine', helpLine, 'cameras', cameras, ...
+             'doric', doric);
 if p.Results.Wait
     uiwait(fig);
 end
@@ -158,6 +171,7 @@ end
         try
             candidate = collectSettings();
             lum.validateSettings(candidate, rig);
+            lum.led.validate(candidate, doric.calibrations());
         catch settingsError
             setStatus(settingsError.message, false);
             uialert(fig, settingsError.message, 'Settings not usable');
@@ -167,6 +181,7 @@ end
         accepted = true;
         ok = true;
         cameras.close();  % The session opens the cameras itself
+        doric.close();
         delete(fig);
     end
 
@@ -277,9 +292,20 @@ end
             message = sprintf('%s  Contingency REVERSED: every group pays the other side.', ...
                               message);
         end
+        try
+            ledNotes = lum.led.validate(candidate, doric.calibrations());
+        catch ledError
+            setStatus(ledError.message, false);
+            return
+        end
+        notes = [notes ledNotes];
         cameraNote = cameras.problem(candidate.Camera);
         if ~isempty(cameraNote)
             notes{end+1} = cameraNote;
+        end
+        doricNote = doric.problem(candidate);
+        if ~isempty(doricNote) && candidate.Session.UseOpto
+            notes{end+1} = doricNote;
         end
         if ~isempty(notes)
             message = sprintf('%s  Note: %s', message, strjoin(notes, ' '));
@@ -351,14 +377,9 @@ end
             candidate.(side{1}).GuideLight = s.GuideLight.Value;
         end
 
-        % Cables are the operator's choice only on a bundle that has more than two;
-        % the 2-to-19 bundle's fixed fibers leave the recorded choice as it was.
-        candidate.Light.Bundle = c.Bundle.Value;
-        bundles = lum.fiberBundles();
-        bundle = bundles(strcmp({bundles.Name}, c.Bundle.Value));
-        if ~isempty(bundle) && bundle.Choose
-            candidate.Light.Cables = {c.CableA.Value, c.CableB.Value};
-        end
+        % The LED, the bundle and its cables (on the 4-to-19 bundle only; the 2-to-19
+        % bundle's fixed fibers leave the recorded choice as it was).
+        candidate = doric.read(candidate);
         candidate.Light.Carrier = struct('Channel', {1, 2}, ...
             'Frequency', {c.Frequency(1).Value, c.Frequency(2).Value}, ...
             'PulseWidth', {c.PulseWidth(1).Value, c.PulseWidth(2).Value}, ...
@@ -375,7 +396,8 @@ end
         candidate.Sync.Barcode = struct('Enabled', c.BarcodeEnabled.Value, ...
             'nBits', round(c.BarcodeBits.Value), 'MarkerWidth', c.BarcodeMarker.Value, ...
             'ZeroWidth', c.BarcodeZero.Value, 'OneWidth', c.BarcodeOne.Value, ...
-            'Gap', c.BarcodeGap.Value, 'SleepMarkerWidth', c.BarcodeSleepMarker.Value);
+            'Gap', c.BarcodeGap.Value, 'SleepMarkerWidth', c.BarcodeSleepMarker.Value, ...
+            'EphysMarkerWidth', c.BarcodeEphysMarker.Value);
 
         candidate.Camera = cameras.read(candidate.Camera);
 
@@ -396,6 +418,7 @@ end
         setEnable(runtimeHandles(c.Runtime, {'GraceStart', 'GraceShrink', 'GraceTarget'}), ...
                   lum.HoldShaping.hasGrace(candidate));
         cameras.update(candidate.Camera);
+        doric.update(candidate);
         c.Tabs.Cameras.Title = countedTitle('Cameras', candidate.Camera.Enabled * ...
             sum(arrayfun(@(r) logical(r.Record), candidate.Camera.Cameras)));
 
@@ -438,16 +461,12 @@ end
         c.Tabs.Left.Title = countedTitle('Left', nSide(1));
         c.Tabs.Right.Title = countedTitle('Right', nSide(2));
 
-        bundles = lum.fiberBundles();
-        bundle = bundles(strcmp({bundles.Name}, candidate.Light.Bundle));
-        setEnable({c.CableA, c.CableB}, ~isempty(bundle) && bundle.Choose);
-        c.BundleNote.Text = bundleNote(candidate, bundles);
 
         mode = candidate.Sync.Mode;
         setEnable({c.SyncFixed}, mode == lum.SyncMode.FixedWidth);
         setEnable({c.SyncMean, c.SyncJitter}, mode == lum.SyncMode.JitteredWidth);
         c.SyncNote.Text = syncNote(mode);
-        setEnable({c.BarcodeBits, c.BarcodeMarker, c.BarcodeSleepMarker, c.BarcodeZero, ...
+        setEnable({c.BarcodeBits, c.BarcodeMarker, c.BarcodeSleepMarker, c.BarcodeEphysMarker, c.BarcodeZero, ...
                    c.BarcodeOne, c.BarcodeGap}, candidate.Sync.Barcode.Enabled);
 
         flowKey = {candidate.Cue.Components, candidate.Stimulus.Duration, ...
@@ -876,33 +895,15 @@ function controls = buildLightPathTab(tabGroup, S, controls, t, onEdit)
 tab = uitab(tabGroup, 'Title', 'Light path', 'BackgroundColor', t.Background);
 grid = uigridlayout(tab, [1 2], 'ColumnWidth', {600, '1x'}, 'Padding', 12, ...
                     'ColumnSpacing', 12, 'BackgroundColor', t.Background);
-left = uigridlayout(grid, [3 1], 'RowHeight', {panelHeight(4) + 20, panelHeight(3), '1x'}, ...
+left = uigridlayout(grid, [2 1], 'RowHeight', {panelHeight(3), '1x'}, ...
                     'Padding', 0, 'RowSpacing', 10, 'BackgroundColor', t.Background);
-
-bundles = lum.fiberBundles();
-form = formPanel(left, 'Fiber bundle', 4, t, 190);
-form.RowHeight = {26, 26, 26, 46};
-label(form, 'Bundle on the animal', t);
-controls.Bundle = uidropdown(form, 'Items', {bundles.Name}, 'Value', S.Light.Bundle);
-label(form, 'Cable on channel A', t);
-controls.CableA = uidropdown(form, 'Items', {''});
-label(form, 'Cable on channel B', t);
-controls.CableB = uidropdown(form, 'Items', {''});
-fillCables(controls.Bundle, controls.CableA, controls.CableB, bundles, S.Light.Cables);
-controls.Bundle.ValueChangedFcn = @(~, ~) bundleChanged(controls.Bundle, controls.CableA, ...
-                                                        controls.CableB, bundles, onEdit);
-controls.CableA.ValueChangedFcn = @(~, ~) onEdit();
-controls.CableB.ValueChangedFcn = @(~, ~) onEdit();
-label(form, 'Wiring', t);
-controls.BundleNote = uilabel(form, 'Text', '', 'WordWrap', 'on', 'FontColor', t.Muted, ...
-                              'FontSize', 11);
 
 panel = uipanel(left, 'Title', 'Carrier (PulsePal)', 'FontWeight', 'bold', ...
                 'BackgroundColor', t.Panel, 'ForegroundColor', t.Accent);
 table = uigridlayout(panel, [3 4], 'ColumnWidth', {190, '1x', '1x', '1x'}, ...
                      'RowHeight', {22, 26, 26}, 'Padding', [10 8 10 8], 'RowSpacing', 6, ...
                      'ColumnSpacing', 10, 'BackgroundColor', t.Panel);
-headings(table, {'', 'Frequency (Hz)', 'Pulse width (s)', 'LED drive (V)'}, t);
+headings(table, {'', 'Frequency (Hz)', 'Pulse width (s)', 'TTL level (V)'}, t);
 names = {'A  (BNC1, PulsePal OUT1)', 'B  (BNC2, PulsePal OUT2)'};
 colours = {t.ChannelA, t.ChannelB};
 for k = 1:2
@@ -912,18 +913,18 @@ for k = 1:2
     controls.PulseWidth(k) = numberField(table, carrier.PulseWidth, [0 1], onEdit, false);
     controls.Voltage(k) = numberField(table, carrier.Voltage, [0 lum.dev.PulsePal.MaxVoltage], ...
                                       onEdit, false);
+    controls.Voltage(k).Tooltip = ['PulsePal''s output into the Doric LED driver''s TTL input while it '...
+                                   'pulses: 5 V. The intensity is the LED current, on the Doric LED tab.'];
 end
 
 note(left, ['The pattern says which channel is on and when; the carrier says what the light '...
-            'does while it is on. Each channel drives its own LED into its own cable, so each '...
-            'has its own carrier: equalising the light the two deliver is a per-channel '...
-            'calibration. A frequency of 0 gives constant light while the channel is on.'], t);
-note(grid, sprintf(['Channel A:  Bpod BNC1 -> PulsePal IN1 -> OUT1 -> Doric LED ch1\n'...
-                    'Channel B:  Bpod BNC2 -> PulsePal IN2 -> OUT2 -> Doric LED ch2\n\n'...
-                    'The 2-to-19 bundle has one fiber per channel: ch1 makes 10 spots and ch2 9. '...
-                    'The 4-to-19 bundle has four cables — black (4 spots), blue, orange and green '...
-                    '(5 each) — of which two are on the commutator. Record which, so the pattern '...
-                    'a channel delivered can be traced to the spots it lit.']), t);
+            'does while it is on. Each channel has its own carrier. A frequency of 0 gives '...
+            'constant light while the channel is on. How bright the light is, the LED current, '...
+            'is set per channel on the Doric LED tab.'], t);
+note(grid, sprintf(['Channel A:  Bpod BNC1 -> PulsePal IN1 -> OUT1 -> Doric LED channel 1\n'...
+                    'Channel B:  Bpod BNC2 -> PulsePal IN2 -> OUT2 -> Doric LED channel 2\n\n'...
+                    'The fiber bundle, the cable on each channel and the LED intensity are on the '...
+                    'Doric LED tab.']), t);
 end
 
 
@@ -984,7 +985,7 @@ function controls = buildSyncTab(tabGroup, S, controls, t, onEdit)
 tab = uitab(tabGroup, 'Title', 'Sync', 'BackgroundColor', t.Background);
 grid = uigridlayout(tab, [1 2], 'ColumnWidth', {500, '1x'}, 'Padding', 12, ...
                     'ColumnSpacing', 12, 'BackgroundColor', t.Background);
-left = uigridlayout(grid, [3 1], 'RowHeight', {panelHeight(5) + 30, panelHeight(7), '1x'}, ...
+left = uigridlayout(grid, [3 1], 'RowHeight', {panelHeight(5) + 30, panelHeight(8), '1x'}, ...
                     'Padding', 0, 'RowSpacing', 10, 'BackgroundColor', t.Background);
 
 form = formPanel(left, 'Trial sync pulses', 5, t, 190);
@@ -1003,7 +1004,7 @@ controls.SyncNote = uilabel(form, 'Text', '', 'WordWrap', 'on', 'FontColor', t.M
                             'FontSize', 11, 'VerticalAlignment', 'top');
 
 barcode = S.Sync.Barcode;
-form = formPanel(left, 'Session barcode', 7, t, 190);
+form = formPanel(left, 'Session barcode', 8, t, 190);
 label(form, '', t);
 controls.BarcodeEnabled = uicheckbox(form, 'Text', 'Session barcode', ...
     'Value', barcode.Enabled, 'ValueChangedFcn', @(~, ~) onEdit(), ...
@@ -1015,6 +1016,11 @@ controls.BarcodeMarker = numberField(form, barcode.MarkerWidth, [0.001 1], onEdi
 label(form, 'Sleep marker (s)', t);
 controls.BarcodeSleepMarker = numberField(form, lum.sync.sleepMarkerWidth(barcode), [0.001 1], ...
                                           onEdit, false);
+label(form, 'ePhys calibration marker (s)', t);
+controls.BarcodeEphysMarker = numberField(form, lum.sync.markerWidth(barcode, 'EphysCalibration'), ...
+                                          [0.001 2], onEdit, false);
+controls.BarcodeEphysMarker.Tooltip = ['The marker of an ePhys calibration session''s barcode: longer than '...
+                                       'the sleep marker, so the three kinds of session are told apart.'];
 label(form, '0 bit pulse (s)', t);
 controls.BarcodeZero = numberField(form, barcode.ZeroWidth, [0.001 1], onEdit, false);
 label(form, '1 bit pulse (s)', t);
@@ -1137,48 +1143,6 @@ for g = 1:n
     data(g, :) = {g, sprintf('Group %d', g), [], [], pLeft(g)};
 end
 table.Data = data;
-end
-
-
-function fillCables(bundleDropdown, cableA, cableB, bundles, chosen)
-% Offer the chosen bundle's cables, with their spot counts, keeping choices that fit.
-bundle = bundles(strcmp({bundles.Name}, bundleDropdown.Value));
-items = arrayfun(@(k) sprintf('%s (%d spots)', bundle.Cables{k}, bundle.Spots(k)), ...
-                 1:numel(bundle.Cables), 'UniformOutput', false);
-cableA.Items = items;
-cableA.ItemsData = bundle.Cables;
-cableB.Items = items;
-cableB.ItemsData = bundle.Cables;
-if bundle.Choose && numel(chosen) == 2 && all(ismember(chosen, bundle.Cables))
-    cableA.Value = chosen{1};
-    cableB.Value = chosen{2};
-else
-    cableA.Value = bundle.Cables{1};
-    cableB.Value = bundle.Cables{2};
-end
-end
-
-
-function bundleChanged(bundleDropdown, cableA, cableB, bundles, onEdit)
-fillCables(bundleDropdown, cableA, cableB, bundles, {cableA.Value, cableB.Value});
-onEdit();
-end
-
-
-function text = bundleNote(S, bundles)
-% Which cable carries which channel, in words.
-bundle = bundles(strcmp({bundles.Name}, S.Light.Bundle));
-if isempty(bundle)
-    text = '';
-    return
-end
-spots = containers.Map(bundle.Cables, num2cell(bundle.Spots));
-names = S.Light.Cables;
-if ~bundle.Choose || numel(names) ~= 2 || ~all(isKey(spots, names))
-    names = bundle.Cables(1:2);
-end
-text = sprintf('A lights %d spots through the %s; B lights %d through the %s.', ...
-               spots(names{1}), names{1}, spots(names{2}), names{2});
 end
 
 

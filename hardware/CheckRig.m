@@ -170,6 +170,37 @@ else
     end
 end
 
+%% Doric LED
+% Only whether the DoricLED package and its bridge are there, and which light paths are
+% calibrated: connecting takes several seconds and belongs to the session.
+folder = lum.dev.DoricLED.locatePackage('');
+if isempty(folder)
+    report = addCheck(report, 'Doric LED', 'warn', ['DoricLED package not on the MATLAB path: '...
+        'sessions use the LED driver as set by hand (external TTL mode), unless its folder is '...
+        'given on the Doric LED tab. TestDoricLED checks the driver and its TTL inputs']);
+else
+    bridge = '';
+    try
+        paths = doric.config();
+        bridge = paths.BridgeExe;
+    catch
+    end
+    calibrated = dir(fullfile(lum.led.calibrationFolder(), 'DoricLED_*.mat'));
+    calibratedText = 'no light path calibrated';
+    if ~isempty(calibrated)
+        calibratedText = sprintf('calibrated: %s', strjoin(regexprep({calibrated.name}, ...
+                                 '^DoricLED_|\.mat$', ''), ', '));
+    end
+    if ~report.emulated && (isempty(bridge) || ~isfile(bridge))
+        report = addCheck(report, 'Doric LED', 'fail', sprintf(['DoricLED found in %s, but its bridge '...
+            'is not built. Run doric.build() once'], folder));
+    else
+        report = addCheck(report, 'Doric LED', 'ok', sprintf(['DoricLED found in %s; the driver is '...
+            'connected at session start; %s. TestDoricLED checks the driver and its TTL inputs'], ...
+            folder, calibratedText));
+    end
+end
+
 %% Liquid calibration
 % Ask for the valve times the protocol will actually need. The calibration table
 % is a struct in older Bpod versions and a ValveDataManager object in v1.9.0, so

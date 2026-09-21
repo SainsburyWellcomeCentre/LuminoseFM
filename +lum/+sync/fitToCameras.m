@@ -15,7 +15,9 @@ function [S, changes, period] = fitToCameras(S)
 %   barcode 1 bit                    >= 0 bit + 3 T                    a frame's error either way
 %   behaviour marker                 >= 1 bit + 3 T                    cannot close the gap
 %   sleep marker                     >= behaviour marker + 3 T
-%   trial pulses, sleep sync pulses  shortest >= 2 T; a jittered range
+%   ePhys calibration marker         >= sleep marker + 3 T
+%   trial pulses, sleep and ePhys    shortest >= 2 T; a jittered range
+%   sync pulses
 %                                    keeps its spread, shifted up
 %
 % A frame samples the line at one instant, so a high or low time of n T is seen as n - 1
@@ -35,7 +37,8 @@ function [S, changes, period] = fitToCameras(S)
 % setup dialogs preview the fitted barcode.
 %
 % Returns:
-%   S        Settings with S.Sync.Barcode, S.Sync's widths and S.Sleep.Sync's widths fitted
+%   S        Settings with S.Sync.Barcode and the widths of S.Sync, S.Sleep.Sync and
+%            S.Ephys.Sync fitted
 %   changes  Cell array of text, one entry per value raised, e.g. '0 bit 10 -> 20 ms';
 %            empty when nothing changed
 %   period   The frame period used, seconds; NaN without video
@@ -65,12 +68,18 @@ barcode = S.Sync.Barcode;
                                        'behaviour marker', changes);
 [barcode.SleepMarkerWidth, changes] = raise(lum.sync.sleepMarkerWidth(S.Sync.Barcode), ...
                                             barcode.MarkerWidth + separation, 'sleep marker', changes);
+[barcode.EphysMarkerWidth, changes] = raise(lum.sync.markerWidth(S.Sync.Barcode, 'EphysCalibration'), ...
+                                            barcode.SleepMarkerWidth + separation, ...
+                                            'ePhys calibration marker', changes);
 S.Sync.Barcode = barcode;
 
 % Trial pulses, and a sleep session's sync pulses.
 [S.Sync, changes] = fitPulses(S.Sync, minimum, 'trial pulse', changes);
 if isfield(S, 'Sleep') && isfield(S.Sleep, 'Sync')
     [S.Sleep.Sync, changes] = fitPulses(S.Sleep.Sync, minimum, 'sleep pulse', changes);
+end
+if isfield(S, 'Ephys') && isfield(S.Ephys, 'Sync')
+    [S.Ephys.Sync, changes] = fitPulses(S.Ephys.Sync, minimum, 'ePhys pulse', changes);
 end
 
 

@@ -6,7 +6,9 @@ forced-choice (2-AFC)** task for the Luminose project.
 The task drives a custom behaviour box with three nose ports and delivers patterned
 optogenetic stimulation to the olfactory bulb of OSN-ChR mice (channelrhodopsin in olfactory
 sensory neurons) through a custom fiber bundle. It also records home-cage sleep, with optional
-test pulses of light, and records every session on video (§8).
+test pulses of light, runs ePhys calibration sessions (input-output curves and paired-pulse ratios
+for the recorded response), sets the Doric LED's intensity from MATLAB, with a calibration to
+mW/mm², and records every session on video (§10).
 
 This file is the **operator's guide**: how to run a session and what everything on the screen
 means. The rig, the data format and the design live in [`docs/`](docs):
@@ -18,7 +20,7 @@ means. The rig, the data format and the design live in [`docs/`](docs):
 | [`docs/sync-and-barcode.md`](docs/sync-and-barcode.md) | The sync TTL and the session barcode, for aligning other recordings |
 | [`docs/naming-and-versions.md`](docs/naming-and-versions.md) | Glossary, and what changed between versions |
 | [`docs/emulator.md`](docs/emulator.md) | Running the whole protocol with no hardware attached |
-| [`docs/architecture.md`](docs/architecture.md) | Design decisions (D1–D16) and the map from design to code |
+| [`docs/architecture.md`](docs/architecture.md) | Design decisions (D1–D18) and the map from design to code |
 | [`docs/rig-checks.md`](docs/rig-checks.md) | What has been checked on the rig, and the checks still waiting for someone at it |
 | [`docs/repository.md`](docs/repository.md) | Where the code lives, and what the test suite covers |
 
@@ -39,16 +41,21 @@ CheckRig            % preflight report — worth reading before the first animal
 ```
 
 `CheckRig` prints one line per check: the state machine, the behaviour ports, the optogenetic BNC
-lines, the house light's BNC input, the HiFi module, the Flex I/O configuration, PulsePal, the liquid
-calibration and the data folder. Failures name the exact thing to change and where. The protocol runs it at startup too.
+lines, the house light's BNC input, the HiFi module, the Flex I/O configuration, PulsePal, the Doric
+LED (the DoricLED package, its bridge, and which light paths are calibrated), the liquid calibration
+and the data folder. Failures name the exact thing to change and where. The protocol runs it at startup too.
 
 ```matlab
 report = CheckRig;          % also return it
 CheckRig('Strict', true)    % error if anything failed
 ```
 
+Close Doric Neuroscience Studio before launching: the Doric driver can be opened by one program at a
+time.
+
 Launch the protocol from Bpod's launch manager as usual: protocol `LuminoseFM`, subject, settings
-file. The subject you launch for fills the setup dialogs' *Subject* field and every record of the
+file. The protocol starts connecting to the Doric LED driver at once, in the background; the Doric
+LED tab of the setup dialog shows when it is connected. The subject you launch for fills the setup dialogs' *Subject* field and every record of the
 session; there is nothing to type.
 
 ---
@@ -60,6 +67,8 @@ The first window LuminoseFM opens asks what kind of session is starting:
 - **Behaviour** — the 2-AFC task (§3–§6).
 - **Sleep** — a home-cage recording: a session barcode, sync pulses and, if chosen, test pulses of
   light on channels A and B (§7).
+- **ePhys calibration** — light pulses stepping through intensities (an input-output curve) and
+  paired pulses stepping through intervals (a paired-pulse ratio), for the response on the probe (§8).
 
 The choice is saved with the subject's settings, so the next launch starts on it, and the data file
 records it as `SessionData.Session.Type`.
@@ -251,10 +260,11 @@ says what is wrong, and **Start session** stays disabled until nothing is.
 | Task | Which task (Familiar/Novel, Mixture, Sequence, Motifs); training stage and what it does to rewards — choosing one sets the session up the way that stage is normally run; trial order, including the contingency reversal; centre hold — how long it is, what a broken hold does, and hold shaping; which components make up the cue, the stimulus and each side; a timeline of one trial, with the hold window |
 | Cue | For each cue component (centre light, tone, air): whether it continues through the stimulus, and if not, how long it stays on into it; the cue tone's frequency and sound output, each sound with a **▶ Play** button; a timeline of the cue against the latency and the stimulus, one row per component |
 | Stimulus | The stimulus window and its latency from the poke; a summary of the stimulus set with **Design stimuli…** and **New trial order**; P(left) per group; every trial of the session to scroll through; timing of air, centre light and tone, with **▶ Play tones** |
-| Light path | The fiber bundle and which cables are on A and B; the carrier for each channel (frequency, pulse width, LED drive voltage) |
+| Light path | The carrier for each channel: frequency, pulse width, and PulsePal's TTL level into the LED driver (5 V) |
+| Doric LED | The LED driver (controlled from MATLAB, or set by hand), the fiber bundle and which cables are on A and B, each channel's intensity and limit, and **Calibrate…** (§9) |
 | Left, Right | That side's port light and tone (with **▶ Play**), each timed from stimulus onset; its guide light; which groups pay that side |
-| Sync | Trial sync pulse mode and widths — every mode is driven by states, and a pulsed one is the trial's first state, so the cue follows it; the session barcode (behaviour and sleep marker widths), with a preview. With video, widths are minimums, widened to what the cameras can read |
-| Cameras | Video (§8): record or not, the SpinCam folder, format, cameras and their views, frame rate, exposure, gain, TTL input, the camera window — with a **live preview** |
+| Sync | Trial sync pulse mode and widths — every mode is driven by states, and a pulsed one is the trial's first state, so the cue follows it; the session barcode (behaviour, sleep and ePhys calibration marker widths), with a preview. With video, widths are minimums, widened to what the cameras can read |
+| Cameras | Video (§10): record or not, the SpinCam folder, format, cameras and their views, frame rate, exposure, gain, TTL input, the camera window — with a **live preview** |
 | Runtime | Starting values of the parameters that stay editable during the session |
 
 Ticking a component on the Task tab switches it on: its rows light up on the tab that times it,
@@ -289,6 +299,16 @@ Every parameter describes itself on the help line at the foot of the window (a t
 compact window).
 
 Bpod's notebook plugin is also initialised, for manual annotation during the session.
+
+### LED window
+
+Opens beside the plots in every session with light (untick *LED window in the session* on the Doric
+LED tab to leave it closed). It shows each channel's LED current, and its irradiance when the channel
+is calibrated. In behaviour and sleep sessions, type a new intensity and press **Apply**: it is sent
+between trials (or sleep blocks), never while light is gated, the channel reads *waiting for the next
+trial* until then, and each trial records the current it ran at. The intensity you leave it at is
+kept for the next session. In an ePhys calibration session the schedule sets the current, and the
+window only shows it.
 
 ### Designers
 
@@ -386,7 +406,8 @@ PulsePal, in gated mode, fills each gate.
   for so many minutes, or a train (which lasts its trains), on A and B together, on one of them, or
   alternating between them epoch by epoch. The default is paired-pulse probes on A and B for
   4 hours. **The recording lasts as long as the schedule.**
-- The LED drive is set per channel, in volts.
+- How bright the light is, the LED current, is set per channel on the sleep dialog's **Doric LED**
+  tab (§9); the designer's voltages are PulsePal's TTL level into the driver (5 V).
 
 A schedule is refused before the session starts if it cannot be sent: pulses of a pair that overlap,
 epochs too long for their interval, a train step while trains are off, darkness after an epoch too
@@ -394,7 +415,7 @@ short to hold a sync pulse, or an epoch so busy that it and the sync pulses that
 not fit one state machine.
 
 **The test-pulse designer** sets the probe (single or paired, pulse width, inter-pulse and
-inter-epoch intervals), the LED drive on A and B, the plasticity trains (one row per named train)
+inter-epoch intervals), the TTL level on A and B, the plasticity trains (one row per named train)
 and the schedule as a table of steps, with presets, the minute each step starts, its epoch count,
 and previews of the session and of one epoch of the selected step. Everything compiles on each
 edit, and nothing leaves the window until the session could run it.
@@ -423,9 +444,90 @@ never cut inside an epoch, is D13 in [`docs/architecture.md`](docs/architecture.
 
 ---
 
-## 8. Video
+## 8. ePhys calibration sessions
 
-Every session — behaviour or sleep — is recorded on the box's cameras by
+For calibrating the response to light on the probe: how it grows with intensity, and how a second
+pulse compares with the first at different intervals. Choose *ePhys calibration* in the first window.
+The **ePhys calibration setup dialog** has three tabs: the session, **Doric LED** (§9) and
+**Cameras** (§10).
+
+- **Pulses** — which channels (A, B, or A and B together, each at its own intensity), the pulse width
+  (5 ms by default), the interval between epochs (1 s, onset to onset), the repeats per step (10),
+  and the order of the steps within each protocol: ascending, descending, or shuffled from a seed.
+- **Input-output curve** — single pulses from a lowest intensity (0 by default: pulses with no light,
+  a baseline) to a highest one, which has no default and must be given, in a number of levels (8).
+  Levels are evenly spaced in irradiance when the channel is calibrated, in mA when not.
+- **Paired-pulse ratio** — pairs of pulses at one intensity, one step per inter-pulse interval
+  (onset to onset): 20, 30, 50, 75, 100, 200, 300 and 500 ms by default.
+- The sync pulses, the house light and the session barcode, as for sleep. The barcode's markers are
+  **300 ms** (behaviour 100 ms, sleep 200 ms), so a continuous recording says which kind of session
+  each stretch holds.
+
+Intensities are in mW/mm² for a calibrated channel and in mA otherwise. The preview shows the steps
+across the session and the intensity of each; the summary says how long it runs. The input-output
+curve runs first, then the paired pulses.
+
+The session runs like a sleep session with test pulses: Bpod gates BNC1/BNC2, PulsePal fills each gate
+with constant light, and the timeline goes out in state machines cut before every step. **The LED
+current is set between steps**, never with light in flight, and each gate is recorded with its step
+and current (`LightSegments`, `Session.Ephys`). It needs the LED controlled from MATLAB: on the rig it
+does not start otherwise. The live figure shows the steps with progress, the lines, the latest epoch
+and the sync pulses. Bpod does not see the response itself: the curves are made from the probe's
+recording, aligned by the barcode and sync pulses (§11). How the file is laid out is in
+[`docs/data-format.md`](docs/data-format.md#an-ephys-calibration-session-file).
+
+---
+
+## 9. The light's intensity: the Doric LED and its calibration
+
+Bpod and PulsePal decide **when** channels A and B are lit; the Doric LED driver decides **how
+bright**. Both LED channels run in *external TTL mode*: channel 1 lights A and channel 2 lights B at
+their LED current while PulsePal's output into them is high.
+
+**The Doric LED tab** is in every setup dialog:
+
+- **Control the LED from MATLAB** (on by default) — the session connects to the driver through the
+  DoricLED package and sets both channels up. Untick it, or run without the package, and the driver
+  is used as set by hand (front panel or Doric Neuroscience Studio), which must then be external TTL
+  mode. The tab says where the package was found and whether the driver is connected; **Connect**
+  tries again after a replug, and **Doric controls…** opens the package's own window on the same
+  connection.
+- **Fiber bundle** — the bundle on the animal, and on the 4-to-19 bundle the cable on each channel
+  (orange on A and blue on B by default).
+- **Intensity** — per channel: the intensity (mA, or mW/mm² when calibrated), the **limit** in mA
+  (700 by default, at most 1000, the LED's rating; anything above is refused, never reduced), the
+  light path (cable, fibers, area), the calibration, and **Calibrate…**.
+
+A session with light whose LED is controlled from MATLAB does not start if the driver does not
+connect: check its USB cable and power and that Doric Neuroscience Studio is closed, or untick the
+control. The protocol switches both channels off when the session ends.
+
+**Calibrating.** Irradiance is the power leaving a cable divided by the area of its fibers at the tip
+(each 100 µm across: 10 or 9 fibers on the 2-to-19 bundle's two, 4 or 5 on the 4-to-19 bundle's).
+**Calibrate…** opens a window for that channel and cable:
+
+1. Hold the power meter at the cable's tip (set to 465 nm). Keep the fiber away from any animal: the
+   light is continuous.
+2. Choose the meter's unit (**mW** or **uW**). The table lists currents (0–500 mA in 50 mA steps; change
+   the range and **Fill**).
+3. Select a row and press **Light on**; type the power read; press **Next**, which lights the next row.
+   Without a connected driver, set each current on the driver by hand.
+4. The graph (current against mW/mm²) fills in as you type. **Save calibration** writes it.
+
+A calibration belongs to one channel and the cable on it. It is saved in `calibration/` in the
+protocol folder (with a `.png` of the graph), which git does not track, so each rig keeps its own.
+Calibrating the same channel and cable again replaces it. From then on every session type, and the LED
+window, shows and takes that channel's intensity in mW/mm², converting with the calibration; a value
+outside the currents measured is refused. Settings and data keep mA, and each data file stores the
+calibration it used, so irradiance can always be worked out again.
+
+**Checking the light path:** `TestDoricLED` (§13).
+
+---
+
+## 10. Video
+
+Every session — behaviour, sleep or ePhys calibration — is recorded on the box's cameras by
 **SpinCam**, the lab's multi-camera package for FLIR cameras (a repository of its own, cloned anywhere). It is on by
 default and set up on the setup dialog's **Cameras** tab.
 
@@ -507,27 +609,27 @@ SpinCam is found, and no video otherwise.
 
 ---
 
-## 9. Aligning other recordings
+## 11. Aligning other recordings
 
 The sync TTL on Flex2 marks the session for every other device that records the animal:
 
 - a **session barcode** before the first trial, identifying the session — 32 bits, the seconds
-  from 2020-01-01 to the session start, with markers that say whether it was a behaviour (100 ms)
-  or a sleep (200 ms) session;
+  from 2020-01-01 to the session start, with markers that say whether it was a behaviour (100 ms),
+  a sleep (200 ms) or an ePhys calibration (300 ms) session;
 - then one **pulse per trial**, in one of three modes (fixed width, jittered width, or task events
-  — no pulse, the line's own edges marking trial start and the poke), or, in a sleep session, one
-  pulse every interval.
+  — no pulse, the line's own edges marking trial start and the poke), or, in a sleep or ePhys
+  calibration session, one pulse every interval.
 
 To read the barcode back:
 
 ```matlab
 [value, ~, kind] = lum.sync.decodeBarcode(risingEdges, fallingEdges, SessionData.Session.Barcode.Params);
-startTime = lum.sync.barcodeTime(value);   % kind is 'Behaviour' or 'Sleep'
+startTime = lum.sync.barcodeTime(value);   % kind is 'Behaviour', 'Sleep' or 'EphysCalibration'
 ```
 
-To see what actually reaches the line, put a scope on it and run `TestSyncLine` (§11). Video is
+To see what actually reaches the line, put a scope on it and run `TestSyncLine` (§13). Video is
 aligned the same way, from each frame's `TTL_State`, and `SessionData.CameraTime` gives a second,
-coarser alignment (§8; the code is in [`docs/data-format.md`](docs/data-format.md#video)).
+coarser alignment (§10; the code is in [`docs/data-format.md`](docs/data-format.md#video)).
 
 **Sessions before 0.5.1 have no usable trial pulses** — align them by the barcode and
 `Data.TrialStartTimestamp`. The full specification, and that story, are in
@@ -535,7 +637,7 @@ coarser alignment (§8; the code is in [`docs/data-format.md`](docs/data-format.
 
 ---
 
-## 10. Your data
+## 12. Your data
 
 ```
 D:\luminoseData\<subject>\LuminoseFM\Session Data\<subject>_LuminoseFM_<YYYYMMDD_HHMMSS>.mat
@@ -555,6 +657,11 @@ few trials.
   session ends. It is written only when a Flex channel is an
   analog input — not in the emulator. Details in [`docs/data-format.md`](docs/data-format.md).
 - **`_plots.png`** is the online figure as it looked when the session ended.
+- **LED intensity.** Each behaviour trial records the LED current it ran at on A and B
+  (`LEDCurrentA`, `LEDCurrentB`, mA); sleep and ePhys calibration sessions record it per gate of
+  light (`LightSegments.CurrentmA`). `SessionData.Session.DoricLED` holds the light paths and the
+  calibrations used, so `lum.led.irradiance(SessionData.Session.DoricLED.Calibrations{1}, mA)` gives
+  channel A's irradiance.
 - **Settings.** The settings file chosen in the launch manager (`DefaultSettings` unless you make
   another) holds the last session's settings: it is written when **Start** is pressed and again
   when the session ends, so runtime changes (reward, timing) and the house light carry over to the next
@@ -580,7 +687,7 @@ Every field, and what to watch for in files from older versions, is in
 
 ---
 
-## 11. Utilities
+## 13. Utilities
 
 Helpers for working with the rig outside a session live in `hardware/`. All of them refuse to run
 while a protocol is in progress unless `'Force', true` is passed, and they can be run one after
@@ -644,17 +751,34 @@ edges means the splitter, the cable into BNC input 1, or the input disabled in t
 settings; no blinking means PulsePal output 3 or the LED driver. The light is left off and PulsePal's
 port released. Under `Bpod('EMU')` it runs too, with emulated edges.
 
-**Not yet passing on this rig** (2026-09-17): PulsePal takes every switch but no edge reaches BNC
-input 1. The cabling is still to be checked; see P1 in [`docs/rig-checks.md`](docs/rig-checks.md).
+**Passing on this rig since 2026-09-21**: every switch reaches BNC input 1, 18–33 ms after its
+command. Whether the light itself turns on is still to be seen; see P1 in
+[`docs/rig-checks.md`](docs/rig-checks.md).
+
+### `TestDoricLED` — check the light path to the fiber
+
+```matlab
+TestDoricLED                              % 50 mA, 3 flashes on A, then B, then both
+TestDoricLED('Currents', [20 100 300])    % one set per current, brighter each time
+TestDoricLED('Count', 5, 'On', 1)         % more, longer flashes
+```
+
+With Bpod running and no protocol in progress, it connects the Doric driver, puts both channels in
+external TTL mode at the current, programs PulsePal for constant light, and gates BNC1, then BNC2, then
+both. Watch the bundle's tip (or a power meter): channel A flashes, then B, then both together, brighter
+at each current. It reports every command the driver acknowledged and every gate Bpod ran; the
+driver cannot be read back, so the light itself is checked by eye. The light is left off and both
+devices released. Under `Bpod('EMU')` it runs on the package's simulated driver.
 
 ---
 
-## 12. Working away from the rig
+## 14. Working away from the rig
 
 The protocol runs **end to end on a machine with no hardware attached**. Start Bpod with
 `Bpod('EMU')` and launch `LuminoseFM` as usual; the port buttons on the Bpod console are how you
 poke the ports (centre to initiate, centre again to withdraw, then a side port). No light and no
-sound are delivered, there is no sync line, and the emulator has only five global timers, so a
+sound are delivered, there is no sync line, the Doric LED is the DoricLED package's simulated driver
+(when the package is found), and the emulator has only five global timers, so a
 pattern with more than four stretches of light is refused there and accepted on the rig. Emulated
 sessions still write a complete data file, flagged `Data.Info.EmulatorMode = 1`, and record video
 from SpinCam's simulated cameras when SpinCam is found.

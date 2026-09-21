@@ -22,6 +22,8 @@ platform did not resolve the symlink, read `CLAUDE.md`.
 | Stimulus generator origin | `../../generatePattern` (`generateStimuli.m`), ported into `+lum/+pattern/generate.m` |
 | SpinCam | `../../SpinCam` — the lab's camera package, its own repository (read its `CLAUDE.md` before touching the camera path). On this machine's saved MATLAB path; sessions name it by `S.Camera.SpinCamFolder`. Engine 1.2.0; `spincam.version()` still returns 1.1.0 (SpinCam's to bump, not ours) |
 | Spinnaker SDK | `C:\Program Files\Teledyne\Spinnaker` 4.2.0.83, .NET assemblies incl. `SpinVideoNET` in `bin64\vs2015`. SpinCam compiles its engine against them with Windows' `csc.exe` (.NET Framework 4.8) |
+| DoricLED | `../../DoricLED` — the Doric LED package (`doric.*`), its own project with its own `CLAUDE.md`; on this machine's saved MATLAB path; sessions name it by `S.Doric.Folder` when it is not. Its bridge `bin/doric_bridge.exe` runs `DoricSystem.dll` out of process. The driver is "LED Driver" on Doric port 4 (a rotary joint on port 3 is skipped by name). Never modify it from here |
+| LED calibrations | `calibration/` at the repo root: one `DoricLED_<A or B>_<bundle>_<cable>.mat` (+ `.png`) per light path; rig-local, git-ignored |
 | GUI inspiration | `../../luminose_hf` (head-fixed Luminose protocols) — structure only, not its colours |
 | Bpod `ProtocolFolder` | `C:\Users\harrislab\Documents\MATLAB\HarrisLabBpodProtocols\` |
 | Bpod `DataFolder` | `D:\luminoseData\` = `/mnt/d/luminoseData` — session data live **outside** the repo |
@@ -52,8 +54,10 @@ box). Permission covers that request only. Close nothing of theirs: if the MATLA
 `docs/rig-checks.md`, and add to its *Pending* list anything that needs someone at the rig: seeing
 light, hearing sound, poking, moving a cable. The operator works remotely at times, so run those checks
 the next time they say they are at the rig. That doc also says how to run a headless session on the
-rig: do what `RunProtocol` does, open `_ANLG.dat` and reset the session clock. **Pending now: P1, the
-house light loopback — PulsePal switches, no BNC1 edge arrives.**
+rig: do what `RunProtocol` does, open `_ANLG.dat` and reset the session clock. **Pending now (all need
+eyes at the rig): P1 the house light lights; P2 light reaches the fiber on A and B at the current set
+(`TestDoricLED`); P3 a current changed mid-session takes effect; P4 the first calibration of each
+light path.**
 
 ## Stay inside the working folder
 
@@ -75,7 +79,7 @@ exactly what to change and where, and let them do it.
 
 The protocol must run end to end under `Bpod('EMU')` on a machine with no hardware, with
 working GUI, plots and data saving. `lum.dev.open` is the **only** file that reads
-`BpodSystem.EmulatorMode`; it builds real or null device shims once at startup, and every
+`BpodSystem.EmulatorMode` (the rig utilities in `hardware/` read it for themselves); it builds real or null device shims once at startup, and every
 null shim logs what it would have done into `Data.Session.DeviceLog`. Anything else that
 behaves differently in the emulator is told so via `devices.emulated` — the runtime window
 choice in `LuminoseFM.m` is the example.
@@ -83,6 +87,10 @@ choice in `LuminoseFM.m` is the example.
 **The emulator is not this rig.** `Bpod('EMU')` emulates a state machine **r0.7-1.0**, not
 the r2+. Design around this:
 
+- **The Doric LED is DoricLED's `SimulatedTransport`** when the package is found (`Mode` 'Simulated':
+  the real `doric.LightSource`, logging every command), 'Manual' otherwise. The LED window's first
+  drawing can hold up the emulator loop, so session tests that check emulated intervals set
+  `S.Doric.ShowWindow = false`.
 - **Cameras are SpinCam's `mock` backend** when SpinCam is found (synthetic frames through the real
   native engine, real files), `NullCameras` otherwise. Encoding them loads the computer and
   stretches the emulator's already loose timing: session tests that check emulated intervals set
@@ -138,11 +146,17 @@ stops the session part way through as though the End button had been pressed.
 - Settings file: `.../LuminoseFM/Session Settings/<name>.mat`, per subject, chosen in the
   launch manager. `lum.mergeSettings` converts old files (renames, reshapes, retirements). It holds
   the *last* session's settings: written on Start and again at teardown (D16).
-- `Data.Session.Type` is `'Behaviour'` or `'Sleep'`. Sleep sessions store `Data.SyncPulses`
+- `Data.Session.Type` is `'Behaviour'`, `'Sleep'` or `'EphysCalibration'`. Sleep sessions store `Data.SyncPulses`
   (`Onset`, `Width`, `Block`) instead of trial series; each block is one Bpod trial. With test
   pulses they also store `Data.LightSegments` (`Onset`, `Duration`, `Channel`, `Step`, `Epoch`,
-  `Block`, one per gate of light sent) and the compiled steps once in `Data.Session.TestPulses`
-  (with `Completed` and `StoppedReason`) — never per-pulse carrier copies.
+  `Block`, `CurrentmA`, one per gate of light sent) and the compiled steps once in
+  `Data.Session.TestPulses` (with `Completed` and `StoppedReason`) — never per-pulse carrier copies.
+  ePhys calibration sessions store the same, with `Data.Session.Ephys` (`Settings`, `Steps` with
+  `Protocol`, `Label`, `CurrentmA`, `IrradiancemWmm2`, `InterPulseInterval`; `Completed`,
+  `StoppedReason`) in place of `TestPulses`.
+- Every session stores `Data.Session.DoricLED` (`lum.led.sessionRecord`: `Controlled`, `Mode`,
+  `Settings`, `LightPaths`, `Calibrations` as used, `Device` with every current sent in `Changes`)
+  and `DeviceLog.DoricLED`. LED currents are stored in mA everywhere; irradiance is derived.
 - Flex analog stream: Bpod writes `..._ANLG.dat` beside the session file; merged at teardown
   with `AddFlexIOAnalogData` through `lum.dev.Flex.mergeAnalogData`, which then re-anchors it with
   `lum.dev.Flex.alignAnalog`: the stream starts with the barcode's run, which Bpod counts as a
@@ -163,7 +177,8 @@ stops the session part way through as though the End button had been pressed.
   `EarlyWithdrawals` (visits to `EarlyWithdrawal`) and `CameraTime` (seconds on SpinCam's host clock
   when the trial's events arrived; sleep sessions store one per block); since 0.6.1 `HouseLight`
   (the level the trial started at; sleep sessions store one per block too; switches are
-  `Data.Session.HouseLight` and `BNC1High`/`BNC1Low` events).
+  `Data.Session.HouseLight` and `BNC1High`/`BNC1Low` events); since 0.7.0 `LEDCurrentA`,
+  `LEDCurrentB` (mA the trial ran at; NaN when the LED was set by hand).
 - `..._ANLG.dat` is Bpod's raw stream of the Flex analog input (flow meter), opened by the launch
   manager and written as samples arrive; the `.mat` gets it as `Data.Analog` at teardown. Kept as
   the raw copy; see `docs/data-format.md`.
@@ -186,10 +201,14 @@ stops the session part way through as though the End button had been pressed.
 - Optical channels **A** and **B**: `BNC1` → PulsePal `IN1` → `OUT1` → Doric LED ch1 is
   channel A; `BNC2` → `IN2` → `OUT2` → LED ch2 is channel B (`rig.Opto.Channels`,
   `rig.Opto.Labels`). A light pattern is the ON/OFF sequence of A and B over the stimulus
-  window.
+  window. The Doric driver (`LEDFLS_465_465`, USB, "LED Driver" on Doric port 4) runs both channels
+  in **external TTL mode** at their LED currents (D17); PulsePal's 5 V is a TTL level, not the
+  intensity. LED ch1 → commutator A, ch2 → commutator B.
 - Fiber bundles (`lum.fiberBundles`): 2-to-19 (ch1 fiber 10 spots on A, ch2 fiber 9 on B);
   4-to-19 with cables black (4 spots), blue, orange, green (5 each), any two on A and B,
-  recorded in `S.Light.Cables`. The drawing colours orange red.
+  recorded in `S.Light.Cables`; **orange on A and blue on B** by default (`Defaults`). Each spot is a
+  100 µm fiber (`CoreDiameter`), so a cable's area is spots × π × (0.05 mm)². The cable is called
+  orange everywhere; do not call it red.
 - Flex I/O (`Bpod Local/Settings/FlexConfig.mat`): channel types are 0 = digital in,
   1 = digital out, 2 = analog in, 3 = analog out, 4 = disabled. Flex1 = **analog input**
   (flow meter, 1 kHz); Flex2 = **digital output**, the sync TTL (barcode and trial pulses) —
@@ -209,12 +228,12 @@ stops the session part way through as though the End button had been pressed.
   (`lum.sync.fitToCameras`): barcode elements and sync pulses ≥ 2 frames, bit/marker widths ≥ 3 frames
   apart. Typed widths are minimums and stay in the settings file; sessions send and record the fitted
   ones (`Session.SyncFit`). Anything new put on the sync line must go through it.
-- House light: **PulsePal OUT3** (5 V on, held as its resting voltage) → BNC splitter → LED driver,
-  and → **Bpod BNC input 1** (`BNC1High`/`BNC1Low`), `rig.HouseLight` (D15). BNC input 1 must be
-  enabled in the console's port settings (`CheckRig`). **The loopback does not work yet**: on
-  2026-09-17, PulsePal confirmed every switch but no BNC1 edge arrived, though BNC1 is enabled.
-  The cabling is unchecked (`docs/rig-checks.md` P1). If the wiring turns out different, change
-  `RigConfig`, not the code. PulsePal OUT1/OUT2 are channels A/B; OUT4 is free.
+- House light: **PulsePal OUT3** (5 V on: resting voltage, then written with op 79) → BNC splitter →
+  LED driver, and → **Bpod BNC input 1** (`BNC1High`/`BNC1Low`), `rig.HouseLight` (D15). BNC input 1
+  must be enabled in the console's port settings (`CheckRig`). The loopback works since 2026-09-21
+  (18–33 ms, command to edge); before 0.7.0 the light never switched on, because firmware v21 does
+  not write an output on its resting voltage alone (see the PulsePal gotcha). If the wiring changes,
+  change `RigConfig`, not the code. PulsePal OUT1/OUT2 are channels A/B; OUT4 is free.
 - Budget: 16 global timers, 8 global counters, 16 conditions **on the rig**; the emulator
   has 5/5/5. Read `rig.Limits` rather than assuming either. The hold window always takes one
   timer (`lum.timerBudget`); the house light takes none.
@@ -239,7 +258,7 @@ doc that does not:
 | latency | `S.Stimulus.Latency`, poke to stimulus onset, held with the cue on | delay, pre-stimulus hold (as a setting) |
 | hold / hold break / grace | centre hold; leaving during it; forgiven break length | |
 | hold window | `S.GUI.HoldWindow`, from trial start, across restarts | initiation window (0.2 name) |
-| session type | `'Behaviour'` or `'Sleep'` (`S.Session.Type`, `Data.Session.Type`) | protocol, mode |
+| session type | `'Behaviour'`, `'Sleep'` or `'EphysCalibration'` (`S.Session.Type`, `Data.Session.Type`); shown as Behaviour, Sleep, ePhys calibration (`lum.gui.Form.sessionLabel`) | protocol, mode |
 | carrier | PulsePal per-channel frequency, pulse width, voltage | waveform |
 | centre | British spelling in identifiers too (`CentreHold`) | `Center` |
 | task variant | which variant of the task a session runs: Familiar/Novel, Mixture, Sequence, Motifs (`S.Task.Variant`) | task type, paradigm |
@@ -255,7 +274,14 @@ doc that does not:
 | early withdrawal | leaving the centre port before the hold is complete, unforgiven (state `EarlyWithdrawal`) | hold break (that is the forgiven kind) |
 | view | a camera's name and file prefix: `sideview`, `topview` | camera name, cam1 |
 | camera clock | SpinCam's host clock: `HostTime_s`, `_events.csv`, `Data.CameraTime` | video time |
-| house light | the white light in the box, on PulsePal OUT3, looped back into BNC input 1 (`S.Session.HouseLight`, `S.Sleep.HouseLight`, `Data.HouseLight`, `Session.HouseLight`) | room light, port 5 light |
+| house light | the white light in the box, on PulsePal OUT3, looped back into BNC input 1 (`S.Session.HouseLight`, `S.Sleep.HouseLight`, `S.Ephys.HouseLight`, `Data.HouseLight`, `Session.HouseLight`) | room light, port 5 light |
+| LED current | the Doric driver's current on LED ch1 (A) or ch2 (B), mA: how bright a gated channel is (`S.Doric.CurrentmA`, `Data.LEDCurrentA/B`, `LightSegments.CurrentmA`) | LED power, voltage, intensity (as a stored value) |
+| light path | one optical channel and the bundle cable on it (`lum.led.lightPath`) | fiber (alone) |
+| irradiance | power at the fiber tips over their area, mW/mm², shown in place of mA once a light path is calibrated | power density, intensity (as a stored value) |
+| LED calibration | power meter readings at several currents for one light path (`lum.led`, `calibration/`) | power curve |
+| LED window | the session window that shows and changes each channel's LED current (`lum.gui.DoricWindow`) | runtime window (that is the parameters') |
+| ePhys calibration | the third session type, `'EphysCalibration'` (`S.Ephys`, D18) | calibration session, ephys mode |
+| input-output curve, paired-pulse ratio | the two ePhys calibration protocols (`S.Ephys.InputOutput`, `S.Ephys.PairedPulse`) | IO sweep, PPR (in operator text) |
 
 Version 0.2 renamed states, data fields and settings accordingly; the full table is in
 `docs/naming-and-versions.md` and `docs/architecture.md` D8. **Rename by migration**: add the old → new
@@ -267,12 +293,37 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
 - **Entry point**: `LuminoseFM.m` in the repo root. Bpod's launch manager requires
   `<ProtocolFolder>/<Name>/<Name>.m`, so the filename must match the folder name
   `LuminoseFM` exactly (case included). Helpers go in subfolders, never nested protocols.
-- **Two session types, one protocol (D11).** `LuminoseFM` opens `lum.gui.SessionTypeDialog`
-  first; *Sleep* hands the whole session to `lum.sleep.run`, which must release every `lum.*`
-  object before returning. Headless runs (`setappdata(0, 'LuminoseFM_Headless', true)`) take the
-  type from `S.Session.Type`. Sleep sessions run blocks with blocking `RunStateMachine`
-  on the rig too — they have nothing to prepare, so `SessionRunner` does not apply. Both setup
+- **Three session types, one protocol (D11, D18).** `LuminoseFM` opens `lum.gui.SessionTypeDialog`
+  first; *Sleep* and *ePhys calibration* hand the whole session to `lum.sleep.run`, which must
+  release every `lum.*` object, the LED included, before returning. Headless runs (`setappdata(0, 'LuminoseFM_Headless', true)`) take the
+  type from `S.Session.Type`. Sleep and ePhys sessions run blocks with blocking `RunStateMachine`
+  on the rig too — they have nothing to prepare, so `SessionRunner` does not apply. All three setup
   dialogs build `S.Meta` through `lum.gui.ExperimentForm`; add an experiment field there once.
+- **The Doric LED (D17).** Intensity is the driver's, timing stays Bpod's and PulsePal's: both LED
+  channels in external TTL mode, the state machine untouched. `lum.dev.DoricLED` ('Device',
+  'Simulated', 'Manual'), chosen by `lum.dev.openDoricLED`, wraps `doric.LightSource` (public API
+  only: `connect('Wait', false)`, `apply`, `startAll`, `Channels(k).setCurrent/MaxCurrentmA`,
+  `stopAll`, `disconnect`, `record`, `poll`). `LuminoseFM` opens it before the session type dialog
+  (`lum.dev.open(rig, S, 'Only', 'DoricLED')`, so `open.m` stays the only reader of emulator mode);
+  it connects in the background; the dialogs get it as `'DoricLED'`; `lum.dev.open(..., 'DoricLED',
+  led)` waits (`ensureReady`) and sets it up (`setUp`), and refuses a session with light (or any ePhys
+  session) on the rig when it fails. **Every return path releases it** (`releaseLED`), and both
+  teardowns close it first (`closeDevices`). Currents change only in the prepare window
+  (`applyPending(trial)`, which returns what the next trial runs at) or between blocks
+  (`applyPending(block)`; ePhys `setCurrents(step.CurrentmA)`, blocking). Settings and data hold mA;
+  windows show mW/mm² for a calibrated light path through `lum.gui.IntensityField`. A calibration
+  is per channel **and cable** (`lum.led.lightPath`, `calibrationFile`), saved to `calibration/` by
+  `lum.gui.DoricCalibration`, replaced by the next one of that path. `lum.led.validate(S)` is the LED
+  check every session's validation runs (errors cals-independent; notes only when given cals).
+  The DoricLED package is optional: without it, or with `S.Doric.Enabled` off, the driver is used as
+  set by hand and currents are NaN.
+- **ePhys calibration (D18).** `lum.ephys.plan` compiles each step (an input-output level or a
+  paired-pulse interval) through `lum.sleep.testPulsePlan` as a probe step and joins them into one
+  plan of the same shape, adding per step `Protocol`, `Label`, `CurrentmA`, `IrradiancemWmm2`,
+  `InterPulseInterval`. `lum.ephys.validate` requires `S.Doric.Enabled` and uses the checks shared
+  with sleep (`lum.sleep.validateClock`, `lum.sleep.checkTimeline`). `lum.sleep.run` runs it with
+  `S.Ephys.Sync`, `S.Ephys.HouseLight`, `lum.gui.EphysSetupDialog` and barcode kind
+  `'EphysCalibration'` (`S.Sync.Barcode.EphysMarkerWidth`, 300 ms; `lum.sync.markerWidth`).
 - **Sleep test pulses (D13).** Light in a sleep session goes the behaviour way: Bpod gates
   BNC1/BNC2, PulsePal fills each gate (constant light for a probe, the train's pulses for a
   burst). `lum.sleep.testPulsePlan` compiles the schedule into gates and epochs in integer
@@ -309,12 +360,13 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   `lum.sleep.Plots`). It is not a runtime-tier parameter (a 0.6.1 settings file's `GUI.HouseLight` is
   renamed on load).
   - **Holding it**: `lum.dev.PulsePal.holdVoltage(3, 5|0, done)` sets OUT3's *resting voltage*
-    (parameter 17), which the firmware writes at once and returns to after every stop, abort and
-    disconnect (`PulsePal_2_0_1.ino`, `killChannel`); it also unlinks OUT3 from both trigger inputs.
+    (parameter 17), which the firmware returns to after every stop, abort and disconnect
+    (`PulsePal_2_0_1.ino`, `killChannel`), then writes the voltage to the output (op 79,
+    `sendOutputVoltage`); it also unlinks OUT3 from both trigger inputs.
     Only outputs 3–4 may be held. Set when `lum.dev.open` builds the device; 0 V when it is closed,
     which `closeDevices` does **before** PulsePal. **The state machine has no part in it**: no timer,
     no output, no state — never add one, and nothing else may use OUT3 or BNC input 1.
-  - **Every session on the rig opens PulsePal** (`lum.dev.openPulsePal`, behaviour or sleep). One
+  - **Every session on the rig opens PulsePal** (`lum.dev.openPulsePal`, any session type). One
     with light refuses to start without it. One without light (`S.Session.UseOpto` off; sleep sets it
     from test pulses) runs on the null shim with a warning, and `lum.dev.openHouseLight` gives it
     `lum.dev.DisabledHouseLight` — also when a connected PulsePal refuses the light's level: off,
@@ -339,7 +391,8 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
     .HouseLight, fallback)` — the first edge decides; with no edge, `houseLight.levelAt(arrival time −
     trial length)` on MATLAB's clock (`sessionTime`). `Data.Session.HouseLight = houseLight.record(
     BpodSystem.Data)`: wiring, `OnAtStart`/`OnAtEnd`, `Switches` (camera and wall time) and `Edges`
-    (Bpod clock, trial). `DeviceLog.HouseLight`, and PulsePal's log has `ch3 param 17` lines. The
+    (Bpod clock, trial). `DeviceLog.HouseLight`, and PulsePal's log has `ch3 param 17` and
+    `ch3 output = <V> V` lines. The
     level at the end is saved to the settings file.
 - **Subject.** `LuminoseFM` takes it from `lum.launchSubject(BpodSystem.GUIData.SubjectName,
   BpodSystem.Status.CurrentSubjectName, BpodSystem.Path.CurrentDataFile)`: the launch manager's
@@ -527,6 +580,9 @@ where it can be tested with no hardware.
 | `hardware/TestHiFiSound.m` | Play a test sound outside a session |
 | `hardware/TestSyncLine.m` | Drive the sync TTL outside a session, from states and from a global timer |
 | `hardware/TestHouseLight.m` | Switch the house light through PulsePal outside a session and check each switch reaches BNC input 1 |
+| `hardware/TestDoricLED.m` | Light A, then B, then both, through Bpod BNC → PulsePal → Doric driver, at one or more currents |
+| `+lum/+led/` | Light paths (`lightPath`), calibrations (`makeCalibration`, `saveCalibration`, `loadCalibration`, `calibrations`, `calibrationFile`, `calibrationFolder`, `plotCalibration`), conversions (`irradiance`, `current`, `toUnit`, `fromUnit`, `describe`), `validate`, `sessionRecord` |
+| `+lum/+ephys/` | ePhys calibration: `plan`, `validate`, `describe` |
 | `+lum/defaultSettings.m`, `mergeSettings.m` | The two-tier settings struct; old settings files converted (renames, reshapes, retirements) |
 | `+lum/validateSettings.m` | Everything that must hold before a session starts; returns the stimulus set |
 | `+lum/stageDefaults.m` | The session a training stage assumes: habituation is air and no light |
@@ -549,11 +605,11 @@ where it can be tested with no hardware.
 | `+lum/trainingStageNote.m` | One line saying what the training stage does to rewards |
 | `+lum/+pattern/` | `generate` (families, groups, order) → `stimulusSet` (segments, contingency, checks) → `patternAt`; `fromStates`, `canonicalise`, `check`, `validate`, `describe`; `families`, `withGeneratorDefaults`, `defaultPLeft`, `newSeed`, `prepareSeed` |
 | `+lum/+stim/` | Components: `OptoPattern`, `TimedOutput` → `PortLight`, `Air`; `Sound`; `CueTone`; `build`; `isTimed`, `timerCost` |
-| `+lum/+sync/` | Session barcode: `barcode` (kinds), `sleepMarkerWidth`, `barcodeValue`, `barcodeTime`, `decodeBarcode`, `barcodeStateMachine`; `fitToCameras` (widths the cameras can read) |
-| `+lum/+sleep/` | Sleep sessions: `run`; sync pulses `pulseSchedule`, `syncPulseTimes`; test pulses `testPulsePlan`, `stepChoices`, `epochShape`, `describeTestPulses`, `describeTrain`; blocks `nextBlock`, `blockStateMachine`; `validate`, `validateTestPulses`, `deviceSettings`; `Plots` |
-| `+lum/+dev/` | Device shims, real and null; `open.m` selects them. `HouseLight`/`RealHouseLight`/`NullHouseLight`/`DisabledHouseLight`, chosen by `openHouseLight`: the house light on PulsePal OUT3, switched at once, its level per trial and edges read from the BNC1 loopback (D15). `PulsePal.holdVoltage` holds an untriggered output, guarded against a click mid-command. `Cameras`/`RealCameras`/`NullCameras`, `openCameras`, `configureCameras`: video through SpinCam (D14). `openPulsePal` refuses a light session without PulsePal, stops its outputs on connecting and requires a handshake (`PulsePal.checkConnection`). `Flex` also sends the barcode, opens the analog viewer and realigns the analog stream (`alignAnalog`) |
-| `+lum/+gui/` | `SessionTypeDialog`, `SetupDialog`, `SleepSetupDialog`, `CameraSetup` (Cameras tab, live preview), `CameraWindow` (during sessions), `HelpLine`, `ExperimentForm`, `Form`, `StimulusDesigner`, `TestPulseDesigner`, `RuntimeWindow`, `PatternBrowser`, `savePlotsImage`, `houseLightSwitch`, `drawTrialFlow`, `drawTestPulseSchedule`, `drawTestPulseEpoch`, `runtimeFields`, `relabelParameterGUI`, `parseNumbers`, `theme`, `logo` |
-| `tests/` | `runLuminoseTests` runs everything; `StubHiFi`, `StubPulsePal` (a PulsePal that can stop answering) and `StubCameraManager` (SpinCam's manager, no cameras) are test doubles; see below |
+| `+lum/+sync/` | Session barcode: `barcode` (kinds), `markerWidth`, `barcodeKinds`, `sleepMarkerWidth`, `barcodeValue`, `barcodeTime`, `decodeBarcode`, `barcodeStateMachine`; `fitToCameras` (widths the cameras can read) |
+| `+lum/+sleep/` | Sleep and ePhys calibration sessions: `run`; sync pulses `pulseSchedule`, `syncPulseTimes`; test pulses `testPulsePlan`, `stepChoices`, `epochShape`, `describeTestPulses`, `describeTrain`; blocks `nextBlock`, `blockStateMachine`; `validate`, `validateClock`, `checkTimeline`, `validateTestPulses`, `deviceSettings`; `Plots` |
+| `+lum/+dev/` | Device shims, real and null; `open.m` selects them. `DoricLED`, chosen by `openDoricLED`: the LED driver through DoricLED, both channels in external TTL mode, currents changed between trials or blocks (D17). `HouseLight`/`RealHouseLight`/`NullHouseLight`/`DisabledHouseLight`, chosen by `openHouseLight`: the house light on PulsePal OUT3, switched at once, its level per trial and edges read from the BNC1 loopback (D15). `PulsePal.holdVoltage` holds an untriggered output, guarded against a click mid-command. `Cameras`/`RealCameras`/`NullCameras`, `openCameras`, `configureCameras`: video through SpinCam (D14). `openPulsePal` refuses a light session without PulsePal, stops its outputs on connecting and requires a handshake (`PulsePal.checkConnection`). `Flex` also sends the barcode, opens the analog viewer and realigns the analog stream (`alignAnalog`) |
+| `+lum/+gui/` | `SessionTypeDialog`, `SetupDialog`, `SleepSetupDialog`, `EphysSetupDialog`, `DoricSetup` (Doric LED tab), `DoricCalibration`, `DoricWindow` (LED window), `IntensityField`, `CameraSetup` (Cameras tab, live preview), `CameraWindow` (during sessions), `HelpLine`, `ExperimentForm`, `Form`, `StimulusDesigner`, `TestPulseDesigner`, `RuntimeWindow`, `PatternBrowser`, `savePlotsImage`, `houseLightSwitch`, `drawTrialFlow`, `drawTestPulseSchedule`, `drawTestPulseEpoch`, `runtimeFields`, `relabelParameterGUI`, `parseNumbers`, `theme`, `logo` |
+| `tests/` | `runLuminoseTests` runs everything; `StubHiFi`, `StubPulsePal` (a PulsePal that can stop answering) and `StubCameraManager` (SpinCam's manager, no cameras) are test doubles; DoricLED's own `SimulatedTransport` is the LED's; see below |
 
 **Bpod gotchas that have already cost time.** Each is guarded in code; don't undo them.
 
@@ -618,10 +674,12 @@ where it can be tested with no hardware.
   handshake behind `checkConnection`, pauses 0.1 s: call it between blocks or trials, never in a
   loop. A house light click can run inside that pause — the reason for the command guard in
   `lum.dev.PulsePal` (D15).
-- PulsePal's `SetPulsePalVoltage` (op 79) is **not** how the house light is held: every stop, abort
-  and disconnect (`killChannel`) puts an output back to its *resting voltage*, so a level written with
-  op 79 is lost at the next `stopOutputs`. `holdVoltage` sets the resting voltage (parameter 17), which
-  the firmware also writes to the output at once.
+- PulsePal firmware v21 **does not change an output on its resting voltage alone**: parameter 17
+  stores it and calls `dacWrite()` without setting that output's `DACFlags`, so the DAC is untouched
+  until a stop or abort kills the channel. `SetPulsePalVoltage` (op 79) does write, but alone it is
+  lost at the next stop, abort or disconnect (`killChannel` returns to the resting voltage). So
+  `holdVoltage` sends both, parameter 17 then op 79 (found on the rig 2026-09-21: until then the
+  house light never switched on). `NullPulsePal` logs op 79 as `would write ch3 output = 5 V`.
 - A sleep session with test pulses must **never** cut a block inside an epoch or put two steps'
   light in one block: Bpod drops every line at the end of a state machine, so a gate split across
   runs becomes two gates with an upload between them, and PulsePal is only reprogrammed between
@@ -641,6 +699,9 @@ where it can be tested with no hardware.
   100 Hz default a session with the camera window open grew its writer queue 1–2 frames/s (writer
   drops after ~15 min), though a bare recording stayed flat. Record `avi-mjpeg-mt`; a queue peak in
   `Session.Cameras.Summary.Cameras(k).QueuePeak` in the hundreds means the encoder fell behind.
+- **A test must start the emulator before anything reaches `lum.dev.open`.** Without a
+  `BpodSystem`, `open` takes the rig path, and `lum.dev.openDoricLED` connects to the **real Doric
+  driver** through the bridge (a test once did). Call `ensureEmulator()` first.
 - MATLAB resolves a package function from the **current folder** before the path, so a copy of a
   `+lum` file on the path does not override the repository's while MATLAB's current folder is the
   repository (it cost a diagnostic run: a scratch opener meant to force real cameras was ignored).
@@ -672,8 +733,11 @@ messages — MATLAB has no compile step, so that is the closest thing to one. Ad
 any behaviour change; the pure functions (`+lum/*.m`, `+lum/+pattern/`, `+lum/+sync/`) are
 the cheap place to do it. `windowsTest` builds windows invisibly (`'Visible', 'off'`, and
 `'Wait', false` for the modal ones) and skips the uifigure tests where MATLAB cannot make one.
-`emulatorSessionTest` runs a whole behaviour session headless, and `sleepSessionTest` two sleep
-sessions, with and without test pulses — both with video off. `cameraTest` covers video against
+`emulatorSessionTest` runs a whole behaviour session headless, `sleepSessionTest` two sleep
+sessions, with and without test pulses, and `ephysSessionTest` an ePhys calibration session — all
+with video and the LED window off. `ledTest` (pure), `doricTest` (the LED on DoricLED's simulated
+driver, and `TestDoricLED` under the emulator) and `ephysTest` (pure) cover D17 and D18; the Doric
+and ePhys session tests are skipped without the DoricLED package. `cameraTest` covers video against
 `StubCameraManager` and runs a behaviour and a sleep session with SpinCam's simulated cameras
 (skipped without SpinCam).
 
@@ -713,7 +777,8 @@ Keep documentation current in the same change that alters behaviour:
   D8 naming, D9 timed components, D10 restarting holds and the hold window, D11 behaviour and
   sleep sessions, D12 the cue until the stimulus starts, and its latency, D13 test pulses in
   sleep sessions, D14 video through SpinCam, D15 the house light on PulsePal, looped back into Bpod, D16 the plots
-  image and settings kept at teardown). Read it before changing the stimulus path, the state graph, sleep blocks or
+  image and settings kept at teardown, D17 the Doric LED sets the intensity, D18 ePhys calibration
+  sessions). Read it before changing the stimulus path, the state graph, sleep blocks or
   the GUI.
 - `docs/` — rig drawings, `BpodSystemInfo.png`, logo.
 
@@ -721,7 +786,12 @@ If you change a public helper's signature, the state-machine flow, the data sche
 GUI parameter set, or the hardware map, update the affected doc in the same commit. If a
 doc statement turns out to be wrong, fix the doc — don't leave it for later.
 
+**Writing.** State facts plainly, for an operator and a developer who want to use or change the
+code. No emphasis for its own sake, no reassurance, no lecturing (for example, not "This is not
+superstition, and it is not optional"). Say what happens, what to do, and why when the why helps.
+
 ## Git
 
 - Branch `main`, remote `SainsburyWellcomeCentre/LuminoseFM`.
-- Commit only when asked. Don't commit session data, `.asv` files, or `Bpod Local` state.
+- Commit only when asked. Don't commit session data, `.asv` files, `Bpod Local` state, or
+  `calibration/` (rig-local LED calibrations; git-ignored).

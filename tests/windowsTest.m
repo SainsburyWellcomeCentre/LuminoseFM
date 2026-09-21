@@ -655,6 +655,133 @@ verifyEqual(testCase, started.Sleep.Sync.Interval, 2);
 delete(cleanup);
 end
 
+function testTheSessionTypeChooserOffersEphysCalibration(testCase)
+assumeUIFigures(testCase);
+[~, app] = lum.gui.SessionTypeDialog('Default', 'EphysCalibration', 'Wait', false, 'Visible', 'off');
+cleanup = onCleanup(@() closeIfOpen(app.Figure));
+buttons = findall(app.Figure, 'Type', 'uibutton');
+verifyTrue(testCase, any(strcmp({buttons.Text}, 'ePhys calibration')));
+app.choose('EphysCalibration');
+verifyEqual(testCase, app.choice(), 'EphysCalibration');
+end
+
+function testTheDoricTabReadsBackTheLightPathAndIntensity(testCase)
+% Every setup dialog has the Doric LED tab; the fiber bundle moved to it from Light path.
+assumeUIFigures(testCase);
+folder = tempname;
+mkdir(folder);
+removeFolder = onCleanup(@() rmdir(folder, 's'));
+S = testCase.TestData.S;
+[~, ~, app] = lum.gui.SetupDialog(S, testCase.TestData.rig, 'Wait', false, 'Visible', 'off', ...
+                                  'CalibrationFolder', folder);
+cleanup = onCleanup(@() closeIfOpen(app.Figure));
+candidate = app.collect();
+verifyEqual(testCase, candidate.Doric, S.Doric);
+verifyEqual(testCase, candidate.Light.Bundle, S.Light.Bundle);
+c = app.doric.Controls;
+c.Bundle.Value = '4-to-19';
+c.Bundle.ValueChangedFcn(c.Bundle, []);
+candidate = app.collect();
+verifyEqual(testCase, candidate.Light.Cables, {'orange', 'blue'}, 'The 4-to-19 defaults');
+verifySubstring(testCase, c.PathNote(1).Text, 'orange cable, 5 fibers');
+verifySubstring(testCase, c.CalibrationNote(1).Text, 'Not calibrated');
+
+% A calibration saved for channel A's path turns its intensity into mW/mm2.
+path = lum.led.lightPath(candidate, 1);
+cal = lum.led.makeCalibration(path, [0 200], [0 2], 'mW');
+lum.led.saveCalibration(cal, folder);
+app.refresh();
+verifySubstring(testCase, c.CalibrationNote(1).Text, 'Calibrated');
+verifySubstring(testCase, app.status(), 'Ready to start');
+candidate = app.collect();
+verifyEqual(testCase, candidate.Doric.CurrentmA, S.Doric.CurrentmA, 'The current itself is unchanged');
+c.MaxCurrent(1).Value = 50;
+app.refresh();
+verifySubstring(testCase, app.status(), 'above its limit', 'A current over its limit stops Start');
+end
+
+function testTheSleepDialogHasTheDoricTab(testCase)
+assumeUIFigures(testCase);
+S = testCase.TestData.S;
+[~, ~, app] = lum.gui.SleepSetupDialog(S, testCase.TestData.rig, 'Wait', false, 'Visible', 'off');
+cleanup = onCleanup(@() closeIfOpen(app.Figure));
+verifyEqual(testCase, app.controls.Tabs.Doric.Title, 'Doric LED');
+verifyEqual(testCase, app.collect().Doric, S.Doric);
+end
+
+function testTheCalibrationWindowSavesWhatWasRead(testCase)
+assumeUIFigures(testCase);
+folder = tempname;
+mkdir(folder);
+removeFolder = onCleanup(@() rmdir(folder, 's'));
+S = testCase.TestData.S;
+S.Light.Bundle = '4-to-19';
+path = lum.led.lightPath(S, 2);
+saved = {};
+w = lum.gui.DoricCalibration(path, 'Folder', folder, 'Visible', 'off', ...
+                             'OnSaved', @(cal) assignSaved(cal));
+cleanup = onCleanup(@() w.close());
+verifyEqual(testCase, w.Controls.On.Enable, matlab.lang.OnOffSwitchState('off'), ...
+            'No driver: the currents are set by hand');
+verifyEqual(testCase, w.Controls.Save.Enable, matlab.lang.OnOffSwitchState('off'), 'No readings yet');
+w.Controls.Unit.Value = 'uW';
+w.setPower(1, 0);
+w.setPower(3, 800);
+w.setPower(5, 1500);
+verifyEqual(testCase, w.Controls.Save.Enable, matlab.lang.OnOffSwitchState('on'));
+data = w.Controls.Table.Data;
+verifyEqual(testCase, data{3, 3}, 0.8 / path.Area, 'RelTol', 1e-9, 'uW to mW/mm2');
+verifyTrue(testCase, w.save());
+verifyNotEmpty(testCase, saved);
+loaded = lum.led.loadCalibration(path, folder);
+verifyEqual(testCase, loaded.CurrentmA, [0; 100; 200]);
+verifyEqual(testCase, loaded.PowerUnit, 'uW');
+
+    function assignSaved(cal)
+        saved = {cal};
+    end
+end
+
+function testTheLEDWindowAsksForAChangeAtTheNextTrial(testCase)
+assumeUIFigures(testCase);
+testCase.assumeNotEmpty(lum.dev.DoricLED.locatePackage(''), 'The DoricLED package is not on the path.');
+S = testCase.TestData.S;
+led = lum.dev.openDoricLED(true, S);
+cleanupLED = onCleanup(@() led.close());
+led.ensureReady(10);
+led.setUp(S.Doric.CurrentmA, S.Doric.MaxCurrentmA);
+w = lum.gui.DoricWindow(led, S, 'Visible', 'off', 'Subject', 'testSubject');
+cleanup = onCleanup(@() w.close());
+verifySubstring(testCase, w.Controls.Running(1).Text, '100 mA');
+field = findall(w.Figure, 'Type', 'uinumericeditfield');
+field(end).Value = 150;   % Channel B's (the last made)
+field(end).ValueChangedFcn(field(end), []);
+w.apply(2);
+verifyEqual(testCase, led.Pending, [NaN 150]);
+verifySubstring(testCase, w.Controls.Running(2).Text, 'waiting for the next trial');
+led.applyPending(1);
+verifyFalse(testCase, contains(w.Controls.Running(2).Text, 'waiting'));
+verifySubstring(testCase, w.Controls.Running(2).Text, '150 mA');
+end
+
+function testTheEphysDialogReadsBackAndRefusesACurveWithoutItsTop(testCase)
+assumeUIFigures(testCase);
+S = testCase.TestData.S;
+[~, accepted, app] = lum.gui.EphysSetupDialog(S, testCase.TestData.rig, 'Wait', false, 'Visible', 'off');
+cleanup = onCleanup(@() closeIfOpen(app.Figure));
+verifyFalse(testCase, accepted);
+candidate = app.collect();
+verifyEqual(testCase, candidate.Session.Type, 'EphysCalibration');
+verifyEqual(testCase, candidate.Ephys.PairedPulse.Intervals, S.Ephys.PairedPulse.Intervals, 'AbsTol', 1e-12);
+verifySubstring(testCase, app.status(), 'highest intensity', 'The curve''s top has no default');
+app.fields.IOMax{1}.setCurrent(300);
+app.refresh();
+verifySubstring(testCase, app.status(), 'Ready to start');
+candidate = app.collect();
+verifyEqual(testCase, candidate.Ephys.InputOutput.MaxmA(1), 300);
+verifySubstring(testCase, app.controls.Summary.Text, 'Input-output: 8 levels');
+end
+
 function testTheStimulusDesignerKeepsTheDesignItWasGiven(testCase)
 assumeUIFigures(testCase);
 S = testCase.TestData.S;

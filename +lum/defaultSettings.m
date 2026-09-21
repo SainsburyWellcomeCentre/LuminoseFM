@@ -5,14 +5,17 @@ function S = defaultSettings()
 % (architecture decision D2):
 %
 %   Pre-session tier — S.Meta, S.Session, S.Task, S.Cue, S.Stimulus, S.Left,
-%   S.Right, S.Light, S.Sound, S.Camera, S.Sync, S.Sleep. Chosen once in the setup dialog (or
-%   the sleep setup dialog), frozen for the session, and stored once in the data
-%   file. Changing any of these mid-session would make the session's data
-%   uninterpretable, so nothing in the runtime window can touch them.
+%   S.Right, S.Light, S.Doric, S.Sound, S.Camera, S.Sync, S.Sleep, S.Ephys. Chosen once in
+%   the setup dialog (or the sleep or ePhys calibration setup dialog), frozen for the
+%   session, and stored once in the data file. Changing any of these mid-session would
+%   make the session's data uninterpretable, so nothing in the runtime window can touch
+%   them. The one exception is the LED current (S.Doric.CurrentmA), which the LED window
+%   changes between trials and each trial records (D17).
 %
 %   S.Session.Type says which kind of session the settings were last used for,
-%   'Behaviour' or 'Sleep' (D11); the chooser shown at launch starts on it. S.Sleep
-%   is read only by sleep sessions, and the behaviour tiers only by behaviour ones.
+%   'Behaviour', 'Sleep' or 'EphysCalibration' (D11, D18); the chooser shown at launch
+%   starts on it. S.Sleep is read only by sleep sessions, S.Ephys only by ePhys
+%   calibration sessions, and the behaviour tiers only by behaviour ones.
 %
 %   Runtime tier — S.GUI, with S.GUIMeta, S.GUIPanels and S.GUITabs describing it
 %   to the runtime window. Only parameters that are safe to change with an animal
@@ -56,7 +59,7 @@ S.Meta.Drug = struct('Enabled', false, 'Name', '', 'Delivery', 'Intraperitoneal 
                      'MinutesBeforeSession', 0);
 
 %% Pre-session tier: session composition
-S.Session.Type = 'Behaviour';       % 'Behaviour' or 'Sleep' (lum.experimentChoices)
+S.Session.Type = 'Behaviour';       % 'Behaviour', 'Sleep' or 'EphysCalibration' (lum.experimentChoices)
 S.Session.MaxTrials = 1000;
 S.Session.SaveEveryNTrials = 5;     % SaveBpodSessionData rewrites the whole file each call
 S.Session.UseOpto = true;           % Connect to PulsePal and deliver patterned light
@@ -144,7 +147,7 @@ S.Right = sideDefaults(12000);
 % Which fiber bundle is on the animal and, for the 4-to-19 bundle, which two of its
 % cables are on channels A and B (lum.fiberBundles).
 S.Light.Bundle = '2-to-19';
-S.Light.Cables = {'blue', 'green'};
+S.Light.Cables = {'orange', 'blue'};   % Used with the 4-to-19 bundle: A, then B
 % Carrier, delivered by PulsePal while a channel is gated high. One element per
 % optical channel, because the two channels drive different LEDs into different
 % cables: matching the light they deliver is a per-channel calibration.
@@ -152,7 +155,25 @@ S.Light.Carrier = struct( ...
     'Channel',    {1,      2}, ...
     'Frequency',  {20,     20}, ...    % Hz; 0 means constant light while gated
     'PulseWidth', {0.005,  0.005}, ... % Seconds; ignored when Frequency is 0
-    'Voltage',    {5,      5});        % Volts into the Doric LED driver
+    'Voltage',    {5,      5});        % Volts: the TTL into the Doric LED driver's input
+
+%% Pre-session tier: the Doric LED (D17)
+% The two-channel Doric LED driver (LEDFLS_465_465): LED channel 1 lights channel A and
+% channel 2 lights B. With Enabled, the session connects to it through the DoricLED
+% package (Folder, or the MATLAB path when '') and puts both channels in external TTL
+% mode at CurrentmA, so each lights while PulsePal's output into it is high. Without
+% the package, or with Enabled off, the driver is used as it was set by hand (its own
+% front panel or Doric Neuroscience Studio), which must then be external TTL mode.
+% CurrentmA is always stored in mA. Where a channel's light path has a calibration
+% (lum.led.loadCalibration), the windows show and accept irradiance in mW/mm2 instead
+% and convert it with that calibration. MaxCurrentmA is the driver's own limit per
+% channel: a request above it is refused, never reduced (at most 1000 mA, the LED's
+% rating; doric.Channel).
+S.Doric.Enabled = true;             % Control the LED from MATLAB (the DoricLED package)
+S.Doric.Folder = '';                % Where DoricLED was cloned; '' when it is on the MATLAB path
+S.Doric.CurrentmA = [100 100];      % LED current while channel A, B is gated, mA
+S.Doric.MaxCurrentmA = [700 700];   % Refuse anything above, mA (Doric's recommended maximum)
+S.Doric.ShowWindow = true;          % The LED window during the session
 
 %% Pre-session tier: sound
 S.Sound.SamplingRate = 192000;
@@ -192,13 +213,14 @@ S.Sync.MeanWidth = 0.060;           % Jittered width: average pulse, seconds
 S.Sync.WidthJitter = 0.040;         % Jittered width: drawn uniformly within +/- this (20-100 ms)
 % One barcode before the first trial identifies the session (lum.sync.barcode). Its
 % markers say what kind of session it opens: MarkerWidth for behaviour,
-% SleepMarkerWidth for sleep, so the two are told apart on any recording.
+% SleepMarkerWidth for sleep, EphysMarkerWidth for ePhys calibration, so the three are
+% told apart on any recording.
 % Every width on the sync line here (and in S.Sleep.Sync) is a minimum: with video they are
 % widened at session time until the cameras can read them frame by frame
 % (lum.sync.fitToCameras). These defaults already fit the 100 Hz default.
 S.Sync.Barcode = struct('Enabled', true, 'nBits', 32, 'MarkerWidth', 0.1, ...
                         'ZeroWidth', 0.02, 'OneWidth', 0.05, 'Gap', 0.02, ...
-                        'SleepMarkerWidth', 0.2);
+                        'SleepMarkerWidth', 0.2, 'EphysMarkerWidth', 0.3);
 
 %% Pre-session tier: sleep sessions
 % A home-cage sleep recording: the session barcode, then sync pulses on the same line
@@ -222,7 +244,8 @@ S.Sleep.Sync = struct('Mode', lum.SyncMode.JitteredWidth, 'FixedWidth', 0.05, ..
 %   Probe     One epoch every InterEpochInterval seconds: a single pulse, or a pair of
 %             pulses InterPulseInterval apart (Mode 'Paired'). Both intervals are
 %             onset to onset; widths and intervals in seconds.
-%   Voltage   LED drive into the Doric driver, channel A then B, volts
+%   Voltage   PulsePal's output into the Doric driver's TTL input, channel A then B,
+%             volts; the light's intensity is the LED current, S.Doric.CurrentmA
 %   Trains    Named plasticity trains, used by name in the schedule, and only when
 %             PlasticityTrains is on: bursts of PulsesPerBurst pulses at
 %             PulseFrequency, BurstsPerTrain bursts at BurstFrequency, nTrains trains
@@ -245,6 +268,33 @@ S.Sleep.TestPulses.Trains = struct( ...
     'nTrains',        {5,             4}, ...
     'TrainInterval',  {20,            20});
 S.Sleep.TestPulses.Schedule = struct('Kind', {'Probe'}, 'Channels', {'A and B'}, 'Minutes', {240});
+
+%% Pre-session tier: ePhys calibration sessions (D18)
+% Light pulses whose intensity or pairing changes step by step, for the recorded
+% response: an input-output curve (pulses from MinmA to MaxmA in nLevels steps) and a
+% paired-pulse ratio (pairs at CurrentmA, one step per inter-pulse interval, onset to
+% onset). Every step sends Repeats epochs, one every InterEpochInterval seconds, on
+% Channels ('A', 'B' or 'A and B', each channel at its own current). The LED current
+% changes between steps (lum.ephys.plan), so the session needs S.Doric.Enabled.
+% Intensities are stored in mA per channel, A then B; with a calibration the levels are
+% spaced evenly in irradiance rather than in current. MaxmA has no default: the
+% operator gives the top of the curve. Order 'Shuffled' runs the steps of each protocol
+% in an order drawn from Seed. Sync pulses and the house light work as in sleep
+% sessions; the session barcode has the ePhys marker (S.Sync.Barcode.EphysMarkerWidth).
+S.Ephys.Channels = 'A';
+S.Ephys.PulseWidth = 0.005;         % Seconds
+S.Ephys.InterEpochInterval = 1;     % Seconds, onset to onset
+S.Ephys.Repeats = 10;               % Epochs per step
+S.Ephys.Order = 'Ascending';        % 'Ascending', 'Descending' or 'Shuffled'
+S.Ephys.Seed = 1;
+S.Ephys.Voltage = [5 5];            % PulsePal's output into the driver's TTL input, volts
+S.Ephys.InputOutput = struct('Enabled', true, 'MinmA', [0 0], 'MaxmA', [NaN NaN], 'nLevels', 8);
+S.Ephys.PairedPulse = struct('Enabled', true, 'CurrentmA', [100 100], ...
+                             'Intervals', [0.02 0.03 0.05 0.075 0.1 0.2 0.3 0.5]);
+S.Ephys.HouseLight = false;
+S.Ephys.Sync = struct('Mode', lum.SyncMode.JitteredWidth, 'FixedWidth', 0.05, ...
+                      'MeanWidth', 0.06, 'WidthJitter', 0.04, ...
+                      'Interval', 1, 'IntervalJitter', 0);
 
 %% Runtime tier: parameters that may change with an animal in the box
 %

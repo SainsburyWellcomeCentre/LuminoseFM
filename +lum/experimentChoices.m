@@ -11,7 +11,7 @@ function choices = experimentChoices()
 % See also: lum.defaultSettings, lum.gui.SetupDialog
 
 choices = struct();
-choices.SessionTypes = {'Behaviour', 'Sleep'};
+choices.SessionTypes = {'Behaviour', 'Sleep', 'EphysCalibration'};
 % The task variants (S.Task.Variant). Each names the kind of stimulus set a session
 % is built around; the list is closed, because analysis selects sessions by it.
 choices.TaskVariants = {'Familiar/Novel', 'Mixture', 'Sequence', 'Motifs'};
