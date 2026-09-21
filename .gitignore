@@ -12,3 +12,6 @@ Data/
 
 # LED calibrations belong to the rig they were measured on (lum.led.calibrationFolder)
 calibration/
+
+# Claude Code worktrees (each is its own checkout of a branch)
+.claude/worktrees/
