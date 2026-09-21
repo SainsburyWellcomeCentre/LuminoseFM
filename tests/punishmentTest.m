@@ -11,6 +11,20 @@ testCase.TestData.S = lum.defaultSettings;
 testCase.TestData.S.GUI.PunishTimeout = 4;
 end
 
+function testNoPunishmentIsTheDefaultAndAWrongChoiceMayBeRetried(testCase)
+S = lum.defaultSettings;
+verifyEqual(testCase, S.GUI.PunishCondition, 1);
+punishment = lum.punishmentFor(S, 'IncorrectChoice');
+verifyFalse(testCase, punishment.Applies);
+verifyTrue(testCase, punishment.Retry);
+verifyFalse(testCase, lum.punishmentFor(S, 'EarlyWithdrawal').Retry, ...
+            'An early withdrawal''s retry is the break mode''s');
+for condition = [3 4]
+    S.GUI.PunishCondition = condition;
+    verifyFalse(testCase, lum.punishmentFor(S, 'IncorrectChoice').Retry);
+end
+end
+
 function testNoneMeansNeitherMistakeIsPunished(testCase)
 S = testCase.TestData.S;
 S.GUI.PunishCondition = 1;

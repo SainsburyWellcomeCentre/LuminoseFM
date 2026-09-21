@@ -183,7 +183,8 @@ spec = struct('PatternIndex', 1, 'StimulusGroup', 1, 'CorrectSide', 1, 'HoldDura
               'HoldGrace', 0);
 lapsed = struct('Choice', NaN, 'Correct', NaN, 'Rewarded', 0, 'ReactionTime', NaN, ...
                 'Outcome', lum.Outcome.HoldNotCompleted, 'HoldBreaks', 0, 'HoldAttempts', 4, ...
-                'EarlyWithdrawals', 4);
+                'EarlyWithdrawals', 4, ...
+                'CentreRewarded', 0, 'ResponseRetries', 0, 'CentreHoldTime', NaN);
 history = lum.updateHistory(history, 1, spec, lapsed);
 history = lum.updateHistory(history, 2, spec, lapsed);
 verifyEqual(testCase, history.withdrawalsAtHold, 8);
@@ -229,6 +230,14 @@ end
 function testTrainingSwitchesShapingOnAndExperimentOff(testCase)
 S = lum.stageDefaults(lum.defaultSettings, 2);
 verifyTrue(testCase, S.Task.AutoShaping);
+S = lum.stageDefaults(S, 3);
+S = lum.stageDefaults(S, 1);
+verifyTrue(testCase, S.Task.AutoShaping, 'Habituation shapes the hold too');
+S.Task.TrainingStage = 1;
+S.Session.MaxTrials = 20;
+lum.validateSettings(S, RigConfig);  % Allowed in habituation
+S.Task.TrainingStage = 2;
+lum.validateSettings(S, RigConfig);  % and in training
 S = lum.stageDefaults(S, 3);
 verifyFalse(testCase, S.Task.AutoShaping);
 S.Task.AutoShaping = true;

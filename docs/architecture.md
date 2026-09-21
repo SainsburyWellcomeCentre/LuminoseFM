@@ -1,7 +1,7 @@
 # LuminoseFM — Architecture
 
 Design record for the LuminoseFM protocol. Status: **implemented** (version 0.7.2); decisions
-D1–D18 confirmed. Update this file whenever the architecture changes.
+D1–D19 confirmed. Update this file whenever the architecture changes.
 
 ---
 
@@ -147,7 +147,8 @@ and keeps the *observable* behaviour identical. The mode is recorded in
 - On the rig the prepare window opens partway through the trial, at one of the trigger
   states `lum.triggerStates(S)` lists (`LeftReward`, `RightReward`, `IncorrectChoice`,
   `NoResponse`, `NoInitiation`, `WithdrewBeforeReward`, and `EarlyWithdrawal` only when a
-  broken hold ends the trial — with restarts, light can follow it, D10), and the next state
+  broken hold ends the trial — with restarts, light can follow it, D10; never `RetryResponse` or
+  `CentreReward`, after which the trial goes on, D19), and the next state
   machine is uploaded during the trial. Anything computed from history — bias correction, hold shaping — therefore
   follows trial *n-1* when preparing trial *n+1*.
 - In the emulator the same calls run the trial to completion first.
@@ -881,6 +882,50 @@ each stretch holds.
 - Settings files from before 0.7.0 have no `EphysMarkerWidth`; their ePhys marker is the sleep marker
   plus the behaviour marker (300 ms with the defaults).
 
+### D19 — Centre reward in habituation, and a retry after an unpunished incorrect choice
+
+**Decision.** Two additions to the behaviour trial, both as states that exist in every trial and
+are reached only when the runtime settings ask for them:
+
+- **`CentreReward`**, between a completed hold and `WaitForCentreExit`. On trials 1 to
+  `S.GUI.CentreRewardTrials` (10) of a habituation session, with `S.GUI.CentreRewardAmount` (1 µL)
+  above 0, the end of the hold (`CentreHold`'s timer, or the hold clock from `CentreHold`,
+  `HoldBreak` or `CentreHoldResumed`) leads there; it opens the centre valve (`rig.Valve.Centre`,
+  valve 2) for the calibrated time and puts the response configuration up as `WaitForCentreExit`
+  does. `lum.nextTrialSpec` decides it (`spec.CentreReward`, `spec.CentreRewardAmount`); the session
+  looks up valve 2's time in the prepare window, and without a calibration drops the centre reward
+  with one warning.
+- **`RetryResponse`**, after a wrong side poke that is not punished (`lum.punishmentFor(...).Retry`:
+  `PunishCondition` without *Incorrect choice*, now the default). It lasts 0 s and returns to
+  `WaitForResponse`, whose timer starts again; the correct port still pays. A punished wrong poke
+  goes to `IncorrectChoice`, which ends the trial unrewarded after the timeout, and lasts at least
+  the noise (`S.Sound.NoiseDuration`) when the punishment plays one, because the ITI stops the sound
+  module. `EarlyWithdrawal` is stretched the same way when it ends the trial.
+
+The scorer keeps scoring by the first side poke, and adds `CentreRewarded`, `ResponseRetries`
+(visits to `RetryResponse`) and `CentreHoldTime`; the data file stores them as `CentreReward` (µL),
+`ResponseRetries` and `CentreHoldTime`.
+
+**Why.** A new animal has to learn that the centre port is worth visiting before the hold means
+anything, and water there does it fastest; paying the completed hold rather than the poke keeps the
+poke's path free of any state (D12), so the stimulus starts exactly as in every other trial, and with
+automatic shaping (now on in habituation too) the first holds are 0.1 s. Counting the centre reward
+in trials rather than in rewards given keeps `nextTrialSpec` pure: on the rig trial *n+1* is prepared
+before trial *n* is scored (D3), so a count of rewards given would overshoot by one. The retry needs its
+own state because `IncorrectChoice` opens the prepare window (`lum.triggerStates`): the trial must pass
+through exactly one trigger state, and after a retry it still reaches a reward, `NoResponse` or
+`WithdrewBeforeReward`. The response window starts again on the retry rather than running on, because
+holding it across the retry would take a global timer from the light's budget, which the emulator's
+five cannot spare.
+
+**Consequences.**
+
+- The state graph has two more names; analysis that lists states must include them.
+- `Outcome` stays the first choice's, so psychometrics are unchanged; a retried trial is `Incorrect`
+  with `Rewarded` 1, and water totals must use `Rewarded`, not `Outcome`.
+- Settings files keep their `PunishCondition`; only new settings start with no punishment.
+- Valve 2 needs a liquid calibration before the centre reward can be used.
+
 ---
 
 ## What is built, and where
@@ -910,9 +955,11 @@ each stretch holds.
 training stages or hold shaping.
 
 ```
-TrialStart → WaitForCentrePoke (cue) → [PreStimulusHold (latency)] → CentreHold (stimulus) → WaitForCentreExit
+TrialStart → WaitForCentrePoke (cue) → [PreStimulusHold (latency)] → CentreHold (stimulus)
+           → [CentreReward (habituation's first trials)] → WaitForCentreExit
            → WaitForResponse → {*RewardDelay → *Reward → Drinking* → DrinkingGrace
-                                | IncorrectChoice | NoResponse} → ITI → exit
+                                | IncorrectChoice (punished) | NoResponse} → ITI → exit
+WaitForResponse   → RetryResponse → WaitForResponse   (wrong side, not punished; D19)
 PreStimulusHold   → EarlyWithdrawal            (left during the latency)
 CentreHold        → EarlyWithdrawal (no grace) | HoldBreak ⇄ CentreHoldResumed (grace)
 HoldBreak         → EarlyWithdrawal            (grace ran out)
@@ -945,9 +992,12 @@ Around it:
   the hold steps back (D6), break modes (D10).
 - `+lum/triggerStates.m` — pure: where the next trial may be prepared (D3, D10).
 - `+lum/scoreTrial.m` — pure: outcome, choice, correctness, reward, reaction time, hold
-  breaks and hold attempts from the fixed state names and port events.
-- `+lum/punishmentFor.m` — pure: which mistakes are punished and how. Both punishable states
-  exist whatever the settings; an unpunished mistake passes through with a zero timer.
+  breaks and hold attempts, centre reward, retries and centre hold time from the fixed state names
+  and port events.
+- `+lum/punishmentFor.m` — pure: which mistakes are punished and how, and whether a wrong choice
+  may be retried (D19). Every punishment state exists whatever the settings; an unpunished early
+  withdrawal passes through with a zero timer, an unpunished incorrect choice through
+  `RetryResponse`.
 
 ### Stimuli
 `+lum/+pattern/`: `generate` (families, groups, balanced order, offsets, descriptors) →
@@ -1039,7 +1089,9 @@ outcomes; middle row performance, psychometric (laid out by `psychometricLayout`
 point, pair, sweep or B-share bins) and evidence (each choice at the latent evidence u_A and u_B its
 stimulus carried, the fraction of the window A and B were lit, by correctness and side chosen, jittered by a fixed sequence rather than `rand`, which the
 trial policy draws sides from); bottom row by side, side bias (P(chose left) over the bias window,
-and the correction target) and reaction time. Handles created once; aggregates kept incrementally;
+and the correction target), reaction time and centre hold (time in the port on each trial's last
+hold, completed or broken, against latency plus hold). The header's summary gives the water drunk,
+side and centre apart, and the running trial's hold. Handles created once; aggregates kept incrementally;
 per-trial panels scroll and rescale to what is on screen; one `drawnow limitrate` per trial.
 `lum.sleep.Plots` is the sleep session's figure: with test pulses, the schedule with progress, the
 lines (sync, A, B), the latest epoch, sync widths and epochs by step; without, lines and widths.
@@ -1115,8 +1167,6 @@ These are properties of Bpod v1.9.0 that shaped the code and are easy to redisco
 - Whether a current changed with `ls_send_current` while a channel runs in external TTL mode changes
   the light at once (D17; `rig-checks.md` P3). If not, `applyPending` must re-apply the settings
   instead, which restarts the channel.
-- Whether habituation should also deliver a drop at the centre port on initiation. The centre
-  port's valve is wired but the task does not use it.
 - Bias correction reorders a balanced order (D5), so its long-run effect is bounded by the
   set's own side proportion. If sustained correction is needed, the alternative is to let it
   draw outside the balance and record the imbalance.

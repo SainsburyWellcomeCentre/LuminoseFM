@@ -37,8 +37,8 @@ global BpodSystem %#ok<GVMIS> % Imported to read the connected machine's channel
 
 %% Fixed wiring (see docs/hardware.md and the hardware map in CLAUDE.md)
 % Ports 1-3 are the behaviour ports proper: each has a photogate, an LED and a
-% water valve. Reward is delivered at the left and right ports only; the centre
-% port's valve is wired but the task does not use it. Port 4 carries one line, the
+% water valve. Reward is delivered at the left and right ports, and at the centre port
+% only for habituation's centre reward (S.GUI.CentreRewardAmount, valve 2). Port 4 carries one line, the
 % air valve, so the other names generated below (rig.LED.Air and port 4's photogate)
 % exist as state machine channels but are connected to nothing. Port 5 is unused: the
 % house light moved from its LED line to PulsePal (rig.HouseLight).

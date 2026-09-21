@@ -45,6 +45,10 @@ function [spec, queue] = nextTrialSpec(S, stimulusSet, queue, history, trialNumb
 %   .HoldGrace        Longest break in the hold that is forgiven, seconds
 %   .HoldSteppedBack  True when automatic shaping stepped the hold back for this trial,
 %                     after too many early withdrawals
+%   .CentreReward     True when a completed hold on this trial is rewarded at the
+%                     centre port: habituation only, on trials 1 to
+%                     S.GUI.CentreRewardTrials, with S.GUI.CentreRewardAmount above 0
+%   .CentreRewardAmount  Microlitres the centre reward gives; 0 when there is none
 %
 % Side draws and pulse widths come from rand(), so seeding with rng() makes a
 % session or a test reproducible. The pattern order does not: it is fixed by the
@@ -120,6 +124,14 @@ spec.SoundOn = S.Session.UseSound && S.GUI.SoundOn == 1;
 spec.SyncMode = S.Sync.Mode;
 spec.SyncPulseWidth = syncPulseWidth(S);
 [spec.HoldDuration, spec.HoldGrace, spec.HoldSteppedBack] = lum.HoldShaping.next(S, history);
+
+% The centre reward teaches a new animal that the centre port is worth visiting, so it
+% belongs to habituation's first trials. Counted in trials, not in rewards given, so it
+% does not depend on a trial still running while this one is prepared; both settings
+% are runtime ones, and raising the count mid-session carries it on.
+spec.CentreReward = S.Task.TrainingStage == 1 && S.GUI.CentreRewardAmount > 0 ...
+                    && trialNumber <= S.GUI.CentreRewardTrials;
+spec.CentreRewardAmount = double(spec.CentreReward) * S.GUI.CentreRewardAmount;
 
 
 function tf = canPay(pLeft, side)

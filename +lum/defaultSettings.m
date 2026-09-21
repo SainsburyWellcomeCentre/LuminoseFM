@@ -93,9 +93,9 @@ S.Task.ReverseContingency = false;
 S.Task.GroupPLeft = [1 0];
 S.Task.MaxSameSide = 3;             % Cap on consecutive same-side trials; 0 = no cap
 % Automatic shaping (lum.HoldShaping): trains the centre hold from the animal's
-% performance. Off by default; choosing the Training stage switches it on and choosing
-% Experiment switches it off (lum.stageDefaults), and an Experiment session never runs
-% with it. HoldShaping says how, while it is on, tuned by S.GUI.Hold*/Grace*.
+% performance. Off by default; choosing the Habituation or Training stage switches it on
+% and choosing Experiment switches it off (lum.stageDefaults), and an Experiment session
+% never runs with it. HoldShaping says how, while it is on, tuned by S.GUI.Hold*/Grace*.
 S.Task.AutoShaping = false;
 S.Task.HoldShaping = 'Grow hold';   % lum.HoldShaping.modes()
 % What a hold broken beyond its grace does (lum.HoldShaping.breakModes): restart the
@@ -312,6 +312,18 @@ S = numericParam(S, 'RewardDelay',      0,    'Reward delay (s)',         [0 60]
 S = numericParam(S, 'DrinkingGrace',    0.5,  'Drinking grace (s)',       [0 60], ...
     'How long the animal may leave the reward port and come back while drinking.');
 
+% Centre reward, habituation only (lum.nextTrialSpec): water at the centre port when a
+% hold is completed, on the first CentreRewardTrials trials of the session, so a new
+% animal learns the centre port is worth visiting. Both may change mid-session: raising
+% the trial count extends it, 0 ends it.
+S = numericParam(S, 'CentreRewardAmount', 1,  'Centre reward (uL)',       [0 100], ...
+    ['Habituation only: water at the centre port as the hold is completed, in microlitres; '...
+     'the valve time comes from valve 2''s calibration. 0 = no centre reward.']);
+S = numericParam(S, 'CentreRewardTrials', 10, 'Centre reward for trials', [0 100000], ...
+    ['Habituation only: the centre reward is given on trials 1 to N of the session, when the '...
+     'hold is completed; trials with no completed hold count too. Raise it during the session '...
+     'to go on, or set 0 to stop. Ignored in Training and Experiment.']);
+
 % From trial start, across every restart of the stimulus: the trial lapses if no hold
 % is completed in time. Was the initiation window before 0.3.
 S = numericParam(S, 'HoldWindow',       60,   'Hold window (s)',          [0.1 3600], ...
@@ -326,14 +338,20 @@ S = numericParam(S, 'ITI',              1,    'Inter-trial interval (s)', [0 360
 
 % Punishment is two independent choices: which mistakes are punished, and what the
 % punishment is. The codes are written into every trial record.
-S = menuParam(S, 'PunishCondition', 3, 'Punish on', ...
+% An incorrect choice that is not punished (the default) is not the end of the trial:
+% the animal may still go to the correct port and be rewarded (lum.punishmentFor).
+S = menuParam(S, 'PunishCondition', 1, 'Punish on', ...
               {'None', 'Early withdrawal', 'Incorrect choice', 'Both'}, ...
-              'Which mistakes are punished: leaving the centre port early, choosing the wrong side, both or neither.');
+              ['Which mistakes are punished: leaving the centre port early, choosing the wrong side, '...
+               'both or neither. An unpunished wrong choice lets the animal go on to the correct port '...
+               'for its reward, with the response window started again.']);
 S = menuParam(S, 'PunishType', 3, 'Punishment', ...
               {'Timeout', 'White noise', 'Timeout + noise'}, ...
-              'What a punished mistake costs: a timeout before the next trial, a white noise burst, or both.');
+              ['What a punished mistake costs, with no reward: a timeout before the next trial, a '...
+               'white noise burst, or both. The noise always plays to its end.']);
 S = numericParam(S, 'PunishTimeout', 2, 'Timeout (s)', [0 3600], ...
-    'Extra seconds before the next trial after a punished mistake, when the punishment includes a timeout.');
+    ['Seconds from a punished mistake to the inter-trial interval, when the punishment includes '...
+     'a timeout. The noise plays during it.']);
 
 S = numericParam(S, 'BiasCorrection', 0.5, 'Bias correction (0 = off)', [0 1], ...
     ['Pushes trials towards the side the animal has been avoiding. If it chose left on a '...
@@ -374,6 +392,7 @@ S = numericParam(S, 'PortLightIntensity', 100, 'Port light brightness (0-255)', 
 % Panel order is the order the windows lay them out in; tabs group panels in the
 % tabbed runtime window (Bpod's own window shows the panels on one page).
 S.GUIPanels.Reward = {'RewardAmount', 'RewardDelay', 'DrinkingGrace'};
+S.GUIPanels.CentreReward = {'CentreRewardAmount', 'CentreRewardTrials'};
 S.GUIPanels.Timing = {'HoldWindow', 'PostStimulusHold', 'ResponseWindow', 'ITI'};
 S.GUIPanels.Punishment = {'PunishCondition', 'PunishType', 'PunishTimeout'};
 S.GUIPanels.Bias = {'BiasCorrection', 'BiasWindow'};
@@ -381,7 +400,7 @@ S.GUIPanels.Shaping = {'HoldStart', 'HoldGrowth', 'HoldTarget', 'HoldStepBackAft
                        'GraceStart', 'GraceShrink', 'GraceTarget'};
 S.GUIPanels.Delivery = {'OptoOn', 'SoundOn', 'PortLightIntensity'};
 
-S.GUITabs.Trial = {'Reward', 'Timing'};
+S.GUITabs.Trial = {'Reward', 'CentreReward', 'Timing'};
 S.GUITabs.Task = {'Punishment', 'Bias', 'Shaping'};
 S.GUITabs.Delivery = {'Delivery'};
 

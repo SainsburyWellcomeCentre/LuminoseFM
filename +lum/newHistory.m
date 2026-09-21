@@ -23,6 +23,10 @@ function history = newHistory(capacity)
 %   .holdBreaks    Times the animal left and came back during the hold
 %   .holdAttempts  Times the stimulus started; more than 1 when breaks restarted it
 %   .earlyWithdrawals  Unforgiven breaks of the hold (visits to EarlyWithdrawal)
+%   .centreRewarded    1 if the centre valve opened for a completed hold, else 0
+%   .responseRetries   Unpunished wrong choices followed by a return to the response
+%                      window (visits to RetryResponse)
+%   .centreHoldTime    Seconds the animal stayed in the centre port on its last hold
 %
 % and one running count, a scalar:
 %   .withdrawalsAtHold  Early withdrawals since the hold last changed or was last
@@ -39,4 +43,5 @@ history = struct('capacity', capacity, 'nTrials', 0, ...
                  'choice', blank, 'correct', blank, 'rewarded', blank, ...
                  'outcome', blank, 'reactionTime', blank, 'holdDuration', blank, ...
                  'holdGrace', blank, 'holdBreaks', blank, 'holdAttempts', blank, ...
-                 'earlyWithdrawals', blank, 'withdrawalsAtHold', 0);
+                 'earlyWithdrawals', blank, 'centreRewarded', blank, ...
+                 'responseRetries', blank, 'centreHoldTime', blank, 'withdrawalsAtHold', 0);

@@ -159,6 +159,10 @@ catch recordError
 end
 
 fprintf('LuminoseFM: %s\n', lum.trainingStageNote(S));
+if S.Task.TrainingStage == 1 && S.GUI.CentreRewardAmount > 0 && S.GUI.CentreRewardTrials > 0
+    fprintf('LuminoseFM: centre reward %g uL for a completed hold on trials 1 to %d.\n', ...
+            S.GUI.CentreRewardAmount, S.GUI.CentreRewardTrials);
+end
 if S.Session.UseOpto
     fprintf('LuminoseFM: LED channel A %s, channel B %s.\n', ...
             lum.led.describe(cals{1}, devices.doricLED.CurrentmA(1)), ...
@@ -223,7 +227,7 @@ end
 maxTrials = S.Session.MaxTrials;
 history = lum.newHistory(maxTrials);
 data = initialiseDataFields(maxTrials);
-valveCache = struct('amount', NaN, 'times', [0 0]);
+valveCache = struct('amount', NaN, 'times', [0 0], 'centreAmount', NaN, 'centreTime', NaN);
 queue = stimulusSet.TrialPattern;
 
 % Trigger states open the window in which MATLAB may prepare the next trial. Every
@@ -453,11 +457,31 @@ if valveCache.amount ~= S.GUI.RewardAmount
     valveCache.times = GetValveTimes(S.GUI.RewardAmount, rig.SidePorts);
     valveCache.amount = S.GUI.RewardAmount;
 end
+% The centre valve's, only on trials with a centre reward. Without a calibration for it
+% the session goes on without the centre reward, and says so once per amount.
+if spec.CentreReward
+    if valveCache.centreAmount ~= S.GUI.CentreRewardAmount
+        valveCache.centreAmount = S.GUI.CentreRewardAmount;
+        try
+            valveCache.centreTime = GetValveTimes(S.GUI.CentreRewardAmount, rig.Ports.Centre);
+        catch valveError
+            valveCache.centreTime = NaN;
+            warning('lum:LuminoseFM:noCentreValveTime', ...
+                    ['No centre reward: valve %d has no usable liquid calibration (%s). '...
+                     'Calibrate it from the Bpod console.'], rig.Ports.Centre, valveError.message);
+        end
+    end
+    if ~(valveCache.centreTime > 0)
+        spec.CentreReward = false;
+        spec.CentreRewardAmount = 0;
+    end
+end
 
 context = struct('S', S, 'rig', rig, 'devices', devices, 'spec', spec, ...
                  'pattern', lum.pattern.patternAt(stimulusSet, spec.PatternIndex), ...
                  'sounds', sounds, 'cue', {cueComponents}, ...
-                 'stimulus', {stimulusComponents}, 'valveTimes', valveCache.times);
+                 'stimulus', {stimulusComponents}, 'valveTimes', valveCache.times, ...
+                 'centreValveTime', valveCache.centreTime);
 
 % Device programming belongs here, in the inter-trial window, never mid-stimulus.
 for i = 1:numel(stimulusComponents)
@@ -476,6 +500,9 @@ text = sprintf('Trial %d: %s', trialNumber, lum.Outcome.name(result.Outcome));
 if result.HoldAttempts > 1
     text = sprintf('%s after %d holds', text, result.HoldAttempts);
 end
+if result.ResponseRetries > 0 && result.Rewarded
+    text = sprintf('%s, then rewarded on a retry', text);
+end
 if ~isempty(nextSpec)
     text = sprintf('%s  |  %s', text, runningText(nextSpec, stimulusSet));
 end
@@ -492,6 +519,9 @@ text = sprintf('running %d: %s, pays %s, hold %.2f s', spec.TrialNumber, label, 
                sides{spec.CorrectSide}, spec.HoldDuration);
 if spec.HoldSteppedBack
     text = sprintf('%s (stepped back after early withdrawals)', text);
+end
+if spec.CentreReward
+    text = sprintf('%s, centre reward %g uL', text, spec.CentreRewardAmount);
 end
 
 
@@ -530,7 +560,8 @@ function names = trialSeriesNames()
 names = {'StimulusGroup', 'PatternIndex', 'CorrectSide', 'Choice', 'Correct', 'Rewarded', ...
          'Outcome', 'ReactionTime', 'OptoOn', 'SoundOn', 'HouseLight', 'SyncMode', 'SyncPulseWidth', ...
          'BiasTargetPLeft', 'TrainingStage', 'HoldDuration', 'HoldGrace', 'HoldBreaks', ...
-         'HoldAttempts', 'EarlyWithdrawals', 'CameraTime', 'LEDCurrentA', 'LEDCurrentB'};
+         'HoldAttempts', 'EarlyWithdrawals', 'CameraTime', 'LEDCurrentA', 'LEDCurrentB', ...
+         'CentreReward', 'ResponseRetries', 'CentreHoldTime'};
 
 
 function data = recordTrial(data, trialNumber, spec, result, S)
@@ -556,6 +587,9 @@ data.HoldGrace(trialNumber) = spec.HoldGrace;
 data.HoldBreaks(trialNumber) = result.HoldBreaks;
 data.HoldAttempts(trialNumber) = result.HoldAttempts;
 data.EarlyWithdrawals(trialNumber) = result.EarlyWithdrawals;
+data.CentreReward(trialNumber) = result.CentreRewarded * spec.CentreRewardAmount;
+data.ResponseRetries(trialNumber) = result.ResponseRetries;
+data.CentreHoldTime(trialNumber) = result.CentreHoldTime;
 data.RuntimeSettings{trialNumber} = S.GUI;
 
 

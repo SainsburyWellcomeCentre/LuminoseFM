@@ -15,12 +15,29 @@ function punishment = punishmentFor(S, event)
 %   .Timeout    Seconds to hold the animal before the next trial; 0 if none
 %   .PlayNoise  True if the white noise burst should be played
 %   .Applies    True if this event is punished at all
+%   .Retry      True if the animal may try again: an incorrect choice that is not
+%               punished sends it back to the response window, where the correct
+%               port still pays. Always false for an early withdrawal, whose retry
+%               is decided by S.Task.OnHoldBreak.
 %
-% The state graph does not change with these settings: an unpunished incorrect
-% choice still passes through the IncorrectChoice state, with a zero timer and no
-% sound, and an unpunished early withdrawal through EarlyWithdrawal.
-% That keeps the trial-flow contract intact, so scoring and analysis are the same
-% whatever the punishment settings were.
+% What each setting means for an incorrect choice:
+%   not punished        RetryResponse, then the response window again (started anew);
+%                       the correct port rewards, the wrong one retries again. The
+%                       default.
+%   Timeout             IncorrectChoice for PunishTimeout seconds, no reward, then the
+%                       inter-trial interval and the next trial.
+%   White noise         IncorrectChoice while the noise plays, no reward, then the next
+%                       trial.
+%   Timeout + noise     IncorrectChoice for the timeout (at least as long as the noise),
+%                       with the noise at its start, no reward, then the next trial.
+% lum.buildTrialSM stretches the state to the noise's length, because the ITI stops
+% the sound module.
+%
+% The state graph does not change with these settings: RetryResponse and
+% IncorrectChoice exist in every trial, and an unpunished early withdrawal passes
+% through EarlyWithdrawal with a zero timer and no sound. That keeps the trial-flow
+% contract intact, so scoring and analysis are the same whatever the punishment
+% settings were.
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
@@ -49,7 +66,8 @@ switch event
 end
 applies = applies && S.GUI.PunishCondition ~= CONDITION_NONE;
 
-punishment = struct('Applies', applies, 'Timeout', 0, 'PlayNoise', false);
+punishment = struct('Applies', applies, 'Timeout', 0, 'PlayNoise', false, ...
+                    'Retry', ~applies && strcmp(event, 'IncorrectChoice'));
 if ~applies
     return
 end

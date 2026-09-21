@@ -54,6 +54,7 @@ LuminoseFM/
 ├── calibration/                  LED calibrations of this rig (not tracked by git; made by Calibrate...)
 ├── tests/
 │   ├── runLuminoseTests.m        the whole suite; needs no hardware
+│   ├── startMouse.m              plays scripted pokes into an emulated state machine
 │   └── Stub*.m                   test doubles: HiFi, PulsePal, SpinCam's CameraManager
 └── docs/
     ├── architecture.md           design decisions and the map from design to code
@@ -106,7 +107,10 @@ What it covers:
   `Bpod('EMU')`.
 - `stateMachineTest` — the state graph itself, restarts and the hold window included, and that the
   house light costs a trial no timer and no line (and, in `sleepTest`, a switch part way through an
-  emulated block landing in its events as `BNC1Low`).
+  emulated block landing in its events as `BNC1Low`); every punishment of an incorrect choice (none
+  and a retry, timeout, noise to its end, both), the centre reward after a completed hold, and two
+  trials played as the animal under `Bpod('EMU')` (`startMouse`): a wrong choice then the right one,
+  rewarded, with the centre reward; and a punished wrong choice ending the trial.
 - `windowsTest` — the runtime window, both plot figures (a close request hides them, they save as an
   image, both figures' house light switch), the session type chooser, both setup
   dialogs (automatic shaping by stage, Play buttons, the help line, the Cameras tab, the format's
@@ -126,6 +130,10 @@ What it covers:
   light clicked off from the live figure part way through (`startHouseLightClicker`): the edge in the
   trial or block, the level per trial or block and the session's record — and the plots image beside
   the data.
+- `habituationSessionTest` — a two-trial habituation session under `Bpod('EMU')`, its first trial
+  played as the animal (`startMouse`): the side reward, the centre reward when valve 2 is calibrated
+  (and none, with a warning, when it is not, as on the development machine), `CentreHoldTime`, and
+  automatic shaping starting the hold at `HoldStart`.
 - `settingsTest` also covers where the subject comes from (`lum.launchSubject`) and the house light's
   move out of the runtime tier.
 - `barcodeTest` also samples fitted barcodes frame by frame at 25–150 Hz, at every phase and with

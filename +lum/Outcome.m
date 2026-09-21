@@ -16,7 +16,9 @@ classdef Outcome
                                 % the break ended the trial (S.Task.OnHoldBreak 'End trial')
         NoResponse        = 2   % Completed the hold but never chose a side port
         Correct           = 3   % Chose the side scored as correct
-        Incorrect         = 4   % Chose the other side (state IncorrectChoice)
+        Incorrect         = 4   % Chose the other side first: state IncorrectChoice when
+                                % punished; RetryResponse when not, after which the
+                                % animal may still collect the reward (Rewarded 1)
         CorrectNoReward   = 5   % Chose correctly but left before the valve opened
                                 % (state WithdrewBeforeReward)
         HoldNotCompleted  = 6   % The stimulus started at least once, but every hold broke

@@ -111,8 +111,8 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
 `StimulusGroup`, `PatternIndex`, `CorrectSide`, `Choice`, `Correct`, `Rewarded`, `Outcome`,
 `ReactionTime`, `OptoOn`, `SoundOn`, `HouseLight`, `SyncMode`, `SyncPulseWidth`, `BiasTargetPLeft`,
 `TrainingStage`, `HoldDuration`, `HoldGrace`, `HoldBreaks`, `HoldAttempts`, `EarlyWithdrawals`,
-`CameraTime`, `LEDCurrentA` and `LEDCurrentB`, plus `TrialSettings` (the runtime parameters only) and `OutcomeNames` for decoding
-`Outcome`.
+`CameraTime`, `LEDCurrentA`, `LEDCurrentB`, `CentreReward`, `ResponseRetries` and `CentreHoldTime`,
+plus `TrialSettings` (the runtime parameters only) and `OutcomeNames` for decoding `Outcome`.
 
 Outcome codes are never renumbered. `HoldAttempts` counts how many times the stimulus started on
 that trial; `EarlyWithdrawals` how many times the animal left the centre port before the hold was
@@ -128,6 +128,21 @@ any (the first edge gives the level before it), and otherwise is the level Pulse
 started. `LEDCurrentA` and `LEDCurrentB` are the LED currents, in mA, the trial ran at on channels A
 and B (NaN when the driver was set by hand); a change made in the LED window takes effect from the
 next trial prepared after it.
+
+`Choice`, `Correct` and `Outcome` are the **first** side poked. When an incorrect choice is not
+punished (`TrialSettings{k}.PunishCondition` without *Incorrect choice*, the default from 0.8.0), the
+trial goes on: state `RetryResponse`, then `WaitForResponse` again, and the correct port still pays.
+Such a trial is `Incorrect` with `Rewarded` 1; `ResponseRetries` counts the wrong pokes forgiven
+(visits to `RetryResponse`), 0 when choices are punished. A punished incorrect choice visits
+`IncorrectChoice` and ends the trial with `Rewarded` 0. `CentreReward` is the water, in µL, given at
+the centre port for a completed hold (state `CentreReward`; habituation's first
+`CentreRewardTrials` trials), 0 otherwise; side water is `Rewarded .* RewardAmount` from
+`TrialSettings`, so the session's total is
+`sum(SessionData.CentreReward) + sum(SessionData.Rewarded .* cellfun(@(s) s.RewardAmount, SessionData.TrialSettings))`.
+`CentreHoldTime` is how long the animal stayed in the centre port on the trial's last hold: from the
+centre poke that began it (the start of the latency, when there is one) to the first `Port2Out` after
+it, in seconds; NaN when the stimulus never started or the animal never left. Compare it with
+`HoldDuration` plus `Session.Settings.Stimulus.Latency`, the time asked for.
 
 To get trial *k*'s light:
 
@@ -307,6 +322,12 @@ the null device shims swallowed is recorded in `Data.Session.DeviceLog`. See
 
 ## Reading older files
 
+- **Sessions before 0.8.0** have no `CentreReward`, `ResponseRetries` or `CentreHoldTime`, and no
+  `CentreReward` or `RetryResponse` states. An unpunished incorrect choice passed through
+  `IncorrectChoice` with a zero timer and ended the trial unrewarded, and the default was to punish
+  incorrect choices (`PunishCondition` 3). A noise-only punishment of an incorrect choice, or of an
+  early withdrawal that ended the trial, was cut off by the ITI one state machine cycle after it
+  started on the rig.
 - **Sessions before 0.7.2** name the 2-to-19 bundle's cables `'ch1 fiber'` (10 fibers, on A) and
   `'ch2 fiber'` (9, on B) in `Session.DoricLED.LightPaths`, and their settings' `Light.Cables` is not
   read for that bundle. From 0.7.2 the cables are named by colour, blue (9 fibers) and green (10), blue

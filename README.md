@@ -118,6 +118,19 @@ stay inert until the animal has left the centre port, so the beam break it makes
 cannot be scored as a choice, and the reaction time is measured from the withdrawal rather than
 from the end of the hold. Never leaving it at all is a non-response.
 
+**An incorrect choice** is handled as the runtime window's *Punishment* settings say:
+
+| Punish on includes *Incorrect choice*? | Punishment | What happens |
+|---|---|---|
+| no (the default: *Punish on* is *None*) | — | no punishment: the animal may still go to the correct port within the response window, which starts again, and be rewarded there. It may try again after each wrong poke |
+| yes | *Timeout* | no reward; `PunishTimeout` seconds, then the inter-trial interval and the next trial |
+| yes | *White noise* | no reward; the noise burst plays to its end, then the next trial |
+| yes | *Timeout + noise* | no reward; the noise and the timeout together (the timeout lasts at least as long as the noise), then the next trial |
+
+Either way the trial is scored by the **first** side poked: a wrong choice followed by the correct
+one is *Incorrect*, with `Data.Rewarded` 1 and `Data.ResponseRetries` counting the wrong pokes
+forgiven.
+
 **Outcomes** (`Data.Outcome`, names in `Data.OutcomeNames`): *NoInitiation* — the hold window ran
 out and the stimulus never started; *HoldNotCompleted* — the stimulus started at least once but
 every hold broke before the window ran out; *EarlyWithdrawal* — a break ended the trial (*End
@@ -138,18 +151,29 @@ that the side ports pay before it has to learn which one. By default the rewarde
 lit during the response window in habituation (the *guide light*, set per side). Stages 2
 (*Training*) and 3 (*Experiment*) reward only the correct side.
 
+**Centre reward (habituation only).** To teach a new animal that the centre port is worth
+visiting, the first trials of a habituation session also give water at the **centre port** as the
+hold is completed: `CentreRewardAmount` µL (1 by default) on trials 1 to `CentreRewardTrials` (10 by
+default). Both are runtime parameters (*Trial* tab, *Centre reward* panel, and the setup dialog's
+Runtime tab): raise the trial count during the session to go on, set it (or the amount) to 0 to
+stop. Trials whose hold was never completed count towards it too. The valve time comes from
+**valve 2's** liquid calibration; without one the session runs without the centre reward and warns
+once. The running trial's line in the runtime window says when it has a centre reward, and the
+plots count centre water apart from side water. It is ignored in Training and Experiment.
+
 Choosing a stage also sets the session up the way that stage is normally run, the moment it is
 chosen:
 
 | Stage | Light pattern | Stimulus air | Automatic shaping |
 |-------|---------------|--------------|-------------------|
-| Habituation | **off** | **on**, for the whole stimulus window | left as it is |
+| Habituation | **off** | **on**, for the whole stimulus window | **on** |
 | Training | on | off | **on** |
 | Experiment | on | off | **off** |
 
 Habituation therefore delivers **air alone**: the hold is exactly as long and as salient as it
-will be later, and carries nothing to discriminate. Training shapes the centre hold from the
-animal's performance; an experiment asks every animal for the same trial. These are defaults, not
+will be later, and carries nothing to discriminate. Habituation and Training shape the centre hold
+from the animal's performance — in habituation from a hold short enough to earn the centre reward
+on the first visits; an experiment asks every animal for the same trial. These are defaults, not
 a lock — untick or tick anything afterwards and the session runs as you leave it — with one
 exception: **an Experiment session cannot start with automatic shaping on.**
 
@@ -167,7 +191,8 @@ and `Reversed` says which happened.
 
 A naive animal cannot hold its nose in the centre port for a whole stimulus, so the hold is trained
 up following the animal's performance. **Automatic shaping** is a tick on the Task tab (*Centre
-hold* panel): off by default, switched on by choosing *Training* and off by choosing *Experiment*.
+hold* panel): off by default, switched on by choosing *Habituation* or *Training* and off by
+choosing *Experiment*; it may be used in either of the first two.
 While it is on, the *shaping method* says how:
 
 - *Grow hold* (the default) — the hold starts short (`HoldStart`, **0.1 s**) and grows by
@@ -282,14 +307,18 @@ HiFi module, or the PC's speakers when there is none (the emulator). The cue ton
 ### Runtime window
 
 The parameters that are safe to change with an animal in the box, synced once per trial. On the
-rig it is a window of its own, in tabs (*Trial*: reward and timing; *Task*: punishment, bias
+rig it is a window of its own, in tabs (*Trial*: reward, centre reward and timing; *Task*: punishment, bias
 correction, hold shaping; *Delivery*: light, sound and port light brightness), with labels and
 units, limits held as values are typed, and a header saying how the last trial ended and what is
 running now. Under the emulator the reduced form opens instead — Bpod's own single-page parameter
 window, relabelled. `Runtime window` on the Experiment tab can force either.
 
 - *Punishment* is two choices: which mistakes are punished (none / early withdrawal / incorrect
-  choice / both) and how (timeout / white noise / both).
+  choice / both; *None* by default) and how (timeout / white noise / both). An incorrect choice
+  that is not punished lets the animal go on to the correct port (see *An incorrect choice* in §3).
+  A noise always plays to its end before the next trial or the next poke.
+- *Centre reward* (habituation only): `CentreRewardAmount` µL at the centre port for a completed
+  hold, on trials 1 to `CentreRewardTrials`.
 - *Bias correction* pushes trials towards the side the animal has been avoiding. If it chose left
   on a fraction *f* of its last `BiasWindow` choices, the next trial pays left with chance
   0.5 + strength × (0.5 − *f*), kept within 0.1–0.9, by bringing forward a trial that pays that side:
@@ -324,8 +353,9 @@ S = lum.gui.TestPulseDesigner();   % defaults: paired-pulse probes on A and B fo
 ## 6. Watching a session
 
 One figure, updated in place once per trial, with a header giving the subject, stage, stimulus
-set, what a broken hold does, trial count, performance, rewards and water delivered, and session
-time — and the **House light** box.
+set, what a broken hold does, trial count, performance, the **water drunk** (total, then side
+rewards and centre rewards apart), the **centre hold** the running trial asks for (latency plus
+hold), and session time — and the **House light** box.
 
 **The house light** (the white light inside the box) is switched with that box, and it changes **at
 once**, in either direction, whatever the trial is doing. It starts as set on the setup dialog's
@@ -360,6 +390,10 @@ Panels, in the order they are read:
   - **Side bias** — P(chose left) over the last `BiasWindow` choices (as set when the session
     started), with the P(left) that bias correction aimed for on each trial
   - **Reaction time** — by side chosen, with a running median
+  - **Centre hold** — how long the animal stayed in the centre port on each trial's last hold,
+    from the poke to leaving (`Data.CentreHoldTime`): green dots for holds completed, red crosses
+    for holds that broke, against a grey line for the time the trial asked for (latency plus
+    hold), which follows automatic shaping
 
 The per-trial panels scroll with the session and rescale to what is on screen, so they stay
 legible at any point in it. **Closing the figure does not stop the session** — it only hides it.

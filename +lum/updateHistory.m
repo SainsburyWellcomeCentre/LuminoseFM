@@ -33,6 +33,9 @@ history.holdGrace(trialNumber)    = spec.HoldGrace;
 history.holdBreaks(trialNumber)   = result.HoldBreaks;
 history.holdAttempts(trialNumber) = result.HoldAttempts;
 history.earlyWithdrawals(trialNumber) = result.EarlyWithdrawals;
+history.centreRewarded(trialNumber) = result.CentreRewarded;
+history.responseRetries(trialNumber) = result.ResponseRetries;
+history.centreHoldTime(trialNumber) = result.CentreHoldTime;
 
 % Early withdrawals at the hold this trial asked for. A new hold starts the count again,
 % and so does a completed one: only withdrawals the animal has not yet made up for by

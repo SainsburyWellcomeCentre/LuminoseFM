@@ -12,9 +12,9 @@ function [sma, plan] = buildTrialSM(context)
 %   (the sync     (the cue is on)       (the latency, when   (the stimulus starts)
 %    pulse)                              there is one)
 %
-%   CentreHold ----------------------------------------------> WaitForCentreExit
-%     | leaves the centre port                                       ^
-%     v                                                              |
+%   CentreHold ------------------------> [CentreReward] -----> WaitForCentreExit
+%     | leaves the centre port            (habituation's          ^
+%     v                                    first trials)          |
 %   HoldBreak --- returns within the grace ---> CentreHoldResumed ---+
 %     | grace runs out                                (hold clock ends, from any of the three)
 %     v
@@ -24,7 +24,8 @@ function [sma, plan] = buildTrialSM(context)
 %   WaitForCentreExit -> WaitForResponse
 %                          -> LeftRewardDelay  -> LeftReward  -> DrinkingLeft  -+
 %                          -> RightRewardDelay -> RightReward -> DrinkingRight -+-> DrinkingGrace
-%                          -> IncorrectChoice                                   |
+%                          -> IncorrectChoice  (punished)                        |
+%                          -> RetryResponse    (not punished) -> WaitForResponse |
 %                          -> NoResponse                                        +-> ITI -> exit
 %   WaitForCentrePoke -> NoInitiation         -> ITI   (the hold window ran out)
 %   WaitForCentreExit -> NoResponse           -> ITI
@@ -68,6 +69,19 @@ function [sma, plan] = buildTrialSM(context)
 % animal came back, and the light pattern — its own global timers — carries on
 % through a forgiven break.
 %
+% On the first S.GUI.CentreRewardTrials trials of a habituation session the completed
+% hold passes through CentreReward, which opens the centre valve for the calibrated
+% time of S.GUI.CentreRewardAmount with the response configuration already up, and then
+% goes on to WaitForCentreExit. It is not on the poke's path, so the stimulus starts
+% exactly as it would without it; on every other trial it cannot be reached.
+%
+% An incorrect choice is punished or forgiven by the runtime settings
+% (lum.punishmentFor). Punished, it goes to IncorrectChoice, which lasts the timeout
+% (and at least the noise, which the ITI would otherwise cut off) and ends the trial
+% unrewarded. Not punished, it goes to RetryResponse and straight back to
+% WaitForResponse, whose timer starts again: the correct port still pays. RetryResponse
+% is not a trigger state (lum.triggerStates), because the trial goes on after it.
+%
 % The response window opens on the animal *leaving* the centre port, never while its
 % nose is still in it. WaitForCentreExit is what enforces that: without it the side
 % ports are live while the animal is still holding, and the first beam break as it
@@ -87,6 +101,8 @@ function [sma, plan] = buildTrialSM(context)
 %     .cue         Cell array of lum.stim.Component for the cue
 %     .stimulus    Cell array of lum.stim.Component for the stimulus
 %     .valveTimes  Valve open times in seconds, [left right]
+%     .centreValveTime  Centre valve open time in seconds for the centre reward;
+%                  optional, used only when spec.CentreReward is true
 %
 % Returns:
 %   sma   State machine description, ready for SendStateMachine
@@ -235,10 +251,16 @@ incorrectChoicePunishment = lum.punishmentFor(S, 'IncorrectChoice');
 % would cut the punishment noise off the moment it began; so the noise is let finish
 % first. Decided from the settings, not from the module, so the emulator times it the
 % same.
+% Where the trial ends after a punishment, the ITI stops the sound module, which would
+% cut the noise off one cycle after it started; there too the noise is let finish.
 earlyWithdrawalTimer = earlyWithdrawalPunishment.Timeout;
 hasCueTone = any(cellfun(@(component) isa(component, 'lum.stim.CueTone'), context.cue));
-if restartsOnBreak && hasCueTone && playsNoise(context, earlyWithdrawalPunishment)
+if (~restartsOnBreak || hasCueTone) && playsNoise(context, earlyWithdrawalPunishment)
     earlyWithdrawalTimer = max(earlyWithdrawalTimer, S.Sound.NoiseDuration);
+end
+incorrectChoiceTimer = incorrectChoicePunishment.Timeout;
+if playsNoise(context, incorrectChoicePunishment)
+    incorrectChoiceTimer = max(incorrectChoiceTimer, S.Sound.NoiseDuration);
 end
 
 % The hold window starts with the trial and is never cancelled or re-triggered.
@@ -279,19 +301,35 @@ sma = AddState(sma, 'Name', 'PreStimulusHold', ...
 % tells the animal what kind of trial it is on.
 % Every entry triggers the stimulus from its beginning, which is what restarts it
 % after a break.
+% A completed hold goes to the centre reward on the trials that have one, and straight
+% to the wait for the centre exit on all others.
+centreValveTime = 0;
+if isfield(spec, 'CentreReward') && spec.CentreReward
+    centreValveTime = context.centreValveTime;
+    if ~isscalar(centreValveTime) || ~isfinite(centreValveTime) || centreValveTime <= 0
+        error('lum:buildTrialSM:badCentreValveTime', ...
+              ['Trial %d asks for a centre reward but the centre valve time is %g s. '...
+               'LuminoseFM drops the centre reward when valve 2 has no calibration.'], ...
+              spec.TrialNumber, centreValveTime);
+    end
+    holdDone = 'CentreReward';
+else
+    holdDone = 'WaitForCentreExit';
+end
+
 if hasGrace
-    holdTransitions = {rig.PokeOut.Centre, 'HoldBreak', holdEnded, 'WaitForCentreExit'};
+    holdTransitions = {rig.PokeOut.Centre, 'HoldBreak', holdEnded, holdDone};
     holdTimer = 0;
     breakTransitions = {rig.PokeIn.Centre, 'CentreHoldResumed', ...
-                        holdEnded, 'WaitForCentreExit', 'Tup', 'EarlyWithdrawal'};
+                        holdEnded, holdDone, 'Tup', 'EarlyWithdrawal'};
     breakTimer = spec.HoldGrace;
-    resumedTransitions = {rig.PokeOut.Centre, 'HoldBreak', holdEnded, 'WaitForCentreExit'};
+    resumedTransitions = {rig.PokeOut.Centre, 'HoldBreak', holdEnded, holdDone};
 else
-    holdTransitions = {rig.PokeOut.Centre, 'EarlyWithdrawal', 'Tup', 'WaitForCentreExit'};
+    holdTransitions = {rig.PokeOut.Centre, 'EarlyWithdrawal', 'Tup', holdDone};
     holdTimer = spec.HoldDuration;
     breakTransitions = {'Tup', 'EarlyWithdrawal'};
     breakTimer = 0;
-    resumedTransitions = {'Tup', 'WaitForCentreExit'};
+    resumedTransitions = {'Tup', holdDone};
 end
 
 sma = AddState(sma, 'Name', 'CentreHold', ...
@@ -313,6 +351,16 @@ sma = AddState(sma, 'Name', 'CentreHoldResumed', ...
     'StateChangeConditions', resumedTransitions, ...
     'OutputActions', stimulusSustain);
 
+% Water at the centre port for a completed hold, on the trials that have it. The response
+% configuration goes up with it, as in WaitForCentreExit, so the stimulus ends with the
+% hold whether or not the reward is given. Leaving the port during it changes nothing:
+% WaitForCentreExit then moves on at once (condition 3). Unreachable on other trials.
+sma = AddState(sma, 'Name', 'CentreReward', ...
+    'Timer', centreValveTime, ...
+    'StateChangeConditions', {'Tup', 'WaitForCentreExit'}, ...
+    'OutputActions', lum.mergeActions(stimulusOff, centreOff, guideLights, ...
+                                      {rig.Valve.Centre, 1}));
+
 % The hold is over and the animal now has to leave the centre port before it can
 % answer; the side ports stay dead until it does. The response configuration goes up
 % here — stimulus and cue off, centre light off, guide lights on — so that everything is
@@ -328,7 +376,7 @@ sma = AddState(sma, 'Name', 'WaitForCentreExit', ...
 % the whole of this state and every side poke here is a fresh entry. The output
 % actions repeat WaitForCentreExit's, because Bpod writes every channel from the
 % entered state's own row and would otherwise drop the guide lights here.
-[leftAction, rightAction] = responseActions(spec);
+[leftAction, rightAction] = responseActions(spec, incorrectChoicePunishment);
 sma = AddState(sma, 'Name', 'WaitForResponse', ...
     'Timer', S.GUI.ResponseWindow, ...
     'StateChangeConditions', {rig.PokeIn.Left, leftAction, ...
@@ -384,13 +432,20 @@ sma = AddState(sma, 'Name', 'WithdrewBeforeReward', ...
     'StateChangeConditions', {'Tup', 'ITI'}, ...
     'OutputActions', {});
 
-% Every incorrect choice passes through here, punished or not; the punishment
-% settings decide only its timer and whether the noise plays.
+% A punished incorrect choice: no reward, the timeout, the noise, and the trial ends.
+% The ITI stops the sound module, so the state lasts at least as long as the noise.
 sma = AddState(sma, 'Name', 'IncorrectChoice', ...
-    'Timer', incorrectChoicePunishment.Timeout, ...
+    'Timer', incorrectChoiceTimer, ...
     'StateChangeConditions', {'Tup', 'ITI'}, ...
     'OutputActions', lum.mergeActions(guideOff, ...
                                       noiseActions(context, incorrectChoicePunishment)));
+
+% An incorrect choice that is not punished: back to the response window, where the
+% correct port still pays. Zero length; it marks the wrong choice in the trial record.
+sma = AddState(sma, 'Name', 'RetryResponse', ...
+    'Timer', 0, ...
+    'StateChangeConditions', {'Tup', 'WaitForResponse'}, ...
+    'OutputActions', {});
 
 sma = AddState(sma, 'Name', 'NoResponse', ...
     'Timer', 0, ...
@@ -419,6 +474,9 @@ plan = struct('timers', {timerGrants}, 'cueTimers', {cueGrants}, 'holdClock', ho
               'holdDuration', spec.HoldDuration, 'holdGrace', spec.HoldGrace, ...
               'latency', latency, ...
               'earlyWithdrawalTimer', earlyWithdrawalTimer, ...
+              'incorrectChoiceTimer', incorrectChoiceTimer, ...
+              'centreReward', strcmp(holdDone, 'CentreReward'), ...
+              'centreValveTime', centreValveTime, ...
               'earlyWithdrawalPunishment', earlyWithdrawalPunishment, ...
               'incorrectChoicePunishment', incorrectChoicePunishment);
 
@@ -443,17 +501,22 @@ end
 actions = lum.mergeActions(lists{:});
 
 
-function [leftAction, rightAction] = responseActions(spec)
-% Where each side poke leads, given which sides this trial rewards.
+function [leftAction, rightAction] = responseActions(spec, punishment)
+% Where each side poke leads, given which sides this trial rewards and whether a wrong
+% choice is punished (IncorrectChoice) or may be followed by the right one (RetryResponse).
+wrong = 'IncorrectChoice';
+if punishment.Retry
+    wrong = 'RetryResponse';
+end
 if ismember(1, spec.RewardedSides)
     leftAction = 'LeftRewardDelay';
 else
-    leftAction = 'IncorrectChoice';
+    leftAction = wrong;
 end
 if ismember(2, spec.RewardedSides)
     rightAction = 'RightRewardDelay';
 else
-    rightAction = 'IncorrectChoice';
+    rightAction = wrong;
 end
 
 

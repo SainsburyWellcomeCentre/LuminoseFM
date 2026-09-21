@@ -235,7 +235,8 @@ history = lum.newHistory(10);
 spec = struct('PatternIndex', 2, 'StimulusGroup', 2, 'CorrectSide', 1, ...
               'HoldDuration', 0.6, 'HoldGrace', 0.1);
 result = struct('Choice', 1, 'Correct', 1, 'Rewarded', 1, 'Outcome', lum.Outcome.Correct, ...
-                'ReactionTime', 0.4, 'HoldBreaks', 2, 'HoldAttempts', 3, 'EarlyWithdrawals', 2);
+                'ReactionTime', 0.4, 'HoldBreaks', 2, 'HoldAttempts', 3, 'EarlyWithdrawals', 2, ...
+                'CentreRewarded', 0, 'ResponseRetries', 0, 'CentreHoldTime', NaN);
 history = lum.updateHistory(history, 1, spec, result);
 verifyEqual(testCase, history.nTrials, 1);
 verifyEqual(testCase, [history.choice(1), history.correct(1), history.reactionTime(1)], [1 1 0.4]);
@@ -249,11 +250,46 @@ history = lum.newHistory(2);
 spec = struct('PatternIndex', 1, 'StimulusGroup', 1, 'CorrectSide', 1, 'HoldDuration', 1, ...
               'HoldGrace', 0);
 result = struct('Choice', 1, 'Correct', 1, 'Rewarded', 1, 'Outcome', 3, 'ReactionTime', 0, ...
-                'HoldBreaks', 0, 'HoldAttempts', 1, 'EarlyWithdrawals', 0);
+                'HoldBreaks', 0, 'HoldAttempts', 1, 'EarlyWithdrawals', 0, ...
+                'CentreRewarded', 0, 'ResponseRetries', 0, 'CentreHoldTime', NaN);
 verifyError(testCase, @() lum.updateHistory(history, 3, spec, result), ...
             'lum:updateHistory:overCapacity');
 end
 
+function testTheCentreRewardRunsForHabituationsFirstTrials(testCase)
+[S, stimulusSet] = fixture(testCase);
+S.Task.TrainingStage = 1;
+S.GUI.CentreRewardAmount = 2;
+S.GUI.CentreRewardTrials = 3;
+history = lum.newHistory(10);
+given = false(1, 5);
+for trial = 1:5
+    spec = lum.nextTrialSpec(S, stimulusSet, stimulusSet.TrialPattern, history, trial);
+    given(trial) = spec.CentreReward;
+    verifyEqual(testCase, spec.CentreRewardAmount, 2 * double(spec.CentreReward));
+end
+verifyEqual(testCase, given, [true true true false false]);
+
+S.GUI.CentreRewardTrials = 10;   % Raised during the session: it carries on
+verifyTrue(testCase, lum.nextTrialSpec(S, stimulusSet, stimulusSet.TrialPattern, history, 5).CentreReward);
+S.GUI.CentreRewardTrials = 0;    % Set to 0: it stops
+verifyFalse(testCase, lum.nextTrialSpec(S, stimulusSet, stimulusSet.TrialPattern, history, 1).CentreReward);
+S.GUI.CentreRewardTrials = 10;
+S.GUI.CentreRewardAmount = 0;    % No volume, no reward
+verifyFalse(testCase, lum.nextTrialSpec(S, stimulusSet, stimulusSet.TrialPattern, history, 1).CentreReward);
+end
+
+function testThereIsNoCentreRewardOutsideHabituation(testCase)
+[S, stimulusSet] = fixture(testCase);
+S.GUI.CentreRewardAmount = 2;
+S.GUI.CentreRewardTrials = 10;
+for stage = 2:3
+    S.Task.TrainingStage = stage;
+    spec = lum.nextTrialSpec(S, stimulusSet, stimulusSet.TrialPattern, lum.newHistory(10), 1);
+    verifyFalse(testCase, spec.CentreReward, sprintf('Stage %d', stage));
+    verifyEqual(testCase, spec.CentreRewardAmount, 0);
+end
+end
 
 function [S, stimulusSet] = fixture(testCase)
 S = testCase.TestData.S;

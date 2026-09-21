@@ -30,9 +30,12 @@ right — D8 in [`architecture.md`](architecture.md).
 | light segment | One gate on channel A or B: a probe pulse, or a burst PulsePal fills with pulses (`LightSegments`) |
 | task variant | Which variant of the task a session runs: Familiar/Novel, Mixture, Sequence, Motifs (`S.Task.Variant`) |
 | contingency reversal | Swapping which side every group pays, `P(left)` to `1 - P(left)` (`S.Task.ReverseContingency`) |
-| automatic shaping | Training the animal by its performance: now the centre hold (`S.Task.AutoShaping`, method `S.Task.HoldShaping`); later easier and harder trials. On for Training, never in an Experiment |
+| automatic shaping | Training the animal by its performance: now the centre hold (`S.Task.AutoShaping`, method `S.Task.HoldShaping`); later easier and harder trials. On for Habituation and Training, never in an Experiment |
 | step back | Automatic shaping shortening the hold one growth step after `HoldStepBackAfter` early withdrawals at one hold |
 | early withdrawal | Leaving the centre port before the hold is complete, unforgiven (state `EarlyWithdrawal`; `Data.EarlyWithdrawals`) |
+| centre reward | Water at the centre port for a completed hold, on habituation's first trials (`S.GUI.CentreRewardAmount`, `S.GUI.CentreRewardTrials`; state `CentreReward`; `Data.CentreReward`, µL) |
+| retry | Going on to the correct port after an unpunished incorrect choice: state `RetryResponse`, then the response window again (`Data.ResponseRetries`). Not "correction trial": the trial is the same one |
+| centre hold time | How long the animal stayed in the centre port on a trial's last hold, from the poke to leaving (`Data.CentreHoldTime`); the time asked for is the latency plus `HoldDuration` |
 | view | A camera's name, the prefix of its files: `sideview` (24226887), `topview` (24226657) |
 | camera clock | SpinCam's host clock: `HostTime_s` in the frame logs, `_events.csv`, `Data.CameraTime` |
 | help line | The strip at the foot of a setup or runtime window describing the field under the pointer |
@@ -122,6 +125,16 @@ names.
 | — | the video stops after the final save (`SessionSaved` event), and a second save adds its summary; default format `avi-mjpeg-mt` (SpinCam 1.2.0 engine, multi-core MJPEG), with a note when a single-threaded format cannot keep up; the help line describes the format chosen; a SpinVideo format without SpinVideo is refused when the devices open; `Session.Cameras.EngineVersion` |
 | — | `GUIMeta.<name>.Help` for every runtime parameter; help line in the setup and runtime windows |
 | — | **▶ Play** buttons for the session's sounds in the setup dialog (`lum.testSounds`) |
+
+### 0.7.2 → 0.8.0 — centre reward, retry after a wrong choice, centre hold plot
+
+| 0.7.2 | 0.8.0 |
+|-------|-------|
+| — | **centre reward** in habituation: `S.GUI.CentreRewardAmount` (1 µL) at the centre port for a completed hold on trials 1 to `S.GUI.CentreRewardTrials` (10), both runtime parameters (*Centre reward* panel, *Trial* tab); state `CentreReward`; per-trial `CentreReward` (µL). Needs valve 2's liquid calibration |
+| an unpunished incorrect choice passed through `IncorrectChoice` with a zero timer and ended the trial unrewarded; `PunishCondition` defaulted to 3 (incorrect choice) | not punished, the animal may go on to the correct port and be rewarded: state `RetryResponse`, then `WaitForResponse` again with its timer started anew; per-trial `ResponseRetries`. `PunishCondition` defaults to 1 (none); existing settings files keep theirs. The trial is still scored by its first choice (`Incorrect`, `Rewarded` 1) |
+| a noise-only punishment (incorrect choice, or an early withdrawal ending the trial) was cut off by the ITI's stop command on the rig | the punishment state lasts at least `S.Sound.NoiseDuration` when it plays the noise |
+| stage defaults: shaping on for Training only | on for Habituation too |
+| no centre hold panel; summary gave rewards and water | **Centre hold** panel (time in the port on each trial's last hold, against latency plus hold); the summary gives water as total, side and centre, and the running trial's hold; per-trial `CentreHoldTime` |
 
 ### 0.7.1 → 0.7.2 — cables by colour, calibrations per cable
 

@@ -3,8 +3,8 @@ classdef HoldShaping
     %
     % A naive animal cannot hold its nose in the centre port for a whole stimulus.
     % Automatic shaping (S.Task.AutoShaping) brings it there, following the animal's
-    % performance. It is switched off by default, switched on by choosing the Training
-    % stage and off by choosing Experiment (lum.stageDefaults), and an Experiment session
+    % performance. It is switched off by default, switched on by choosing the Habituation
+    % or Training stage and off by choosing Experiment (lum.stageDefaults), and an Experiment session
     % never runs with it (lum.validateSettings). While it is on, S.Task.HoldShaping says
     % how the hold is shaped, tuned during the session from the runtime window:
     %

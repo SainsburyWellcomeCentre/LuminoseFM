@@ -19,6 +19,19 @@ channel, which assumes the two LED channels give equal power at equal current: t
 both of the driver's outputs directly (bundle off) at the same current. Then check the tab shows
 mW/mm² and the sessions print irradiance.
 
+### P5. Centre reward and punishments (0.8.0)
+
+1. Calibrate **valve 2** (the centre port) from the Bpod console's liquid calibration, as for valves 1
+   and 3. Without it a habituation session warns *No centre reward* and runs without one.
+2. A habituation session with the default centre reward (1 µL, trials 1 to 10), playing the animal at
+   the ports: water appears at the centre port as each of the first 10 holds is completed, and not on
+   trial 11; raising *Centre reward for trials* in the runtime window gives it again from the next
+   trial prepared. `Data.CentreReward` is 1 (µL) on those trials.
+3. A training session, with *Punish on* set to *Incorrect choice* and each *Punishment* in turn: with
+   *White noise* and *Timeout + noise* the whole burst (`S.Sound.NoiseDuration`, 0.5 s) is heard
+   before the next trial; before 0.8.0 the ITI cut it off at once. With *Punish on* *None*, a wrong
+   poke followed by the correct one opens the correct valve.
+
 ## Done
 
 ### 2026-09-21 — P1, P2 and P3, operator at the rig, run by an agent (0.7.1)

@@ -55,7 +55,8 @@ box). Permission covers that request only. Close nothing of theirs: if the MATLA
 light, hearing sound, poking, moving a cable. The operator works remotely at times, so run those checks
 the next time they say they are at the rig. That doc also says how to run a headless session on the
 rig: do what `RunProtocol` does, open `_ANLG.dat` and reset the session clock. **Pending now (all need
-eyes at the rig): P4 the first calibration of each cable.** (P1–P3 passed on 2026-09-21.)
+eyes at the rig): P4 the first calibration of each cable; P5 valve 2's calibration, the centre reward
+and the punishment noise heard to its end.** (P1–P3 passed on 2026-09-21.)
 
 ## Stay inside the working folder
 
@@ -176,7 +177,11 @@ stops the session part way through as though the End button had been pressed.
   when the trial's events arrived; sleep sessions store one per block); since 0.6.1 `HouseLight`
   (the level the trial started at; sleep sessions store one per block too; switches are
   `Data.Session.HouseLight` and `BNC1High`/`BNC1Low` events); since 0.7.0 `LEDCurrentA`,
-  `LEDCurrentB` (mA the trial ran at; NaN when the LED was set by hand).
+  `LEDCurrentB` (mA the trial ran at; NaN when the LED was set by hand); since 0.8.0
+  `CentreReward` (µL given at the centre port, 0 when none), `ResponseRetries` (visits to
+  `RetryResponse`) and `CentreHoldTime` (s in the centre port on the last hold, poke to exit).
+  `Choice`/`Correct`/`Outcome` are always the **first** side poke; a retried trial is `Incorrect`
+  with `Rewarded` 1, so water totals use `Rewarded` and `CentreReward`, never `Outcome`.
 - `..._ANLG.dat` is Bpod's raw stream of the Flex analog input (flow meter), opened by the launch
   manager and written as samples arrive; the `.mat` gets it as `Data.Analog` at teardown. Kept as
   the raw copy; see `docs/data-format.md`.
@@ -195,7 +200,8 @@ stops the session part way through as though the End button had been pressed.
 
 - Behavior ports: 1 = Left, 2 = Centre, 3 = Right, 4 = Air valve, 5 = unused (the house light's
   until it moved to PulsePal). Port `n` → `PWMn` (LED), `Valven` (solenoid), `PortnIn`/`PortnOut`
-  (IR gate). Port 4 uses the valve line only; its IR gate is unused.
+  (IR gate). Port 4 uses the valve line only; its IR gate is unused. `Valve2` (centre) gives
+  water only for habituation's centre reward (D19), timed from valve 2's liquid calibration.
 - Optical channels **A** and **B**: `BNC1` → PulsePal `IN1` → `OUT1` → Doric LED ch1 is
   channel A; `BNC2` → `IN2` → `OUT2` → LED ch2 is channel B (`rig.Opto.Channels`,
   `rig.Opto.Labels`). A light pattern is the ON/OFF sequence of A and B over the stimulus
@@ -271,6 +277,9 @@ doc that does not:
 | automatic shaping | performance-driven training under one switch (`S.Task.AutoShaping`): now the centre hold, method `S.Task.HoldShaping`; later trial difficulty | hold shaping *Off* (the 0.5 mode) |
 | step back | automatic shaping shortening the hold one growth step after `HoldStepBackAfter` early withdrawals at one hold | regress, reset (in names too) |
 | early withdrawal | leaving the centre port before the hold is complete, unforgiven (state `EarlyWithdrawal`) | hold break (that is the forgiven kind) |
+| centre reward | water at the centre port for a completed hold, habituation's first `CentreRewardTrials` trials (state `CentreReward`, `Data.CentreReward`) | centre drop, initiation reward |
+| retry | going on to the correct port after an unpunished incorrect choice (state `RetryResponse`, `Data.ResponseRetries`) | correction trial (it is the same trial) |
+| centre hold time | seconds in the centre port on a trial's last hold, poke to exit (`Data.CentreHoldTime`) | hold duration (that is what the trial asked for) |
 | view | a camera's name and file prefix: `sideview`, `topview` | camera name, cam1 |
 | camera clock | SpinCam's host clock: `HostTime_s`, `_events.csv`, `Data.CameraTime` | video time |
 | house light | the white light in the box, on PulsePal OUT3, looped back into BNC input 1 (`S.Session.HouseLight`, `S.Sleep.HouseLight`, `S.Ephys.HouseLight`, `Data.HouseLight`, `Session.HouseLight`) | room light, port 5 light |
@@ -340,7 +349,7 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
 - **The training stage shapes the session (`lum.stageDefaults`).** Choosing *Habituation* in the
   setup dialog switches the light pattern off (`S.Session.UseOpto`, `S.GUI.OptoOn`) and the
   stimulus air on for the whole window; choosing *Training* or *Experiment* does the reverse.
-  *Training* also switches automatic shaping on and *Experiment* off. Defaults, applied only on the
+  *Habituation* and *Training* also switch automatic shaping on, *Experiment* off. Defaults, applied only on the
   dropdown's change, never during a session and never enforced by validation — the operator may
   untick anything afterwards — **except** automatic shaping in an Experiment session, which
   `lum.validateSettings` refuses (`shapingInExperiment`).
@@ -496,10 +505,11 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
     loaded once (`lum.loadSounds`, only those the session can play).
 - **Trial-flow contract**: state names stay fixed across stimulus modalities, cues and hold
   shaping (trial start / waiting for the poke with the cue on / pre-stimulus hold (the latency)
-  / centre hold / hold break / resumed hold / centre exit / response / reward / incorrect
-  choice / ITI); these change only the `OutputActions`, state timers, global timers and where a
-  poke or `EarlyWithdrawal` leads. Plots, analysis and `lum.scoreTrial` depend on this. Version
-  0.4 removed the `Cue`, `Cue2`… states (D12).
+  / centre hold / hold break / resumed hold / centre reward / centre exit / response / reward /
+  incorrect choice / retry / ITI); these change only the `OutputActions`, state timers, global timers and where a
+  poke, a completed hold or a wrong side poke leads. Plots, analysis and `lum.scoreTrial` depend
+  on this. Version 0.4 removed the `Cue`, `Cue2`… states (D12); 0.8.0 added `CentreReward` and
+  `RetryResponse` (D19).
   - **The cue lasts until the stimulus starts, `S.Stimulus.Latency` after the poke (D12).** Every
     cue component is an output of `WaitForCentrePoke`, which has no timer. `Port2In` there leads
     to `PreStimulusHold` when the latency is above 0 and straight to `CentreHold` at 0, the
@@ -549,6 +559,16 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   - `HoldBreak` and `CentreHoldResumed` exist in every trial. Without grace shaping they are
     unreachable; with it, `CentreHold` triggers the stimulus timers and the hold clock, and
     `CentreHoldResumed` must **not** re-trigger them.
+  - **Centre reward and retries (D19).** `CentreReward` and `RetryResponse` exist in every trial.
+    A completed hold goes through `CentreReward` (centre valve open for the calibrated time,
+    response configuration up) only when `spec.CentreReward` (habituation, trial number ≤
+    `S.GUI.CentreRewardTrials`, amount > 0; `lum.nextTrialSpec`); never put it on the poke's path.
+    A wrong side poke goes to `RetryResponse` (0 s, back to `WaitForResponse`, whose timer restarts)
+    when `lum.punishmentFor(S, 'IncorrectChoice').Retry` — the default, `PunishCondition` 1 — and to
+    `IncorrectChoice` (a trigger state; timeout, noise, no reward, ITI) when punished. Neither new
+    state may be a trigger state: the trial passes through exactly one. A punishment that plays the
+    noise and is followed by the ITI lasts at least `S.Sound.NoiseDuration`, because the ITI sends
+    the HiFi stop command.
 - **Sync TTL, driven by states in every mode (D4)**: `S.Session.UseSync` says whether the line
   is driven, `S.Sync.Mode` (`lum.SyncMode`: FixedWidth, JitteredWidth, TaskEvents) says how
   trials drive it. A pulsed mode makes the pulse `TrialStart`'s own state timer and drops the
@@ -586,7 +606,7 @@ where it can be tested with no hardware.
 | `+lum/+ephys/` | ePhys calibration: `plan`, `validate`, `describe` |
 | `+lum/defaultSettings.m`, `mergeSettings.m` | The two-tier settings struct; old settings files converted (renames, reshapes, retirements) |
 | `+lum/validateSettings.m` | Everything that must hold before a session starts; returns the stimulus set |
-| `+lum/stageDefaults.m` | The session a training stage assumes: habituation is air and no light |
+| `+lum/stageDefaults.m` | The session a training stage assumes: habituation is air and no light; shaping on in habituation and training |
 | `+lum/timerBudget.m` | Global timers left for light after sync, hold clock and timed components |
 | `+lum/buildTrialSM.m` | The state graph (fixed names; outputs, timers and transitions vary) |
 | `+lum/cueTiming.m` | What each cue component does once the stimulus starts: continues, off, or timed (D12) |
@@ -594,10 +614,10 @@ where it can be tested with no hardware.
 | `+lum/HoldShaping.m` | Automatic shaping of the centre hold: active mode, next hold and grace, step back after early withdrawals, description; break modes (restart or end) |
 | `+lum/triggerStates.m` | The states that open the prepare window, by break mode |
 | `+lum/scoreTrial.m` | Outcome classification from states and events, including hold breaks and attempts |
-| `+lum/punishmentFor.m` | Which mistakes are punished, and how |
+| `+lum/punishmentFor.m` | Which mistakes are punished, and how; whether a wrong choice may be retried |
 | `+lum/SyncMode.m` | How trials drive the sync TTL; codes are part of the data format |
 | `+lum/SessionRunner.m` | TrialManager on the rig, blocking in the emulator (D3) |
-| `+lum/OnlinePlots.m` | The behaviour session's live figure: now and next, outcomes; performance, psychometric, evidence (u_A vs u_B: fraction of the window each channel is lit); by side, side bias, reaction time |
+| `+lum/OnlinePlots.m` | The behaviour session's live figure: now and next, outcomes; performance, psychometric, evidence (u_A vs u_B: fraction of the window each channel is lit); by side, side bias, reaction time, centre hold (time in the port vs asked for); header: water (side and centre) and the running hold |
 | `+lum/loadSounds.m` | The session's sounds, loaded once |
 | `+lum/testSounds.m`, `toneFrequencies.m` | A session sound as `TestHiFiSound` arguments, for the Play buttons; group tone spacing |
 | `+lum/fiberBundles.m`, `experimentChoices.m` | Bundle cables and spot counts; the Experiment tab's lists |
@@ -610,7 +630,7 @@ where it can be tested with no hardware.
 | `+lum/+sleep/` | Sleep and ePhys calibration sessions: `run`; sync pulses `pulseSchedule`, `syncPulseTimes`; test pulses `testPulsePlan`, `stepChoices`, `epochShape`, `describeTestPulses`, `describeTrain`; blocks `nextBlock`, `blockStateMachine`; `validate`, `validateClock`, `checkTimeline`, `validateTestPulses`, `deviceSettings`; `Plots` |
 | `+lum/+dev/` | Device shims, real and null; `open.m` selects them. `DoricLED`, chosen by `openDoricLED`: the LED driver through DoricLED, both channels in external TTL mode, currents changed between trials or blocks (D17). `HouseLight`/`RealHouseLight`/`NullHouseLight`/`DisabledHouseLight`, chosen by `openHouseLight`: the house light on PulsePal OUT3, switched at once, its level per trial and edges read from the BNC1 loopback (D15). `PulsePal.holdVoltage` holds an untriggered output, guarded against a click mid-command. `Cameras`/`RealCameras`/`NullCameras`, `openCameras`, `configureCameras`: video through SpinCam (D14). `openPulsePal` refuses a light session without PulsePal, stops its outputs on connecting and requires a handshake (`PulsePal.checkConnection`). `Flex` also sends the barcode, opens the analog viewer and realigns the analog stream (`alignAnalog`) |
 | `+lum/+gui/` | `SessionTypeDialog`, `SetupDialog`, `SleepSetupDialog`, `EphysSetupDialog`, `DoricSetup` (Doric LED tab), `DoricCalibration`, `DoricWindow` (LED window), `IntensityField`, `CameraSetup` (Cameras tab, live preview), `CameraWindow` (during sessions), `HelpLine`, `ExperimentForm`, `Form`, `StimulusDesigner`, `TestPulseDesigner`, `RuntimeWindow`, `PatternBrowser`, `savePlotsImage`, `houseLightSwitch`, `drawTrialFlow`, `drawTestPulseSchedule`, `drawTestPulseEpoch`, `runtimeFields`, `relabelParameterGUI`, `parseNumbers`, `theme`, `logo` |
-| `tests/` | `runLuminoseTests` runs everything; `StubHiFi`, `StubPulsePal` (a PulsePal that can stop answering) and `StubCameraManager` (SpinCam's manager, no cameras) are test doubles; DoricLED's own `SimulatedTransport` is the LED's; see below |
+| `tests/` | `runLuminoseTests` runs everything; `StubHiFi`, `StubPulsePal` (a PulsePal that can stop answering) and `StubCameraManager` (SpinCam's manager, no cameras) are test doubles; DoricLED's own `SimulatedTransport` is the LED's; `startMouse` plays scripted pokes into an emulated state machine; see below |
 
 **Bpod gotchas that have already cost time.** Each is guarded in code; don't undo them.
 
@@ -734,13 +754,17 @@ messages — MATLAB has no compile step, so that is the closest thing to one. Ad
 any behaviour change; the pure functions (`+lum/*.m`, `+lum/+pattern/`, `+lum/+sync/`) are
 the cheap place to do it. `windowsTest` builds windows invisibly (`'Visible', 'off'`, and
 `'Wait', false` for the modal ones) and skips the uifigure tests where MATLAB cannot make one.
-`emulatorSessionTest` runs a whole behaviour session headless, `sleepSessionTest` two sleep
+`emulatorSessionTest` runs a whole behaviour session headless, `habituationSessionTest` a
+habituation session with one trial played as the animal (centre reward; valve 2 is not calibrated on
+this machine, so it checks the fallback), `sleepSessionTest` two sleep
 sessions, with and without test pulses, and `ephysSessionTest` an ePhys calibration session — all
 with video and the LED window off. `ledTest` (pure), `doricTest` (the LED on DoricLED's simulated
 driver, and `TestDoricLED` under the emulator) and `ephysTest` (pure) cover D17 and D18; the Doric
 and ePhys session tests are skipped without the DoricLED package. `cameraTest` covers video against
 `StubCameraManager` and runs a behaviour and a sleep session with SpinCam's simulated cameras
-(skipped without SpinCam).
+(skipped without SpinCam). `stateMachineTest` plays whole trials as the animal with `startMouse`
+(scripted `'V'` override bytes from a timer, a few hundred ms apart, never `ManualOverride`): use it
+for anything that depends on pokes.
 
 MATLAB and test gotchas that have already cost time:
 
@@ -786,7 +810,7 @@ Keep documentation current in the same change that alters behaviour:
   sleep sessions, D12 the cue until the stimulus starts, and its latency, D13 test pulses in
   sleep sessions, D14 video through SpinCam, D15 the house light on PulsePal, looped back into Bpod, D16 the plots
   image and settings kept at teardown, D17 the Doric LED sets the intensity, D18 ePhys calibration
-  sessions). Read it before changing the stimulus path, the state graph, sleep blocks or
+  sessions, D19 the centre reward and the retry after an unpunished incorrect choice). Read it before changing the stimulus path, the state graph, sleep blocks or
   the GUI.
 - `docs/` — rig drawings, `BpodSystemInfo.png`, logo.
 

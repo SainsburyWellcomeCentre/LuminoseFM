@@ -93,18 +93,23 @@ verifyGreaterThan(testCase, reaction.YLim(2), 1.2, 'The slowest reaction on scre
 performance = axesTitled(plots.Figure, 'Performance');
 verifyGreaterThanOrEqual(testCase, performance.XLim(2), 150);
 verifySubstring(testCase, plots.summaryText(), 'Trial 150');
+verifySubstring(testCase, plots.summaryText(), 'centre hold', 'The hold asked for is shown');
+verifySubstring(testCase, plots.summaryText(), '5 centre', 'Centre rewards are counted apart');
+holdAxes = axesTitled(plots.Figure, 'Centre hold');
+held = findobj(holdAxes, 'Type', 'line', 'LineStyle', 'none');
+verifyTrue(testCase, any(arrayfun(@(h) any(~isnan(h.YData)), held)), 'Hold times are plotted');
 delete(cleanup);
 end
 
 function testThePanelsAreInThreeRows(testCase)
 % Top: now and next, then the outcomes. Middle: performance, psychometric, evidence.
-% Bottom: by side, side bias, reaction time. No centre hold panel.
+% Bottom: by side, side bias, reaction time, centre hold.
 [S, stimulusSet] = sessionFixture(testCase, 'pure', 2, false);
 plots = lum.OnlinePlots(S, stimulusSet, 'Visible', 'off');
 cleanup = onCleanup(@() plots.close());
 rows = {{'Now and next', 'Outcomes'}, ...
         {'Performance', 'Psychometric', 'Evidence'}, ...
-        {'By side', 'Side bias', 'Reaction time'}};
+        {'By side', 'Side bias', 'Reaction time', 'Centre hold'}};
 heights = zeros(1, 3);
 for r = 1:3
     panels = cellfun(@(title) axesTitled(plots.Figure, title), rows{r}, 'UniformOutput', false);
@@ -119,7 +124,6 @@ for r = 1:3
     heights(r) = y(1);
 end
 verifyTrue(testCase, heights(1) > heights(2) && heights(2) > heights(3), 'Rows from the top down');
-verifyEmpty(testCase, axesTitled(plots.Figure, 'Centre hold'), 'The centre hold panel is gone');
 verifyEmpty(testCase, axesTitled(plots.Figure, 'By side and light'), 'Light on and off are not compared');
 delete(cleanup);
 end
@@ -869,7 +873,9 @@ for trial = 1:nTrials
     result = struct('Outcome', outcome, 'Choice', NaN, 'Correct', NaN, ...
                     'Rewarded', double(outcome == lum.Outcome.Correct), ...
                     'ReactionTime', NaN, 'HoldBreaks', 0, 'HoldAttempts', 1, ...
-                    'EarlyWithdrawals', double(outcome == lum.Outcome.EarlyWithdrawal));
+                    'EarlyWithdrawals', double(outcome == lum.Outcome.EarlyWithdrawal), ...
+                    'CentreRewarded', double(trial <= 5), 'ResponseRetries', 0, ...
+                    'CentreHoldTime', spec.HoldDuration + 0.05 * mod(trial, 3));
     if outcome == lum.Outcome.Correct || outcome == lum.Outcome.Incorrect
         result.Correct = double(outcome == lum.Outcome.Correct);
         result.Choice = spec.CorrectSide;

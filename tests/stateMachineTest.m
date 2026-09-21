@@ -413,7 +413,8 @@ S.Sound.NoiseDuration = 0.5;
 verifyEqual(testCase, stateTimer(sma, 'EarlyWithdrawal'), 0.5, 'AbsTol', 1e-9);
 verifyEqual(testCase, plan.earlyWithdrawalTimer, 0.5, 'AbsTol', 1e-9);
 [~, plan] = lum.buildTrialSM(makeTestContext('Settings', endingTrial(S)));
-verifyEqual(testCase, plan.earlyWithdrawalTimer, 0, 'Ending the trial, nothing follows to cut it');
+verifyEqual(testCase, plan.earlyWithdrawalTimer, 0.5, 'AbsTol', 1e-9, ...
+            'Ending the trial, the ITI would stop the sound module');
 [~, plan] = lum.buildTrialSM(makeTestContext('Settings', withCue(S, {'CentreLight'})));
 verifyEqual(testCase, plan.earlyWithdrawalTimer, 0, 'No cue tone, nothing to cut it');
 end
@@ -429,8 +430,9 @@ verifyEqual(testCase, tupTargetOf(sma, 'CentreHold'), 'WaitForCentreExit');
 verifyEqual(testCase, targetOf(sma, 'WaitForCentreExit', rig.PokeOut.Centre), 'WaitForResponse');
 verifyEqual(testCase, conditionTargetOf(sma, 'WaitForCentreExit', 3), 'WaitForResponse', ...
             'A hold that ended during a forgiven break must still reach the response window');
+% RetryResponse is reached only from WaitForResponse, so the animal has already left.
 for state = sma.StateNames
-    if ~strcmp(state{1}, 'WaitForCentreExit')
+    if ~ismember(state{1}, {'WaitForCentreExit', 'RetryResponse'})
         verifyNotEqual(testCase, tupTargetOf(sma, state{1}), 'WaitForResponse', ...
                        sprintf('%s must not open the response window on its timer', state{1}));
     end
@@ -468,7 +470,9 @@ verifyEqual(testCase, targetOf(sma, 'WaitForResponse', 'Port3In'), 'RightRewardD
 end
 
 function testTheWrongSideIsAnIncorrectChoiceOnceTrainingStarts(testCase)
-sma = lum.buildTrialSM(makeTestContext());
+S = lum.defaultSettings;
+S.GUI.PunishCondition = 3;  % Incorrect choice
+sma = lum.buildTrialSM(makeTestContext('Settings', S));
 verifyEqual(testCase, targetOf(sma, 'WaitForResponse', 'Port1In'), 'LeftRewardDelay');
 verifyEqual(testCase, targetOf(sma, 'WaitForResponse', 'Port3In'), 'IncorrectChoice');
 end
@@ -510,14 +514,116 @@ verifyEqual(testCase, stateTimer(punished, 'EarlyWithdrawal'), 3);
 verifyEqual(testCase, sort(unpunished.StateNames), sort(punished.StateNames));
 end
 
-function testNoiseOnlyPunishmentDoesNotHoldTheAnimal(testCase)
+function testNoPunishmentLetsTheAnimalGoOnToTheCorrectPort(testCase)
+% The default: a wrong choice goes back to the response window through RetryResponse,
+% and the correct port still pays.
 S = lum.defaultSettings;
+verifyEqual(testCase, S.GUI.PunishCondition, 1, 'No punishment is the default');
+[sma, plan] = lum.buildTrialSM(makeTestContext('Settings', S));
+verifyTrue(testCase, plan.incorrectChoicePunishment.Retry);
+verifyEqual(testCase, targetOf(sma, 'WaitForResponse', 'Port3In'), 'RetryResponse');
+verifyEqual(testCase, targetOf(sma, 'WaitForResponse', 'Port1In'), 'LeftRewardDelay');
+verifyEqual(testCase, tupTargetOf(sma, 'RetryResponse'), 'WaitForResponse');
+verifyEqual(testCase, stateTimer(sma, 'RetryResponse'), 0);
+S.GUI.PunishCondition = 2;  % Early withdrawal only: choices are still not punished
+sma = lum.buildTrialSM(makeTestContext('Settings', S));
+verifyEqual(testCase, targetOf(sma, 'WaitForResponse', 'Port3In'), 'RetryResponse');
+end
+
+function testEachPunishmentEndsTheTrialUnrewarded(testCase)
+% Timeout, noise, or both: IncorrectChoice, then the ITI; never back to a port that pays.
+S = lum.defaultSettings;
+S.GUI.PunishCondition = 3;  % Incorrect choice
 S.GUI.PunishTimeout = 3;
+timers = [3, S.Sound.NoiseDuration, 3];
+for type = 1:3
+    S.GUI.PunishType = type;
+    [sma, plan] = lum.buildTrialSM(makeTestContext('Settings', S));
+    verifyFalse(testCase, plan.incorrectChoicePunishment.Retry);
+    verifyEqual(testCase, targetOf(sma, 'WaitForResponse', 'Port3In'), 'IncorrectChoice');
+    verifyEqual(testCase, tupTargetOf(sma, 'IncorrectChoice'), 'ITI');
+    verifyEqual(testCase, stateTimer(sma, 'IncorrectChoice'), timers(type), 'AbsTol', 1e-9, ...
+                sprintf('Punishment type %d', type));
+    verifyEqual(testCase, plan.incorrectChoicePunishment.PlayNoise, type >= 2);
+end
+end
+
+function testANoisePunishmentPlaysToItsEndBeforeTheITIStopsIt(testCase)
+% The ITI stops the sound module, so a noise-only punishment lasts as long as the noise,
+% and so does a timeout shorter than it.
+S = lum.defaultSettings;
 S.GUI.PunishCondition = 4;
 S.GUI.PunishType = 2;  % White noise only
+S.GUI.PunishTimeout = 3;
 [sma, plan] = lum.buildTrialSM(makeTestContext('Settings', S));
-verifyEqual(testCase, stateTimer(sma, 'IncorrectChoice'), 0);
-verifyTrue(testCase, plan.incorrectChoicePunishment.PlayNoise);
+verifyEqual(testCase, plan.incorrectChoicePunishment.Timeout, 0, 'Noise alone adds no timeout');
+verifyEqual(testCase, stateTimer(sma, 'IncorrectChoice'), S.Sound.NoiseDuration, 'AbsTol', 1e-9);
+S.GUI.PunishType = 3;
+S.GUI.PunishTimeout = S.Sound.NoiseDuration / 2;
+sma = lum.buildTrialSM(makeTestContext('Settings', S));
+verifyEqual(testCase, stateTimer(sma, 'IncorrectChoice'), S.Sound.NoiseDuration, 'AbsTol', 1e-9);
+
+% An early withdrawal that ends the trial likewise.
+S = endingTrial(S);
+S.GUI.PunishType = 2;
+sma = lum.buildTrialSM(makeTestContext('Settings', S));
+verifyEqual(testCase, tupTargetOf(sma, 'EarlyWithdrawal'), 'ITI');
+verifyEqual(testCase, stateTimer(sma, 'EarlyWithdrawal'), S.Sound.NoiseDuration, 'AbsTol', 1e-9);
+end
+
+function testRetryResponseIsNotATriggerState(testCase)
+% The trial goes on after it, to a reward or NoResponse, which open the prepare window.
+S = lum.defaultSettings;
+verifyFalse(testCase, ismember('RetryResponse', lum.triggerStates(S)));
+verifyFalse(testCase, ismember('CentreReward', lum.triggerStates(S)));
+verifyTrue(testCase, ismember('IncorrectChoice', lum.triggerStates(S)));
+end
+
+%% Centre reward -------------------------------------------------------------------
+
+function testACentreRewardFollowsACompletedHold(testCase)
+global BpodSystem %#ok<GVMIS>
+rig = RigConfig;
+S = lum.defaultSettings;
+S.Task.TrainingStage = 1;
+context = makeTestContext('Settings', S);
+context.spec.RewardedSides = [1 2];
+verifyTrue(testCase, context.spec.CentreReward, 'Trial 1 of habituation has a centre reward');
+[sma, plan] = lum.buildTrialSM(context);
+verifyTrue(testCase, plan.centreReward);
+verifyEqual(testCase, tupTargetOf(sma, 'CentreHold'), 'CentreReward');
+verifyEqual(testCase, tupTargetOf(sma, 'CentreReward'), 'WaitForCentreExit');
+verifyEqual(testCase, stateTimer(sma, 'CentreReward'), context.centreValveTime, 'AbsTol', 1e-9);
+valve = find(strcmp(BpodSystem.StateMachineInfo.OutputChannelNames, rig.Valve.Centre));
+verifyEqual(testCase, sma.OutputMatrix(stateIndex(sma, 'CentreReward'), valve), 1);
+verifyEqual(testCase, sma.OutputMatrix(stateIndex(sma, 'WaitForCentreExit'), valve), 0);
+cancel = BpodSystem.HW.Pos.GlobalTimerCancel;
+verifyEqual(testCase, sma.OutputMatrix(stateIndex(sma, 'CentreReward'), cancel), ...
+            sma.OutputMatrix(stateIndex(sma, 'WaitForCentreExit'), cancel), ...
+            'The stimulus ends with the hold, reward or not');
+end
+
+function testWithoutACentreRewardTheHoldGoesStraightOn(testCase)
+sma = lum.buildTrialSM(makeTestContext());  % Training: no centre reward
+verifyEqual(testCase, tupTargetOf(sma, 'CentreHold'), 'WaitForCentreExit');
+verifyTrue(testCase, ismember('CentreReward', sma.StateNames), 'The state exists in every trial');
+end
+
+function testAGraceHoldEndsInTheCentreReward(testCase)
+S = withShaping(lum.defaultSettings, 'Both');
+S.Task.TrainingStage = 1;
+[sma, plan] = lum.buildTrialSM(makeTestContext('Settings', S));
+for state = {'CentreHold', 'HoldBreak', 'CentreHoldResumed'}
+    verifyEqual(testCase, timerEndTargetOf(sma, state{1}, plan.holdClock), 'CentreReward', state{1});
+end
+end
+
+function testACentreRewardWithoutAValveTimeIsRefused(testCase)
+S = lum.defaultSettings;
+S.Task.TrainingStage = 1;
+context = makeTestContext('Settings', S);
+context.centreValveTime = NaN;
+verifyError(testCase, @() lum.buildTrialSM(context), 'lum:buildTrialSM:badCentreValveTime');
 end
 
 %% Sync and timers -----------------------------------------------------------------
@@ -672,6 +778,49 @@ context = makeTestContext('Settings', quickSettings(withLatency(lum.defaultSetti
 assertRunsToNoInitiation(testCase, context);
 end
 
+function testAWrongChoiceThenTheRightOneIsRewardedInTheEmulator(testCase)
+% Played as the animal: poke the centre, hold, collect the centre reward, leave, poke
+% the wrong port (not punished), then the right one, and drink.
+S = lum.defaultSettings;
+S.GUI.HoldWindow = 5;
+S.GUI.ITI = 0.05;
+S.GUI.DrinkingGrace = 0.05;
+context = makeTestContext('Settings', S);   % Pays left
+context.spec.HoldDuration = 0.1;
+context.spec.CentreReward = true;
+context.spec.CentreRewardAmount = 1;
+trial = runPoked(context, {0.3, 'Port2', 1; 0.9, 'Port2', 0; 1.3, 'Port3', 1; ...
+                           1.6, 'Port3', 0; 2.0, 'Port1', 1; 2.4, 'Port1', 0});
+result = lum.scoreTrial(trial, context.spec, context.rig);
+verifyEqual(testCase, result.Outcome, lum.Outcome.Incorrect, 'Scored by the first choice');
+verifyEqual(testCase, result.Choice, 2);
+verifyEqual(testCase, result.Rewarded, 1, 'The retry was rewarded');
+verifyEqual(testCase, result.ResponseRetries, 1);
+verifyEqual(testCase, result.CentreRewarded, 1);
+verifyFalse(testCase, isnan(trial.States.LeftReward(1)));
+verifyGreaterThan(testCase, result.CentreHoldTime, 0.4, 'From the poke to leaving');
+end
+
+function testAPunishedWrongChoiceEndsTheTrialInTheEmulator(testCase)
+S = lum.defaultSettings;
+S.GUI.HoldWindow = 5;
+S.GUI.ITI = 0.05;
+S.GUI.PunishCondition = 3;
+S.GUI.PunishType = 1;
+S.GUI.PunishTimeout = 0.2;
+context = makeTestContext('Settings', S);
+context.spec.HoldDuration = 0.1;
+trial = runPoked(context, {0.3, 'Port2', 1; 0.9, 'Port2', 0; 1.3, 'Port3', 1; ...
+                           1.6, 'Port3', 0});
+result = lum.scoreTrial(trial, context.spec, context.rig);
+verifyEqual(testCase, result.Outcome, lum.Outcome.Incorrect);
+verifyEqual(testCase, result.Rewarded, 0);
+verifyEqual(testCase, result.ResponseRetries, 0);
+verifyEqual(testCase, result.CentreRewarded, 0);
+verifyFalse(testCase, isnan(trial.States.IncorrectChoice(1)));
+verifyTrue(testCase, isnan(trial.States.LeftReward(1)));
+end
+
 function testACueTimedFromThePokeRunsInTheEmulator(testCase)
 % A cue timer on the air valve and the cue's outputs have to be accepted and run.
 context = makeTestContext('Settings', quickSettings(withCue(lum.defaultSettings, ...
@@ -687,7 +836,8 @@ names = {'TrialStart', 'WaitForCentrePoke', 'PreStimulusHold', 'CentreHold', ...
          'HoldBreak', 'CentreHoldResumed', 'WaitForCentreExit', 'WaitForResponse', ...
          'EarlyWithdrawal', 'LeftRewardDelay', 'RightRewardDelay', 'LeftReward', ...
          'RightReward', 'DrinkingLeft', 'DrinkingRight', 'DrinkingGrace', ...
-         'WithdrewBeforeReward', 'IncorrectChoice', 'NoResponse', 'NoInitiation', 'ITI'};
+         'WithdrewBeforeReward', 'IncorrectChoice', 'NoResponse', 'NoInitiation', 'ITI', ...
+         'CentreReward', 'RetryResponse'};
 end
 
 function S = withShaping(S, mode)
@@ -741,6 +891,19 @@ context.devices.hifi = StubHiFi(context.rig.Sound.Module, context.S.Sound.Sampli
 for slot = 1:8
     context.devices.hifi.loadSound(slot, zeros(1, 100));
 end
+end
+
+function trial = runPoked(context, script)
+% Run one trial in the emulator with the pokes in script (startMouse).
+sma = lum.buildTrialSM(context);
+SendStateMachine(sma);
+mouse = startMouse(script);
+cleanup = onCleanup(@() delete(mouse));
+raw = RunStateMachine;
+stop(mouse);
+data = AddTrialEvents(struct(), raw);
+trial = data.RawEvents.Trial{1};
+delete(cleanup);
 end
 
 function trial = assertRunsToNoInitiation(testCase, context)

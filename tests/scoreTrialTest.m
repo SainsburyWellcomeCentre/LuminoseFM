@@ -153,6 +153,68 @@ trial = makeTrial('WaitForCentrePoke', [0.1 60.1], 'NoInitiation', [60.1 60.1]);
 verifyEqual(testCase, lum.scoreTrial(trial, spec(1), testCase.TestData.rig).HoldBreaks, 0);
 end
 
+function testAWrongChoiceFollowedByTheRightOneIsIncorrectButRewarded(testCase)
+% Not punished: RetryResponse, back to the response window, then the correct port pays.
+% The first choice is the animal's choice.
+trial = makeTrial('WaitForResponse', [1.0 1.2], 'RetryResponse', [1.2 1.2], ...
+                  'LeftRewardDelay', [1.9 1.9], 'LeftReward', [1.9 2.0], ...
+                  'Port3In', 1.2, 'Port1In', 1.9);
+trial.States.WaitForResponse = [1.0 1.2; 1.2 1.9];
+result = lum.scoreTrial(trial, spec(1), testCase.TestData.rig);
+verifyEqual(testCase, result.Outcome, lum.Outcome.Incorrect);
+verifyEqual(testCase, [result.Choice, result.Correct, result.Rewarded], [2 0 1]);
+verifyEqual(testCase, result.ResponseRetries, 1);
+verifyEqual(testCase, result.ReactionTime, 0.2, 'AbsTol', 1e-9, 'To the first choice');
+end
+
+function testLeavingTheRewardPortEarlyAfterARetryIsStillIncorrect(testCase)
+trial = makeTrial('WaitForResponse', [1.0 1.2], 'RetryResponse', [1.2 1.2], ...
+                  'LeftRewardDelay', [1.9 2.0], 'WithdrewBeforeReward', [2.0 2.0], ...
+                  'Port3In', 1.2, 'Port1In', 1.9);
+result = lum.scoreTrial(trial, spec(1), testCase.TestData.rig);
+verifyEqual(testCase, result.Outcome, lum.Outcome.Incorrect);
+verifyEqual(testCase, result.Rewarded, 0);
+end
+
+function testRetriesAreCounted(testCase)
+trial = makeTrial('WaitForResponse', [1.0 1.2], 'Port3In', 1.2, 'Port3In', 1.6, ...
+                  'NoResponse', [12 12]);
+trial.States.RetryResponse = [1.2 1.2; 1.6 1.6];
+result = lum.scoreTrial(trial, spec(1), testCase.TestData.rig);
+verifyEqual(testCase, result.ResponseRetries, 2);
+verifyEqual(testCase, result.Outcome, lum.Outcome.Incorrect);
+verifyEqual(testCase, result.Rewarded, 0);
+end
+
+function testTheCentreRewardIsScored(testCase)
+trial = makeTrial('CentreHold', [0.5 0.6], 'CentreReward', [0.6 0.62], ...
+                  'WaitForCentreExit', [0.62 0.9], 'Port2In', 0.5, 'Port2Out', 0.9);
+result = lum.scoreTrial(trial, spec(1), testCase.TestData.rig);
+verifyEqual(testCase, result.CentreRewarded, 1);
+verifyEqual(testCase, lum.scoreTrial(makeTrial('CentreHold', [0.5 0.6]), spec(1), ...
+                                     testCase.TestData.rig).CentreRewarded, 0);
+end
+
+function testTheCentreHoldTimeRunsFromThePokeToLeaving(testCase)
+% From the poke that began the last hold (the latency's start, when there is one) to
+% the first exit after it; earlier broken holds do not count.
+trial = makeTrial('PreStimulusHold', [0.5 0.7], 'CentreHold', [0.7 1.2], ...
+                  'WaitForCentreExit', [1.2 1.5], 'Port2In', 0.5, 'Port2Out', 1.5);
+result = lum.scoreTrial(trial, spec(1), testCase.TestData.rig);
+verifyEqual(testCase, result.CentreHoldTime, 1.0, 'AbsTol', 1e-9);
+
+trial = makeTrial('Port2In', 0.3, 'Port2In', 1.0, 'Port2Out', 0.4, 'Port2Out', 1.8, ...
+                  'WaitForCentreExit', [1.5 1.8]);
+trial.States.CentreHold = [0.3 0.4; 1.0 1.5];
+trial.States.EarlyWithdrawal = [0.4 0.4];
+result = lum.scoreTrial(trial, spec(1), testCase.TestData.rig);
+verifyEqual(testCase, result.CentreHoldTime, 0.8, 'AbsTol', 1e-9, 'The last hold');
+
+result = lum.scoreTrial(makeTrial('WaitForCentrePoke', [0.1 60.1], 'NoInitiation', [60.1 60.1]), ...
+                        spec(1), testCase.TestData.rig);
+verifyTrue(testCase, isnan(result.CentreHoldTime), 'No hold, no hold time');
+end
+
 function testOutcomeNamesCoverEveryCode(testCase)
 verifyEqual(testCase, numel(lum.Outcome.allNames()), 7);
 verifyEqual(testCase, lum.Outcome.name(lum.Outcome.HoldNotCompleted), 'HoldNotCompleted');
@@ -167,7 +229,8 @@ stateNames = {'TrialStart', 'WaitForCentrePoke', 'PreStimulusHold', 'CentreHold'
               'HoldBreak', 'CentreHoldResumed', 'WaitForCentreExit', 'WaitForResponse', ...
               'EarlyWithdrawal', 'LeftRewardDelay', 'RightRewardDelay', 'LeftReward', ...
               'RightReward', 'DrinkingLeft', 'DrinkingRight', 'DrinkingGrace', ...
-              'WithdrewBeforeReward', 'IncorrectChoice', 'NoResponse', 'NoInitiation', 'ITI'};
+              'WithdrewBeforeReward', 'IncorrectChoice', 'NoResponse', 'NoInitiation', 'ITI', ...
+              'CentreReward', 'RetryResponse'};
 trial = struct('States', struct(), 'Events', struct());
 for i = 1:numel(stateNames)
     trial.States.(stateNames{i}) = [NaN NaN];

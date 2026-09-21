@@ -39,6 +39,12 @@ classdef OnlinePlots < handle
     %     Side bias     P(chose left) over the last BiasWindow choices, with the
     %                   P(left) bias correction aimed for on each trial
     %     Reaction time Per trial, by side chosen, with a running median
+    %     Centre hold   Per trial, how long the animal stayed in the centre port on its
+    %                   last hold (completed or broken), against the hold asked for
+    %                   (latency plus hold)
+    %
+    % The header's summary line gives the water drunk so far, side and centre rewards
+    % counted apart, and the hold the running trial asks for.
     %
     % Closing the figure only hides it: the session saves it as an image beside the data
     % file at teardown (lum.gui.savePlotsImage), and close() is what deletes it.
@@ -84,6 +90,10 @@ classdef OnlinePlots < handle
         medianReactionY
         biasLeftY             % P(chose left) over the last biasWindow choices, per trial
         biasTargetY           % The P(left) bias correction aimed for, per trial
+        heldCompletedY        % Seconds in the centre port on a completed hold, per trial
+        heldBrokenY           % ... on a hold that broke
+        holdAskedY            % Latency plus the hold the trial asked for
+        latency               % S.Stimulus.Latency, part of the time asked for
         choseLeft             % One entry per choice made: 1 left, 0 right
         planeX                % u_A of each choice, by correct/incorrect and side chosen:
         planeY                % 4 x nTrials, rows correct-left, correct-right,
@@ -95,7 +105,10 @@ classdef OnlinePlots < handle
         nChoices = 0
         nCorrect = 0
         nRewarded = 0
-        water = 0
+        water = 0                 % Side rewards, uL
+        nCentreRewards = 0
+        centreWater = 0           % Centre rewards, uL
+        holdNow = NaN             % The hold the running trial asks for
         lastTrial = 0
         clock
     end
@@ -139,7 +152,9 @@ classdef OnlinePlots < handle
             [obj.correctY, obj.incorrectY, obj.noChoiceY, obj.correctness, obj.sideOfTrial, ...
              obj.performanceY, obj.leftPerformanceY, obj.rightPerformanceY, ...
              obj.reactionTimes, obj.leftReactionY, obj.rightReactionY, ...
-             obj.medianReactionY, obj.biasLeftY, obj.biasTargetY, obj.choseLeft] = deal(blank);
+             obj.medianReactionY, obj.biasLeftY, obj.biasTargetY, obj.choseLeft, ...
+             obj.heldCompletedY, obj.heldBrokenY, obj.holdAskedY] = deal(blank);
+            obj.latency = S.Stimulus.Latency;
             obj.planeX = NaN(4, nTrials);
             obj.planeY = NaN(4, nTrials);
 
@@ -167,8 +182,8 @@ classdef OnlinePlots < handle
             obj.buildHeader(S, char(p.Results.Subject), p.Results.HouseLight);
             body = uipanel(obj.Figure, 'Units', 'normalized', 'Position', [0 0 1 0.93], ...
                            'BorderType', 'none', 'BackgroundColor', t.Background);
-            % Twelve columns, so the top row keeps its one-to-three split and the two
-            % rows below hold three panels of equal width.
+            % Twelve columns, so the top row keeps its one-to-three split, the middle
+            % row holds three panels of equal width and the bottom row four.
             tiles = tiledlayout(body, 3, 12, 'TileSpacing', 'compact', 'Padding', 'compact');
 
             % Top left is what the animal is getting now and next, with the choices
@@ -179,9 +194,10 @@ classdef OnlinePlots < handle
             obj.buildPerformancePanel(nexttile(tiles, 13, [1 4]), x);
             obj.buildPsychometricPanel(nexttile(tiles, 17, [1 4]), layout);
             obj.buildEvidencePanel(nexttile(tiles, 21, [1 4]));
-            obj.buildBarPanel(nexttile(tiles, 25, [1 4]));
-            obj.buildBiasPanel(nexttile(tiles, 29, [1 4]), x);
-            obj.buildReactionTimePanel(nexttile(tiles, 33, [1 4]), x);
+            obj.buildBarPanel(nexttile(tiles, 25, [1 3]));
+            obj.buildBiasPanel(nexttile(tiles, 28, [1 3]), x);
+            obj.buildReactionTimePanel(nexttile(tiles, 31, [1 3]), x);
+            obj.buildCentreHoldPanel(nexttile(tiles, 34, [1 3]), x);
             drawnow;
         end
 
@@ -190,13 +206,17 @@ classdef OnlinePlots < handle
             %
             % nextSpec is the trial now running (empty after the last one) and queue
             % the pattern order, for the now-and-next panel; rewardAmount is the
-            % volume this trial's reward was, for the water total. The per-trial
+            % volume this trial's side reward was, for the water total. The centre
+            % reward's volume is the spec's (CentreRewardAmount). The per-trial
             % panels are refreshed every call, the aggregates every RefreshEvery
             % trials, and there is one drawnow at the end.
             if isempty(obj.Figure) || ~isvalid(obj.Figure)
                 return  % The operator closed the figure; carry on running the session
             end
             obj.recordTrial(trialNumber, spec, result, rewardAmount);
+            if ~isempty(nextSpec)
+                obj.holdNow = obj.latency + nextSpec.HoldDuration;
+            end
 
             first = max(1, trialNumber - obj.nTrialsToShow + 1);
             last = max(first + obj.nTrialsToShow - 1, trialNumber);
@@ -213,6 +233,13 @@ classdef OnlinePlots < handle
             set(h.medianReaction, 'YData', obj.medianReactionY);
             set(obj.axesOf.reaction, 'XLim', xLimits, ...
                 'YLim', [0, niceCeiling(obj.reactionTimes(first:trialNumber), 0.5)]);
+
+            set(h.heldCompleted, 'YData', obj.heldCompletedY);
+            set(h.heldBroken, 'YData', obj.heldBrokenY);
+            set(h.holdAsked, 'YData', obj.holdAskedY);
+            onScreen = [obj.heldCompletedY(first:trialNumber), obj.heldBrokenY(first:trialNumber), ...
+                        obj.holdAskedY(first:trialNumber)];
+            set(obj.axesOf.centreHold, 'XLim', xLimits, 'YLim', [0, niceCeiling(onScreen, 0.5)]);
 
             obj.showUpcoming(nextSpec, queue);
 
@@ -257,6 +284,11 @@ classdef OnlinePlots < handle
                 return
             end
             obj.showUpcoming(nextSpec, queue);
+            if ~isempty(nextSpec)
+                obj.holdNow = obj.latency + nextSpec.HoldDuration;
+                set(obj.handles.summary, 'String', sprintf('Waiting for the first trial  |  centre hold %.2f s', ...
+                                                           obj.holdNow));
+            end
             drawnow limitrate;
         end
 
@@ -272,8 +304,18 @@ classdef OnlinePlots < handle
                 performance = sprintf('%.0f%% correct of %d choices', ...
                                       100 * obj.nCorrect / obj.nChoices, obj.nChoices);
             end
-            text = sprintf('Trial %d  |  %s  |  %d rewards, %.0f uL  |  %02d:%02d:%02d', ...
-                           trialNumber, performance, obj.nRewarded, obj.water, ...
+            waterText = sprintf('water %.0f uL: %d side rewards, %.0f uL', ...
+                                obj.water + obj.centreWater, obj.nRewarded, obj.water);
+            if obj.nCentreRewards > 0
+                waterText = sprintf('%s; %d centre, %.0f uL', waterText, obj.nCentreRewards, ...
+                                    obj.centreWater);
+            end
+            holdText = '';
+            if ~isnan(obj.holdNow)
+                holdText = sprintf('  |  centre hold %.2f s', obj.holdNow);
+            end
+            text = sprintf('Trial %d  |  %s  |  %s%s  |  %02d:%02d:%02d', ...
+                           trialNumber, performance, waterText, holdText, ...
                            floor(elapsed / 3600), floor(mod(elapsed, 3600) / 60), ...
                            floor(mod(elapsed, 60)));
         end
@@ -321,6 +363,19 @@ classdef OnlinePlots < handle
             if result.Rewarded
                 obj.nRewarded = obj.nRewarded + 1;
                 obj.water = obj.water + rewardAmount;
+            end
+            if result.CentreRewarded
+                obj.nCentreRewards = obj.nCentreRewards + 1;
+                obj.centreWater = obj.centreWater + spec.CentreRewardAmount;
+            end
+
+            % The centre hold: what the animal held on its last attempt, against what the
+            % trial asked for.
+            obj.holdAskedY(n) = obj.latency + spec.HoldDuration;
+            if lum.HoldShaping.completedHold(result.Outcome)
+                obj.heldCompletedY(n) = result.CentreHoldTime;
+            else
+                obj.heldBrokenY(n) = result.CentreHoldTime;
             end
 
             % Moving-window performance, from the window alone.
@@ -645,6 +700,25 @@ classdef OnlinePlots < handle
                         obj.handles.medianReaction], {'chose left', 'chose right', 'median'}, ...
                    'Location', 'north', 'Orientation', 'horizontal', 'Box', 'off', ...
                    'TextColor', t.Muted);
+        end
+
+        function buildCentreHoldPanel(obj, ax, x)
+            % Time in the centre port on each trial's last hold, and the time asked for.
+            t = obj.theme;
+            styleAxes(ax, t, 'Centre hold, time in the port');
+            obj.axesOf.centreHold = ax;
+            obj.handles.holdAsked = line(ax, x, obj.holdAskedY, 'Color', t.Muted, ...
+                                         'LineWidth', 1.2, 'LineStyle', '-');
+            obj.handles.heldCompleted = line(ax, x, obj.heldCompletedY, 'LineStyle', 'none', ...
+                'Marker', '.', 'MarkerSize', 10, 'Color', t.Correct);
+            obj.handles.heldBroken = line(ax, x, obj.heldBrokenY, 'LineStyle', 'none', ...
+                'Marker', 'x', 'MarkerSize', 5, 'Color', t.Incorrect);
+            set(ax, 'YLim', [0 0.5], 'XLim', [0.5, obj.nTrialsToShow + 0.5]);
+            xlabel(ax, 'Trial');
+            ylabel(ax, 'Seconds');
+            legend(ax, [obj.handles.heldCompleted, obj.handles.heldBroken, obj.handles.holdAsked], ...
+                   {'completed', 'broken', 'asked for'}, 'Location', 'north', ...
+                   'Orientation', 'horizontal', 'Box', 'off', 'TextColor', t.Muted);
         end
     end
 end

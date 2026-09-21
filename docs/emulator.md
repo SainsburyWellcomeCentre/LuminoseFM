@@ -20,8 +20,14 @@ The port buttons on the Bpod console poke the ports. A full behaviour trial is t
 3. click a **side port** to choose.
 
 Clicking the centre port *before* the hold is over breaks the hold: click it once more to restart
-the stimulus. Bpod forgets the port states at the end of each trial, so expect to click a port
+the stimulus. With no punishment for incorrect choices (the default), a wrong side port sends the
+trial back to the response window: click the wrong port again to leave it, then the correct one to
+be rewarded. Bpod forgets the port states at the end of each trial, so expect to click a port
 again on the next trial. A sleep session needs no clicks.
+
+Tests play the mouse with `tests/startMouse.m`: a timer that puts scripted pokes into the running
+emulated state machine, the way the console's buttons do, without calling `ManualOverride` (see
+below).
 
 ---
 

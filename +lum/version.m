@@ -38,11 +38,15 @@ function text = version()
 % before filling it (lum.gui.Form.waitForView): until then the behaviour setup dialog
 % often stopped updating in a desktop session, and MATLAB then hung at the next window.
 % The data format is unchanged. 0.7.2 names the 2-to-19 bundle's cables by colour (blue,
-% green) and keys LED calibrations by bundle and cable, not channel.
+% green) and keys LED calibrations by bundle and cable, not channel. 0.8.0 adds habituation's
+% centre reward (state CentreReward, Data.CentreReward), lets an unpunished incorrect choice
+% go on to the correct port (state RetryResponse, Data.ResponseRetries; no punishment is the
+% new default), lets a punishment noise play to its end, records Data.CentreHoldTime and
+% plots it, and switches automatic shaping on for habituation as well as training.
 %
 % See also: LuminoseFM
 
-release = '0.7.2';
+release = '0.8.0';
 text = release;
 
 try
