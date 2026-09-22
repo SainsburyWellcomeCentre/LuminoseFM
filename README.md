@@ -274,6 +274,19 @@ cue tone that continues into the stimulus would start with the stimulus.
 
 ## 5. The windows
 
+As the first trial (or sleep block) starts, the command window prints how long the start took, and
+where the time went:
+
+```
+LuminoseFM: ready 212.4 s after launch; 31.0 s of it the protocol's own, 181.4 s in the dialogs:
+  devices 18.2 s (Cameras 14.1, PulsePal 2.3, ...), windows 5.1 s, barcode 4.2 s, ...
+```
+
+The same is stored in the data file (`Data.Session.Startup`).
+
+When the session ends — at its last trial, on an error, or with the console's **End** button — the
+protocol closes the camera and LED windows first, then saves; Bpod closes the other windows.
+
 ### Session setup
 
 Shown once, before the first trial. Everything on it is validated on every edit; the status line
@@ -286,7 +299,7 @@ says what is wrong, and **Start session** stays disabled until nothing is.
 | Cue | For each cue component (centre light, tone, air): whether it continues through the stimulus, and if not, how long it stays on into it; the cue tone's frequency and sound output, each sound with a **▶ Play** button; a timeline of the cue against the latency and the stimulus, one row per component |
 | Stimulus | The stimulus window and its latency from the poke; a summary of the stimulus set with **Design stimuli…** and **New trial order**; P(left) per group; every trial of the session to scroll through; timing of air, centre light and tone, with **▶ Play tones** |
 | Light path | The carrier for each channel: frequency, pulse width, and PulsePal's TTL level into the LED driver (5 V) |
-| Doric LED | The LED driver (controlled from MATLAB, or set by hand), the fiber bundle and which cables are on A and B, each channel's intensity and limit, and **Calibrate…** (§9) |
+| Doric LED | The LED driver (controlled from MATLAB, or set by hand), the fiber bundle and which cables are on A and B, each channel's intensity and limit, and **Calibrate LED power…** (§9) |
 | Left, Right | That side's port light and tone (with **▶ Play**), each timed from stimulus onset; its guide light; which groups pay that side |
 | Sync | Trial sync pulse mode and widths — every mode is driven by states, and a pulsed one is the trial's first state, so the cue follows it; the session barcode (behaviour, sleep and ePhys calibration marker widths), with a preview. With video, widths are minimums, widened to what the cameras can read |
 | Cameras | Video (§10): record or not, the SpinCam folder, format, cameras and their views, frame rate, exposure, gain, TTL input, the camera window — with a **live preview** |
@@ -371,7 +384,8 @@ Panels, in the order they are read:
 
 - Top row
   - **Now and next** (top left) — the pattern of the running trial and the next three in the order,
-    channel A above B, with the side each pays; shown from the moment the session starts
+    channel A above B (the title is the key), with the side each pays; shown from the moment the
+    session starts
   - **Outcomes** — each trial's choice by stimulus group (by the B share of its light in continuous
     mode): correct, incorrect or no choice
 - Middle row
@@ -395,8 +409,8 @@ Panels, in the order they are read:
     for holds that broke, against a grey line for the time the trial asked for (latency plus
     hold), which follows automatic shaping
 
-The per-trial panels scroll with the session and rescale to what is on screen, so they stay
-legible at any point in it. **Closing the figure does not stop the session** — it only hides it.
+Each panel's key is one row under its axis label, clear of the data. The per-trial panels scroll
+with the session and rescale to what is on screen, so they stay legible at any point in it. **Closing the figure does not stop the session** — it only hides it.
 When the session ends, however it ends, the figure is saved as it looks then, as
 `<data file name>_plots.png` beside the data file.
 
@@ -528,10 +542,10 @@ their LED current while PulsePal's output into them is high.
   connection.
 - **Fiber bundle** — the bundle on the animal, and the cable, by colour, on each channel: blue on A and
   green on B by default on the 2-to-19 bundle, orange on A and blue on B on the 4-to-19. If you swap
-  the cables at the commutator, swap them here too.
+  the cables at the commutator, swap them here too. **Calibrate LED power…** measures the cables (below).
 - **Intensity** — per channel: the intensity (mA, or mW/mm² when calibrated), the **limit** in mA
   (700 by default, at most 1000, the LED's rating; anything above is refused, never reduced), the
-  light path (cable, fibers, area), the calibration, and **Calibrate…**.
+  light path (cable, fibers, area) and the calibration.
 
 A session with light whose LED is controlled from MATLAB does not start if the driver does not
 connect: check its USB cable and power and that Doric Neuroscience Studio is closed, or untick the
@@ -539,15 +553,23 @@ control. The protocol switches both channels off when the session ends.
 
 **Calibrating.** Irradiance is the power leaving a cable divided by the area of its fibers at the tip
 (each 100 µm across: blue 9 and green 10 on the 2-to-19 bundle; black 4, the others 5 on the
-4-to-19). **Calibrate…** opens a window for the cable on that channel, lit through that channel:
+4-to-19). **Calibrate LED power…** opens one window for the two cables on the commutator, one on each
+channel. It starts with the tab's bundle and cables; the 2-to-19 bundle is one pair (blue and green),
+the 4-to-19 two (for example orange and blue, then black and green: plug the next pair into the
+commutator and choose it). The line under the cables says which of the bundle's cables are calibrated,
+and when.
 
-1. Hold the power meter at the cable's tip (set to 465 nm). Keep the fiber away from any animal: the
-   light is continuous.
-2. Choose the meter's unit (**mW** or **uW**). The table lists currents (0–500 mA in 50 mA steps; change
-   the range and **Fill**).
-3. Select a row and press **Light on**; type the power read; press **Next**, which lights the next row.
+1. Hold the power meter at a cable's tip (set to 465 nm). Keep the fibers away from any animal: the
+   light is continuous (the driver's continuous mode).
+2. Choose the meter's unit (**mW** or **uW**). Each channel has a table of currents, 0–700 mA in 50 mA
+   steps, never above that channel's limit; change the range and **Fill** to replace both.
+3. Select a row of a channel and press its **On**; type the power read; press **Next**. A lit channel
+   follows the selected row, so **Next** lights the next current. **Off** switches that channel off.
    Without a connected driver, set each current on the driver by hand.
-4. The graph (current against mW/mm²) fills in as you type. **Save calibration** writes it.
+4. Each channel's graph (current against mW/mm²) fills in as you type, with that cable's saved
+   calibration dashed behind it. **Save calibrations** writes each channel that has readings.
+   Choosing another cable drops that channel's unsaved readings, after asking. Closing the window
+   switches both channels off.
 
 A calibration belongs to the cable, not the channel: the two LED channels are taken to give equal power
 at equal current, so a cable moved to the other channel at the commutator keeps its calibration. Each

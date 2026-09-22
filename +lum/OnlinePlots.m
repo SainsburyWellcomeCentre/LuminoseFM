@@ -543,8 +543,8 @@ classdef OnlinePlots < handle
             end
             xlabel(ax, 'Trial');
             set(ax, 'XLim', [0.5, obj.nTrialsToShow + 0.5]);
-            legend(ax, {'correct', 'incorrect', 'no choice'}, 'Location', 'northeastoutside', ...
-                   'Box', 'off', 'TextColor', t.Muted);
+            panelLegend(ax, [obj.handles.correct, obj.handles.incorrect, obj.handles.noChoice], ...
+                        {'correct', 'incorrect', 'no choice'}, t);
             if S.Task.TrainingStage == 1
                 ax.Title.String = 'Outcomes  (habituation: both side ports pay)';
             end
@@ -576,10 +576,10 @@ classdef OnlinePlots < handle
             set(ax, 'XLim', [-0.9 * window, 1.02 * window], 'YLim', [0.45, obj.nSlots + 0.55], ...
                 'YTick', [], 'XTick', [0 window], 'XGrid', 'off', 'YGrid', 'off');
             xlabel(ax, 'Stimulus window (s)');
-            text(ax, 1.02 * window, obj.nSlots + 0.42, 'A', 'Color', t.ChannelA, ...
-                 'FontWeight', 'bold', 'HorizontalAlignment', 'right', 'FontSize', 8);
-            text(ax, 1.02 * window, obj.nSlots + 0.62, 'B below', 'Color', t.ChannelB, ...
-                 'FontWeight', 'bold', 'HorizontalAlignment', 'right', 'FontSize', 8);
+            % Which lane is which, in the title rather than above the lanes, where it ran
+            % into the title.
+            ax.Title.String = sprintf('Now and next   %s A above   %s B below', ...
+                                      texColour(t.ChannelA), texColour(t.ChannelB));
         end
 
         function buildPerformancePanel(obj, ax, x)
@@ -595,9 +595,8 @@ classdef OnlinePlots < handle
             set(ax, 'YLim', [0 1], 'XLim', [0 20]);
             xlabel(ax, 'Trial');
             ylabel(ax, 'Fraction correct');
-            legend(ax, [obj.handles.performance, obj.handles.leftPerformance, ...
-                        obj.handles.rightPerformance], {'all', 'left-rewarded', 'right-rewarded'}, ...
-                   'Location', 'southeast', 'Box', 'off', 'TextColor', t.Muted);
+            panelLegend(ax, [obj.handles.performance, obj.handles.leftPerformance, ...
+                             obj.handles.rightPerformance], {'all', 'left-rewarded', 'right-rewarded'}, t);
         end
 
         function buildPsychometricPanel(obj, ax, layout)
@@ -607,8 +606,8 @@ classdef OnlinePlots < handle
             span = [min(layout.X), max(layout.X)];
             pad = max(0.5, 0.08 * diff(span));
             line(ax, span + [-pad pad], [0.5 0.5], 'Color', t.Faint, 'LineStyle', '--');
-            line(ax, layout.X, layout.Target, 'Color', t.Muted, 'LineStyle', ':', ...
-                 'Marker', 'd', 'MarkerSize', 5, 'MarkerEdgeColor', t.Muted, 'LineWidth', 1);
+            target = line(ax, layout.X, layout.Target, 'Color', t.Muted, 'LineStyle', ':', ...
+                          'Marker', 'd', 'MarkerSize', 5, 'MarkerEdgeColor', t.Muted, 'LineWidth', 1);
             nPoints = numel(layout.X);
             obj.handles.psychometric = errorbar(ax, layout.X, NaN(1, nPoints), ...
                 zeros(1, nPoints), zeros(1, nPoints), 'Color', t.Accent, 'LineWidth', 1.5, ...
@@ -619,6 +618,7 @@ classdef OnlinePlots < handle
             end
             xlabel(ax, layout.XLabel);
             ylabel(ax, 'P(choose left)');
+            panelLegend(ax, [obj.handles.psychometric, target], {'chose left', 'contingency'}, t);
         end
 
         function buildEvidencePanel(obj, ax)
@@ -645,8 +645,7 @@ classdef OnlinePlots < handle
             set(ax, 'XLim', [-0.06 1.06], 'YLim', [-0.06 1.06], 'XTick', 0:0.5:1, 'YTick', 0:0.5:1);
             xlabel(ax, 'u_A, evidence on A (fraction of the window lit)');
             ylabel(ax, 'u_B, evidence on B');
-            legend(ax, obj.handles.plane([1 3]), {'correct', 'incorrect'}, ...
-                   'Location', 'northeast', 'Box', 'off', 'TextColor', t.Muted, 'FontSize', 8);
+            panelLegend(ax, obj.handles.plane([1 3]), {'correct', 'incorrect'}, t);
         end
 
         function buildBarPanel(obj, ax)
@@ -678,9 +677,8 @@ classdef OnlinePlots < handle
             set(ax, 'YLim', [0 1], 'XLim', [0 20]);
             xlabel(ax, 'Trial');
             ylabel(ax, 'P(left)');
-            legend(ax, [obj.handles.biasLeft, obj.handles.biasTarget], ...
-                   {'chose left', 'bias correction target'}, 'Location', 'southeast', ...
-                   'Box', 'off', 'TextColor', t.Muted);
+            panelLegend(ax, [obj.handles.biasLeft, obj.handles.biasTarget], ...
+                        {'chose left', 'bias correction target'}, t);
         end
 
         function buildReactionTimePanel(obj, ax, x)
@@ -696,10 +694,8 @@ classdef OnlinePlots < handle
             set(ax, 'YLim', [0 0.5], 'XLim', [0.5, obj.nTrialsToShow + 0.5]);
             xlabel(ax, 'Trial');
             ylabel(ax, 'Seconds');
-            legend(ax, [obj.handles.leftReaction, obj.handles.rightReaction, ...
-                        obj.handles.medianReaction], {'chose left', 'chose right', 'median'}, ...
-                   'Location', 'north', 'Orientation', 'horizontal', 'Box', 'off', ...
-                   'TextColor', t.Muted);
+            panelLegend(ax, [obj.handles.leftReaction, obj.handles.rightReaction, ...
+                             obj.handles.medianReaction], {'chose left', 'chose right', 'median'}, t);
         end
 
         function buildCentreHoldPanel(obj, ax, x)
@@ -716,9 +712,8 @@ classdef OnlinePlots < handle
             set(ax, 'YLim', [0 0.5], 'XLim', [0.5, obj.nTrialsToShow + 0.5]);
             xlabel(ax, 'Trial');
             ylabel(ax, 'Seconds');
-            legend(ax, [obj.handles.heldCompleted, obj.handles.heldBroken, obj.handles.holdAsked], ...
-                   {'completed', 'broken', 'asked for'}, 'Location', 'north', ...
-                   'Orientation', 'horizontal', 'Box', 'off', 'TextColor', t.Muted);
+            panelLegend(ax, [obj.handles.heldCompleted, obj.handles.heldBroken, obj.handles.holdAsked], ...
+                        {'completed', 'broken', 'asked for'}, t);
         end
     end
 end
@@ -778,6 +773,20 @@ ax.Title.FontSize = 10;
 ax.Title.Color = t.Ink;
 ax.TitleHorizontalAlignment = 'left';
 hold(ax, 'on');
+end
+
+
+function panelLegend(ax, handles, labels, t)
+% A panel's key: one row under its axis label, where it covers no data and leaves the
+% title where every panel has it.
+legend(ax, handles, labels, 'Location', 'southoutside', 'Orientation', 'horizontal', ...
+       'Box', 'off', 'TextColor', t.Muted, 'FontSize', 8, 'AutoUpdate', 'off');
+end
+
+
+function switchText = texColour(rgb)
+% A TeX colour switch, for a label in two colours.
+switchText = sprintf('\\color[rgb]{%.3f,%.3f,%.3f}', rgb(1), rgb(2), rgb(3));
 end
 
 

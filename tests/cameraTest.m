@@ -191,6 +191,23 @@ window.close();
 verifyEmpty(testCase, window.Figure);
 end
 
+function testTheCameraWindowTimerStopsWithItsFigure(testCase)
+% Whoever deletes the window's figure, its timer goes too, so nothing is left calling into
+% +lum once RunProtocol('Stop') has taken the protocol folder off the path.
+camera = lum.defaultSettings().Camera;
+manager = StubCameraManager({'24226887', '24226657'});
+connected = lum.dev.configureCameras(manager, camera, 'PreviewRate', 5);
+cameras = lum.dev.RealCameras(manager, camera, '', connected);
+before = numel(timerfindall('Name', 'LuminoseFM camera window'));
+window = lum.gui.CameraWindow(cameras, camera, 'Visible', 'off');
+cleanup = onCleanup(@() window.close());
+verifyNumElements(testCase, timerfindall('Name', 'LuminoseFM camera window'), before + 1);
+delete(window.Figure);
+verifyNumElements(testCase, timerfindall('Name', 'LuminoseFM camera window'), before, ...
+                  'The timer is deleted with the figure');
+verifyWarningFree(testCase, @() window.close(), 'Closing afterwards is safe');
+end
+
 %% Whole sessions with simulated cameras --------------------------------------------------
 
 function testAnEmulatedBehaviourSessionRecordsVideo(testCase)

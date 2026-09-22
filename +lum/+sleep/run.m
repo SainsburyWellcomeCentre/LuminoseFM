@@ -1,4 +1,4 @@
-function run(S, rig, subject, headless, doricLED)
+function run(S, rig, subject, headless, doricLED, startup)
 % lum.sleep.run runs a clock session: a sleep session, or an ePhys calibration session.
 %
 % S.Session.Type says which. An ePhys calibration session (D18) runs the same way as a
@@ -72,6 +72,8 @@ function run(S, rig, subject, headless, doricLED)
 %   headless  true to skip the setup dialog and use S as it is (tests)
 %   doricLED  The lum.dev.DoricLED the protocol opened as it launched, or [] to open one
 %             here. Released here either way.
+%   startup   The protocol's lum.StartupTimes, carried on to the first block (a new one
+%             when omitted); stored as Data.Session.Startup
 %
 % See also: LuminoseFM, lum.gui.SleepSetupDialog, lum.sleep.Plots, lum.sleep.validate,
 %           lum.sleep.testPulsePlan, lum.sleep.nextBlock
@@ -80,6 +82,9 @@ global BpodSystem %#ok<GVMIS> % Bpod's own session object
 
 if nargin < 5
     doricLED = [];
+end
+if nargin < 6
+    startup = lum.StartupTimes();
 end
 kind = S.Session.Type;
 isEphys = strcmp(kind, 'EphysCalibration');
@@ -102,6 +107,7 @@ if ~headless
         return
     end
     SaveProtocolSettings(S);
+    startup.lap('setup dialog', true);
 end
 % Kept, because the console's End button clears BpodSystem.Path.Settings before the
 % teardown writes the settings back.
@@ -133,6 +139,7 @@ end
 for i = 1:numel(notes)
     fprintf('LuminoseFM: note: %s\n', notes{i});
 end
+startup.lap('checks');
 
 %% Timeline
 % Every sync pulse and every gate of light is laid out now, in session time, so the
@@ -171,6 +178,8 @@ catch openError
     BpodSystem.Status.BeingUsed = 0;
     rethrow(openError);
 end
+startup.lap('devices');
+startup.addParts('devices', devices.openSeconds);
 % Video first, so the barcode is on it.
 try
     devices.cameras.startRecording(BpodSystem.Path.CurrentDataFile);
@@ -179,6 +188,7 @@ catch recordError
     BpodSystem.Status.BeingUsed = 0;
     rethrow(recordError);
 end
+startup.lap('video start');
 
 syncChannel = '';
 if S.Session.UseSync && devices.flex.hasSync()
@@ -201,6 +211,7 @@ if S.Doric.ShowWindow && lightOn
     ledWindow = lum.gui.DoricWindow(devices.doricLED, S, 'Subject', subject, 'Editable', ~isEphys, ...
                                     'Calibrations', cals);
 end
+startup.lap('windows');
 
 %% Session barcode
 startTime = datetime('now');
@@ -219,6 +230,11 @@ if lightOn
             lum.led.describe(cals{2}, devices.doricLED.CurrentmA(2)), ...
             strjoin(description, sprintf('\n  ')));
 end
+
+startup.lap('barcode');
+fprintf('LuminoseFM: %s.\n', startup.describe());
+startupRecord = startup.record();  % Data.Session.Startup, written with the first block
+clear startup
 
 %% Blocks
 nSync = size(syncPulses, 1);
@@ -282,6 +298,7 @@ while BpodSystem.Status.BeingUsed == 1 && cursor.Time < cursor.End
         BpodSystem.Data.Session = sessionRecord(S, rig, devices, startTime, barcode, ...
                                                 barcodeSent, syncChannel, plan);
         BpodSystem.Data.Session.SyncFit = syncFit;
+        BpodSystem.Data.Session.Startup = startupRecord;
     end
     trial = BpodSystem.Data.RawEvents.Trial{nBlocks};
     trialStart = BpodSystem.Data.TrialStartTimestamp(nBlocks);
@@ -327,12 +344,8 @@ end
 %% Teardown
 % Everything is released here, before LuminoseFM hands the rig back with
 % RunProtocol('Stop'), which removes +lum from the path.
-if ~isempty(cameraWindow)
-    cameraWindow.close();
-end
-if ~isempty(ledWindow)
-    ledWindow.close();
-end
+closeWindow(cameraWindow, 'camera');  % Never closed by the End button (lum.gui.CameraWindow)
+closeWindow(ledWindow, 'LED');
 saved = false;
 plotsImage = '';
 if nBlocks > 0
@@ -424,7 +437,7 @@ end
 
 plots.close();  % Only hidden by the console's End button, so it could be saved above
 closeDevices(devices);
-clear devices plots cameraWindow  % No lum.* object may outlive RunProtocol('Stop')
+clear devices plots cameraWindow ledWindow  % No lum.* object may outlive RunProtocol('Stop')
 
 fprintf('LuminoseFM: %s session ended after %d sync pulse(s) in %d block(s).\n', label, nSyncSent, nBlocks);
 if lightOn
@@ -440,6 +453,19 @@ function releaseLED(led)
 % The LED the protocol opened, released when the session ends before lum.dev.open has it.
 if ~isempty(led)
     led.close();
+end
+
+
+function closeWindow(window, name)
+% Close a session window, warning rather than failing: the teardown must go on.
+if isempty(window)
+    return
+end
+try
+    window.close();
+catch closeError
+    warning('lum:sleep:run:windowNotClosed', 'The %s window did not close cleanly: %s', ...
+            name, closeError.message);
 end
 
 

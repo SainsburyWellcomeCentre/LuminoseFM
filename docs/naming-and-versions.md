@@ -126,6 +126,15 @@ names.
 | — | `GUIMeta.<name>.Help` for every runtime parameter; help line in the setup and runtime windows |
 | — | **▶ Play** buttons for the session's sounds in the setup dialog (`lum.testSounds`) |
 
+### 0.8.0 → 0.8.1 — the End button, LED calibration by pairs, startup times
+
+| 0.8.0 | 0.8.1 |
+|-------|-------|
+| the console's End button closed the camera window through Bpod (it was one of `BpodSystem.ProtocolFigures`), and could do so inside the window's own timer callback, whose `drawnow limitrate` let the button's callback in; on the rig MATLAB froze, and after Ctrl+C the timer went on calling `lum.gui.CameraWindow.refresh`, off the path | the camera and LED windows are closed by the protocol's teardown, first; the camera window's timer draws with `drawnow limitrate nocallbacks`, stops with its figure (`DeleteFcn`), and stops itself if the window cannot refresh for any reason. The setup dialog's camera preview draws the same way |
+| a **Calibrate…** button per channel on the Doric LED tab, for the cable on that channel; currents 0–500 mA | one **Calibrate LED power…** button: a window for the pair of cables on the commutator, one table, On/Off and graph per channel, currents 0–700 mA in 50 mA steps (never above the channel's limit), a line saying which of the bundle's cables are calibrated. Saved calibrations are unchanged (`DoricLED_<bundle>_<cable>.mat`) |
+| keys inside the plots (performance, evidence, side bias, reaction time, centre hold) covered data; *Now and next*'s A/B labels ran into its title | every key is one row under its panel's axis label; the A/B key is in *Now and next*'s title; the psychometric panel has a key |
+| — | `Data.Session.Startup`: each startup step's time, the dialogs as the operator's, and `lum.dev.open`'s per device; printed as the first trial or block starts |
+
 ### 0.7.2 → 0.8.0 — centre reward, retry after a wrong choice, centre hold plot
 
 | 0.7.2 | 0.8.0 |

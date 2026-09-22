@@ -29,6 +29,8 @@ function devices = open(rig, S, varargin)
 %   .doricLED  lum.dev.DoricLED — the LED driver, both channels in external TTL mode at
 %              S.Doric.CurrentmA (lum.dev.openDoricLED, D17); 'Manual' when it is set by
 %              hand
+%   .openSeconds  How long each device took to open, s (DoricLED, PulsePal, Cameras,
+%              HouseLight, HiFi, Flex), for the session's startup times (lum.StartupTimes)
 %
 % The HiFi module, when it is asked for but unreachable, degrades to its null shim
 % with a warning rather than ending the session: a rig with a loose HiFi cable can
@@ -67,16 +69,24 @@ led = p.Results.DoricLED;
 if isempty(led)
     led = lum.dev.openDoricLED(devices.emulated, S);
 end
+seconds = struct();
+opening = tic;
 setUpDoricLED(led, devices.emulated, S);
 devices.doricLED = led;
+seconds.DoricLED = toc(opening);
 
+opening = tic;
 devices.pulsePal = lum.dev.openPulsePal(devices.emulated, S);
+seconds.PulsePal = toc(opening);
+opening = tic;
 try
     devices.cameras = lum.dev.openCameras(devices.emulated, S);
 catch cameraError
     devices.pulsePal.close();
     rethrow(cameraError);
 end
+seconds.Cameras = toc(opening);
+opening = tic;
 try
     devices.houseLight = lum.dev.openHouseLight(devices.emulated, rig.HouseLight, S, devices.pulsePal);
 catch houseLightError
@@ -85,8 +95,14 @@ catch houseLightError
     rethrow(houseLightError);
 end
 devices.houseLight.attachCameras(devices.cameras);
+seconds.HouseLight = toc(opening);
+opening = tic;
 devices.hifi     = openHiFi(devices.emulated, rig, S);
+seconds.HiFi = toc(opening);
+opening = tic;
 devices.flex     = openFlex(devices.emulated, rig);
+seconds.Flex = toc(opening);
+devices.openSeconds = seconds;
 
 
 function setUpDoricLED(led, emulated, S)

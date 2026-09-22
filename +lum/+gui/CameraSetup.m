@@ -234,7 +234,7 @@ classdef CameraSetup < handle
                                      1:height(T), 'UniformOutput', false);
                     obj.say(strjoin(parts, '   |   '), false);
                 end
-                drawnow limitrate
+                drawnow limitrate nocallbacks  % No button's callback inside the timer's (CameraWindow)
             catch refreshError
                 obj.stopTimer();
                 obj.say(sprintf('Preview stopped: %s', refreshError.message), true);

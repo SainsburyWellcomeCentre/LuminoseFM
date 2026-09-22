@@ -9,11 +9,12 @@ classdef DoricSetup < handle
     %                     connection's state, and the driver's own window
     %   Fiber bundle      the bundle on the animal and the cable, by colour, on each
     %                     channel (2-to-19: blue on A and green on B by default;
-    %                     4-to-19: orange on A and blue on B)
-    %   Intensity         per channel: the LED current (mW/mm2 when the cable on it is
-    %                     calibrated, mA when not), its limit in mA, the cable's
-    %                     calibration, and Calibrate..., which measures it through this
+    %                     4-to-19: orange on A and blue on B), and Calibrate LED
+    %                     power..., which measures the cables two at a time, one on each
     %                     channel (lum.gui.DoricCalibration)
+    %   Intensity         per channel: the LED current (mW/mm2 when the cable on it is
+    %                     calibrated, mA when not), its limit in mA and the cable's
+    %                     calibration
     %   LED window        whether the session opens the LED window (lum.gui.DoricWindow)
     %
     % The tab shows the protocol's lum.dev.DoricLED, which connects in the background
@@ -152,7 +153,7 @@ classdef DoricSetup < handle
             grid = uigridlayout(parent, [1 2], 'ColumnWidth', {640, '1x'}, 'Padding', 12, ...
                                 'ColumnSpacing', 12, 'BackgroundColor', t.Background);
             left = uigridlayout(grid, [3 1], 'RowHeight', {lum.gui.Form.panelHeight(5) + 30, ...
-                                lum.gui.Form.panelHeight(3) + 16, '1x'}, 'Padding', 0, 'RowSpacing', 10, ...
+                                lum.gui.Form.panelHeight(4) + 16, '1x'}, 'Padding', 0, 'RowSpacing', 10, ...
                                 'BackgroundColor', t.Background);
 
             % The driver.
@@ -192,7 +193,7 @@ classdef DoricSetup < handle
 
             % The fiber bundle.
             bundles = lum.fiberBundles();
-            form = lum.gui.Form.panel(left, 'Fiber bundle', 3, t, 170);
+            form = lum.gui.Form.panel(left, 'Fiber bundle', 4, t, 170);
             lum.gui.Form.label(form, 'Bundle on the animal', t);
             obj.Controls.Bundle = uidropdown(form, 'Items', {bundles.Name}, 'Value', S.Light.Bundle, ...
                 'Tooltip', ['The fiber bundle on the animal: 2-to-19 (blue and green cables) or 4-to-19 '...
@@ -203,6 +204,13 @@ classdef DoricSetup < handle
             lum.gui.Form.label(form, 'Cable on channel B', t);
             obj.Controls.CableB = uidropdown(form, 'Items', {''}, ...
                 'Tooltip', 'The cable on the commutator lit by channel B (LED channel 2).');
+            lum.gui.Form.label(form, 'LED calibration', t);
+            obj.Controls.Calibrate = uibutton(form, 'Text', ['Calibrate LED power' char(8230)], ...
+                'ButtonPushedFcn', @(~, ~) obj.calibrate(), ...
+                'Tooltip', ['Measure the power leaving the cables with a power meter, two at a time: '...
+                            'the pair on the commutator, one on each channel, lit continuously at '...
+                            '0 to 700 mA. Saving replaces a cable''s earlier calibration; it is used on '...
+                            'either channel.']);
             fillCables(obj.Controls, bundles, S.Light.Cables);
             obj.Controls.Bundle.ValueChangedFcn = @(~, ~) obj.bundleChanged();
             obj.Controls.CableA.ValueChangedFcn = @(~, ~) obj.onEdit();
@@ -214,7 +222,7 @@ classdef DoricSetup < handle
                 'in external TTL mode: each channel is lit at its current while PulsePal''s output '...
                 'into it is high. The current is changed only between trials (the LED window), '...
                 'sleep blocks or ePhys steps.\n\nCalibrating measures the power leaving a cable '...
-                'at several currents, lit by the channel it is on. Irradiance is that power over the '...
+                'at several currents, two cables at a time, each lit by the channel it is on. Irradiance is that power over the '...
                 'area of the cable''s fibers (100 um each). The calibration belongs to the cable, not '...
                 'the channel: the two LED channels are taken to give equal power at equal current, '...
                 'so a cable moved to the other channel keeps its calibration. Once a cable is '...
@@ -228,8 +236,8 @@ classdef DoricSetup < handle
             colours = {t.ChannelA, t.ChannelB};
             names = {'Channel A  (LED channel 1)', 'Channel B  (LED channel 2)'};
             for k = 1:2
-                form = uigridlayout(rows, [6 3], 'ColumnWidth', {170, 120, '1x'}, ...
-                                    'RowHeight', {24, 26, 26, 24, 24, 30}, 'Padding', 0, ...
+                form = uigridlayout(rows, [5 3], 'ColumnWidth', {170, 120, '1x'}, ...
+                                    'RowHeight', {24, 26, 26, 24, 44}, 'Padding', 0, ...
                                     'RowSpacing', 6, 'ColumnSpacing', 10, 'BackgroundColor', t.Panel);
                 heading = uilabel(form, 'Text', names{k}, 'FontWeight', 'bold', 'FontColor', colours{k});
                 heading.Layout.Column = [1 3];
@@ -249,13 +257,6 @@ classdef DoricSetup < handle
                 lum.gui.Form.label(form, 'Calibration', t);
                 obj.Controls.CalibrationNote(k) = uilabel(form, 'Text', '', 'FontSize', 11, 'WordWrap', 'on');
                 obj.Controls.CalibrationNote(k).Layout.Column = [2 3];
-                uilabel(form, 'Text', '');
-                channel = k;
-                obj.Controls.Calibrate(k) = uibutton(form, 'Text', ['Calibrate' char(8230)], ...
-                    'ButtonPushedFcn', @(~, ~) obj.calibrate(channel), ...
-                    'Tooltip', ['Measure the power leaving the cable on this channel at several currents '...
-                                'with a power meter. Saving replaces any earlier calibration of that '...
-                                'cable, which is then used on either channel.']);
             end
         end
 
@@ -284,7 +285,7 @@ classdef DoricSetup < handle
             if isempty(obj.LED)
                 c.State.Text = 'Not opened.';
                 c.State.FontColor = obj.theme.Muted;
-                lum.gui.Form.setEnable({c.Connect, c.DoricWindow, c.Calibrate(1), c.Calibrate(2)}, false);
+                lum.gui.Form.setEnable({c.Connect, c.DoricWindow, c.Calibrate}, false);
                 return
             end
             c.State.Text = obj.LED.describeState();
@@ -301,7 +302,7 @@ classdef DoricSetup < handle
             lum.gui.Form.setEnable({c.Connect}, controlled && ~ismember(state, {'Ready', 'Connecting'}));
             lum.gui.Form.setEnable({c.DoricWindow}, controlled && strcmp(state, 'Ready'));
             % Calibration works without control too: the operator then sets each current by hand.
-            lum.gui.Form.setEnable({c.Calibrate(1), c.Calibrate(2)}, ~strcmp(state, 'Connecting'));
+            lum.gui.Form.setEnable({c.Calibrate}, ~strcmp(state, 'Connecting'));
         end
 
         function connect(obj)
@@ -329,16 +330,23 @@ classdef DoricSetup < handle
             end
         end
 
-        function calibrate(obj, k)
+        function calibrate(obj)
+            % One calibration window at a time, starting from the tab's bundle and cables.
+            if ~isempty(obj.calibrationWindow) && isvalid(obj.calibrationWindow) ...
+                    && isvalid(obj.calibrationWindow.Figure)
+                figure(obj.calibrationWindow.Figure);
+                return
+            end
             fig = ancestor(obj.Controls.State, 'figure');
             led = obj.LED;
             if ~isempty(led) && ~(led.isControlled() && strcmp(led.state(), 'Ready'))
                 led = [];   % Readings only: the operator sets each current on the driver
             end
-            limit = obj.Controls.MaxCurrent(k).Value;
-            obj.calibrationWindow = lum.gui.DoricCalibration(obj.paths{k}, 'LED', led, ...
-                'MaxCurrentmA', limit, 'Previous', obj.cals{k}, 'Folder', obj.calibrationFolder, ...
-                'OnSaved', @(~) obj.calibrationSaved(), 'Visible', fig.Visible);
+            c = obj.Controls;
+            obj.calibrationWindow = lum.gui.DoricCalibration(c.Bundle.Value, {c.CableA.Value, c.CableB.Value}, ...
+                'LED', led, 'MaxCurrentmA', [c.MaxCurrent(1).Value, c.MaxCurrent(2).Value], ...
+                'Folder', obj.calibrationFolder, 'OnSaved', @(~) obj.calibrationSaved(), ...
+                'Visible', fig.Visible);
         end
 
         function calibrationSaved(obj)

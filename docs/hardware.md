@@ -86,8 +86,9 @@ was set by hand (its front panel or Doric Neuroscience Studio), which must then 
 PulsePal's voltage (5 V) is a TTL level either way, not the intensity.
 
 **Calibration.** A cable's LED current can be calibrated against irradiance at its fiber tips: the
-Doric LED tab's **Calibrate…** lights the channel the cable is on continuously at a series of currents
-while a power meter reads the power leaving the cable (mW or µW). Irradiance is that power over the
+Doric LED tab's **Calibrate LED power…** takes the two cables on the commutator at once, one per
+channel, and lights each channel continuously (the driver's continuous mode) at a series of currents,
+0–700 mA in 50 mA steps by default, while a power meter reads the power leaving the cable (mW or µW). Irradiance is that power over the
 cable's fiber area. A calibration belongs to the cable (bundle and colour), not to the channel: the two
 LED channels are taken to give equal power at equal current, so a cable keeps its calibration when it is
 moved to the other channel. It is kept in `calibration/` in the repository as

@@ -30,6 +30,7 @@ LuminoseFM/
 │   ├── timerBudget.m             global timers left for light
 │   ├── SyncMode.m                how trials drive the sync TTL
 │   ├── SessionRunner.m           TrialManager on the rig, blocking in the emulator
+│   ├── StartupTimes.m            how long a session took to start, step by step (Session.Startup)
 │   ├── OnlinePlots.m             the live figure
 │   ├── loadSounds.m              the session's sounds, loaded once
 │   ├── testSounds.m              a sound of the session as a test, for the setup dialog's Play buttons
@@ -119,7 +120,8 @@ What it covers:
   one sentence per
   format and which need SpinVideo, where videos go,
   how settings become camera state and what a recording records, against `StubCameraManager`;
-  finishing a recording (the save marked before the stop); the camera window; and a whole behaviour
+  finishing a recording (the save marked before the stop); the camera window, and its timer going
+  with its figure, whoever deletes it; and a whole behaviour
   and a sleep session under `Bpod('EMU')` recording SpinCam's simulated cameras, checking that the
   video stops after the final save and the file still carries the recording summary (skipped without SpinCam:
   on the path, in `SPINCAM_FOLDER`, or beside the MATLAB folder). The other session tests run
@@ -129,7 +131,7 @@ What it covers:
   (with and without test pulses) under `Bpod('EMU')`, checking the files they produce — the house
   light clicked off from the live figure part way through (`startHouseLightClicker`): the edge in the
   trial or block, the level per trial or block and the session's record — and the plots image beside
-  the data.
+  the data, and the startup times, step by step and device by device (`Session.Startup`).
 - `habituationSessionTest` — a two-trial habituation session under `Bpod('EMU')`, its first trial
   played as the animal (`startMouse`): the side reward, the centre reward when valve 2 is calibrated
   (and none, with a warning, when it is not, as on the development machine), `CentreHoldTime`, and
@@ -150,7 +152,10 @@ What it covers:
   EphysCalibration barcode and its fitting to the cameras. `ephysSessionTest` runs a whole ePhys
   calibration session under `Bpod('EMU')` and checks each gate's current against its step.
 - `windowsTest` also covers the Doric LED tab (light path, calibration turning mA into mW/mm², a
-  limit stopping Start), the calibration window, the LED window and the ePhys calibration dialog.
+  limit stopping Start), the calibration window (two cables at a time: default currents, each
+  channel's limit, saving per cable, the next pair, one cable on both channels refused; and on
+  DoricLED's simulated driver, continuous light that follows the selected row and Off), the LED
+  window and the ePhys calibration dialog.
 - `lintTest` — keeps the repository at zero MATLAB Code Analyzer messages.
 
 Add a test with any behaviour change; the pure functions are the cheap place to do it.

@@ -42,6 +42,7 @@ global BpodSystem %#ok<GVMIS> % Bpod's own session object
 
 protocolRoot = fileparts(mfilename('fullpath'));
 addpath(fullfile(protocolRoot, 'hardware'));  % Session only; the saved path is untouched
+startup = lum.StartupTimes();  % Printed as the first trial starts; Data.Session.Startup
 
 %% Settings
 rig = RigConfig;
@@ -65,6 +66,7 @@ headless = isequal(getappdata(0, 'LuminoseFM_Headless'), true);
 % and sets the session up (lum.dev.openDoricLED). Every way out of the protocol from here
 % releases it.
 doricLED = openLED(rig, S);
+startup.lap('preflight');
 
 %% Session type
 if headless
@@ -79,14 +81,15 @@ else
         return
     end
     S.Session.Type = sessionType;
+    startup.lap('session type dialog', true);
 end
 
 if ismember(S.Session.Type, {'Sleep', 'EphysCalibration'})
     % Everything a sleep or ePhys calibration session holds, the LED included, is
     % released inside lum.sleep.run, so nothing from +lum is left for RunProtocol('Stop')
     % to strand when it removes the path.
-    lum.sleep.run(S, rig, subject, headless, doricLED);
-    clear doricLED
+    lum.sleep.run(S, rig, subject, headless, doricLED, startup);
+    clear doricLED startup
     if BpodSystem.Status.BeingUsed == 1
         RunProtocol('Stop');
     end
@@ -100,10 +103,12 @@ if ~headless
     if ~accepted
         fprintf('LuminoseFM: session setup cancelled.\n');
         releaseLED(doricLED);
+        clear startup
         BpodSystem.Status.BeingUsed = 0;
         return
     end
     SaveProtocolSettings(S);  % So the session can be reproduced or resumed
+    startup.lap('setup dialog', true);
 end
 % Kept, because the console's End button clears BpodSystem.Path.Settings before the
 % teardown writes the settings back.
@@ -132,6 +137,7 @@ for i = 1:numel(notes)
     fprintf('LuminoseFM: note: %s\n', notes{i});
 end
 cals = lum.led.calibrations(S);  % Each channel's light path's calibration, or none
+startup.lap('checks');
 
 %% Hardware
 % A session that delivers light refuses to start without PulsePal; one without light runs
@@ -147,6 +153,8 @@ catch openError
     rethrow(openError);
 end
 clear doricLED  % devices.doricLED from here on
+startup.lap('devices');
+startup.addParts('devices', devices.openSeconds);
 
 % Video starts before anything is sent to the rig, so the barcode is on it. spincam
 % records on threads of its own; the trial loop only marks each trial's end on its clock.
@@ -157,6 +165,7 @@ catch recordError
     BpodSystem.Status.BeingUsed = 0;
     rethrow(recordError);
 end
+startup.lap('video start');
 
 fprintf('LuminoseFM: %s\n', lum.trainingStageNote(S));
 if S.Task.TrainingStage == 1 && S.GUI.CentreRewardAmount > 0 && S.GUI.CentreRewardTrials > 0
@@ -183,6 +192,7 @@ sounds = lum.loadSounds(S, devices, stimulusSet);
 devices.hifi.freeze();  % No more USB transfers once the trial loop owns the module
 
 [cueComponents, stimulusComponents] = lum.stim.build(S);
+startup.lap('sounds');
 
 %% Interface
 BpodNotebook('init');
@@ -207,6 +217,7 @@ ledWindow = [];
 if S.Doric.ShowWindow && S.Session.UseOpto
     ledWindow = lum.gui.DoricWindow(devices.doricLED, S, 'Subject', subject, 'Calibrations', cals);
 end
+startup.lap('windows');
 
 %% Session barcode
 % One barcode before the first trial identifies the session on every acquisition
@@ -222,6 +233,7 @@ end
 if barcodeSent
     fprintf('LuminoseFM: session barcode %s sent (%.2f s).\n', barcode.Hex, barcode.TotalDuration);
 end
+startup.lap('barcode');
 
 %% Session state
 maxTrials = S.Session.MaxTrials;
@@ -244,6 +256,10 @@ plots.showNext(spec, queue);
 runtime.showStatus(sprintf('Session started  |  %s', runningText(spec, stimulusSet)));
 nextSpec = spec;
 nextLEDCurrent = ledCurrent;
+startup.lap('first trial');
+fprintf('LuminoseFM: %s.\n', startup.describe());
+startupRecord = startup.record();  % Data.Session.Startup, written with trial 1
+clear startup
 
 %% Trial loop
 % Wrapped, because a session that fails part way through must still be torn down:
@@ -305,6 +321,7 @@ try
             BpodSystem.Data.Session = sessionRecord(S, rig, stimulusSet, runner, devices, startTime, ...
                                                     barcode, barcodeSent, windowMode);
             BpodSystem.Data.Session.SyncFit = syncFit;
+            BpodSystem.Data.Session.Startup = startupRecord;
         end
 
         result = lum.scoreTrial(BpodSystem.Data.RawEvents.Trial{currentTrial}, spec, rig);
@@ -348,12 +365,11 @@ end
 % session is torn down explicitly, in order, and only then handed back to Bpod.
 nCompleted = history.nTrials;
 summary = 'no trials completed';
-if ~isempty(cameraWindow)
-    cameraWindow.close();
-end
-if ~isempty(ledWindow)
-    ledWindow.close();
-end
+% The camera and LED windows first, and never at the console's End button (they are not
+% Bpod's protocol figures): the camera window's timer is stopped here, from the protocol,
+% not from inside a callback.
+closeWindow(cameraWindow, 'camera');
+closeWindow(ledWindow, 'LED');
 saved = false;
 % The plots as the operator last saw them, beside the data file; written before the
 % final save so the file can say where the image is.
@@ -714,6 +730,19 @@ function releaseLED(doricLED)
 % The LED opened at launch, released when the protocol ends before the session has it.
 if ~isempty(doricLED)
     doricLED.close();
+end
+
+
+function closeWindow(window, name)
+% Close a session window, warning rather than failing: the teardown must go on.
+if isempty(window)
+    return
+end
+try
+    window.close();
+catch closeError
+    warning('lum:LuminoseFM:windowNotClosed', 'The %s window did not close cleanly: %s', ...
+            name, closeError.message);
 end
 
 

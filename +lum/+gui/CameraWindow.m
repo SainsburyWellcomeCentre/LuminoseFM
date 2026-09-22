@@ -11,8 +11,17 @@ classdef CameraWindow < handle
     % reads one preview frame per camera S.Camera.WindowRate times a second (5 by
     % default) from a timer, which the engine keeps ready at that rate and no faster;
     % halves large frames before drawing; updates existing image handles; and draws with
-    % drawnow limitrate. The statistics are read once a second. Closing the window stops
-    % the timer and nothing else: recording carries on.
+    % drawnow limitrate nocallbacks. The statistics are read once a second. Closing the
+    % window stops the timer and nothing else: recording carries on.
+    %
+    % Stopping from the console. The window is not one of Bpod's protocol figures: the
+    % console's End button runs RunProtocol('Stop') from its callback, and a Stop that
+    % closed this window could run inside the timer's own callback (a drawnow that
+    % processes callbacks lets the button in) and stop the timer from within it, which
+    % froze MATLAB on the rig (2026-09-22). So the timer's drawnow processes no
+    % callbacks, the protocol's teardown closes the window, and the timer runs through
+    % a function of this file that stops it, and closes the window, if the window
+    % cannot be refreshed for any reason, the class gone from the path included.
     %
     % Usage:
     %   window = lum.gui.CameraWindow(devices.cameras, S.Camera, 'Subject', subject);
@@ -36,8 +45,6 @@ classdef CameraWindow < handle
 
     methods
         function obj = CameraWindow(cameras, camera, varargin)
-            global BpodSystem %#ok<GVMIS> % Registered so Bpod closes the window at Stop
-
             p = inputParser;
             addParameter(p, 'Subject', '', @(x) ischar(x) || isstring(x));
             addParameter(p, 'Visible', 'on');
@@ -51,14 +58,13 @@ classdef CameraWindow < handle
             end
             [~, info] = cameras.latestFrames();
             obj.build(info, char(p.Results.Subject), p.Results.Visible);
-            if ~isempty(BpodSystem) && isobject(BpodSystem)
-                BpodSystem.ProtocolFigures.LuminoseCameraWindow = obj.Figure;
-            end
             if p.Results.StartTimer
                 obj.timerObject = timer('Name', 'LuminoseFM camera window', ...
                                         'ExecutionMode', 'fixedSpacing', 'BusyMode', 'drop', ...
-                                        'Period', max(round(1000 / obj.rate) / 1000, 0.033), ...
-                                        'TimerFcn', @(~, ~) obj.refresh());
+                                        'Period', max(round(1000 / obj.rate) / 1000, 0.033));
+                obj.timerObject.TimerFcn = @(source, ~) tick(source, obj, obj.Figure);
+                % Whoever deletes the figure, the timer stops with it.
+                obj.Figure.DeleteFcn = @(~, ~) stopQuietly(obj.timerObject);
                 start(obj.timerObject);
             end
         end
@@ -85,7 +91,7 @@ classdef CameraWindow < handle
                 if mod(obj.ticks, max(1, round(obj.rate))) == 1 || obj.rate < 1
                     obj.showStatistics();
                 end
-                drawnow limitrate
+                drawnow limitrate nocallbacks  % Never the End button inside this callback
             catch refreshError
                 % The session matters more than its preview: say why, and stop looking.
                 obj.stopTimer();
@@ -118,7 +124,7 @@ classdef CameraWindow < handle
             obj.Figure = figure('Name', 'LuminoseFM - cameras', 'NumberTitle', 'off', ...
                                 'MenuBar', 'none', 'ToolBar', 'none', 'Color', t.Background, ...
                                 'Visible', visible, 'Position', [520 80 n * tileWidth + 20 tileHeight + 30], ...
-                                'CloseRequestFcn', @(~, ~) obj.close());
+                                'CloseRequestFcn', @(source, ~) closeRequested(source, obj));
             heading = 'Cameras: recording';
             if ~isempty(subject)
                 heading = sprintf('%s  |  %s', heading, subject);
@@ -167,13 +173,47 @@ classdef CameraWindow < handle
         end
 
         function stopTimer(obj)
-            if ~isempty(obj.timerObject) && isvalid(obj.timerObject)
-                stop(obj.timerObject);
-                delete(obj.timerObject);
-            end
+            stopQuietly(obj.timerObject);
             obj.timerObject = [];
         end
     end
+end
+
+
+function tick(timerObject, window, figureHandle)
+% The timer's callback. Anything that stops the window refreshing, including its class
+% no longer being on the path once RunProtocol('Stop') has removed the protocol folder,
+% stops the timer and closes the figure, using nothing but built-ins.
+try
+    window.refresh();
+catch
+    stopQuietly(timerObject);
+    if isgraphics(figureHandle)
+        delete(figureHandle);
+    end
+end
+end
+
+
+function closeRequested(figureHandle, window)
+% The window's close box: close() normally, and the figure alone if that cannot run.
+try
+    window.close();
+catch
+    delete(figureHandle);
+end
+end
+
+
+function stopQuietly(timerObject)
+% Stop and delete a timer, whatever state it is in.
+try
+    if ~isempty(timerObject) && isvalid(timerObject)
+        stop(timerObject);
+        delete(timerObject);
+    end
+catch
+end
 end
 
 

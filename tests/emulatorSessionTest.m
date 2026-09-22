@@ -176,6 +176,18 @@ info = imfinfo(sessionData.Session.PlotsImage);
 verifyGreaterThan(testCase, info.Width, 500);
 end
 
+function testTheStartupIsTimedStepByStep(testCase)
+% Where the time from launch to the first trial went, device by device.
+startup = testCase.TestData.sessionData.Session.Startup;
+names = {startup.Steps.Name};
+verifyEqual(testCase, names, {'preflight', 'checks', 'devices', 'video start', 'sounds', ...
+                              'windows', 'barcode', 'first trial'}, 'Headless: no dialogs');
+verifyEqual(testCase, startup.TotalSeconds, sum([startup.Steps.Seconds]), 'AbsTol', 1e-9);
+verifyEqual(testCase, startup.OperatorSeconds, 0);
+verifyEqual(testCase, sort(fieldnames(startup.Parts.devices))', ...
+            sort({'DoricLED', 'PulsePal', 'Cameras', 'HouseLight', 'HiFi', 'Flex'}));
+end
+
 function testTheEmulatorGetsTheRunnerAndWindowItCanRun(testCase)
 session = testCase.TestData.sessionData.Session;
 verifyEqual(testCase, session.RunnerMode, 'blocking');

@@ -9,7 +9,9 @@ classdef DoricWindow < handle
     % ePhys calibration session the schedule sets the current, so the window only shows it.
     %
     % It never sends anything itself and costs the trial loop nothing: it redraws when
-    % the LED says something changed. Closing it only hides it; close() deletes it.
+    % the LED says something changed. Closing it only hides it; close() deletes it. It is
+    % not one of Bpod's protocol figures: the console's End button leaves it to the
+    % protocol's teardown, which closes it before anything else.
     %
     % Usage:
     %   w = lum.gui.DoricWindow(devices.doricLED, S, 'Subject', subject, 'Editable', true, ...
@@ -45,7 +47,7 @@ classdef DoricWindow < handle
             obj.cals = p.Results.Calibrations;
             obj.editable = logical(p.Results.Editable) && led.isControlled();
             obj.build(S, char(p.Results.Subject), p.Results.Visible);
-            obj.listener = addlistener(led, 'Changed', @(~, ~) obj.refresh());
+            obj.listener = addlistener(led, 'Changed', @(~, ~) ledChanged(obj));
             obj.refresh();
         end
 
@@ -145,4 +147,14 @@ classdef DoricWindow < handle
             lum.gui.Form.note(outer, note, t);
         end
     end
+end
+
+
+function ledChanged(window)
+% The LED's Changed event, which its package's polling timer raises: a window that cannot
+% redraw (closed, or its class gone from the path after RunProtocol('Stop')) is skipped.
+try
+    window.refresh();
+catch
+end
 end

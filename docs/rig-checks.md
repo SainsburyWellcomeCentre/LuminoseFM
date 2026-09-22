@@ -12,9 +12,11 @@ and move each one to *Done* with its result and session names.
 
 ### P4. First calibration of each cable
 
-Calibrate each cable in use once (Doric LED tab, **Calibrate…** on the channel it is on) with a power
-meter at its tip, set to 465 nm: blue and green on the 2-to-19 bundle; on the 4-to-19, each of black,
-blue, orange and green that will be used. A calibration belongs to the cable and holds on either
+Calibrate each cable in use once (Doric LED tab, **Calibrate LED power…**, two cables at a time, one on
+each channel) with a power meter at its tip, set to 465 nm: blue and green on the 2-to-19 bundle; on
+the 4-to-19, each of black, blue, orange and green that will be used, as two pairs. Check on the way
+that **On** and **Off** switch only their own channel, that a lit channel follows **Next**, and that
+closing the window switches both off (0.8.1 window). A calibration belongs to the cable and holds on either
 channel, which assumes the two LED channels give equal power at equal current: to check that, read
 both of the driver's outputs directly (bundle off) at the same current. Then check the tab shows
 mW/mm² and the sessions print irradiance.
@@ -31,6 +33,23 @@ mW/mm² and the sessions print irradiance.
    *White noise* and *Timeout + noise* the whole burst (`S.Sound.NoiseDuration`, 0.5 s) is heard
    before the next trial; before 0.8.0 the ITI cut it off at once. With *Punish on* *None*, a wrong
    poke followed by the correct one opens the correct valve.
+
+### P6. The End button with the camera and LED windows open (0.8.1)
+
+A behaviour session with video, the camera window and the LED window (the defaults), ended with the
+console's **End** button part way through a trial; then the same during a sleep session. MATLAB must
+not freeze: both windows close, the command window prints *session ended*, and no `TimerFcn`
+error about `lum.gui.CameraWindow` or destructor warning about `lum.SessionRunner` follows. The data
+file and `_plots.png` are written. Before 0.8.1 this froze MATLAB (2026-09-22, sessions
+`FakeSubject_LuminoseFM_20260922_132416` and `..._135918`, which have no `.mat`).
+
+### P7. Where the start-up time goes (0.8.1)
+
+Start a behaviour session with everything on (light, video, sound) and note the line *LuminoseFM:
+ready ... after launch* (also `Data.Session.Startup`). In the one 0.8.0 rig session with video,
+opening the cameras to starting the recording took 22 s (SpinCam's `HostClockAnchor` against
+`RecordingStart`), which covers the cameras, the house light, the HiFi module and Flex: the line now
+splits it. Record it here; it decides what to speed up next.
 
 ## Done
 

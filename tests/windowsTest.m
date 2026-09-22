@@ -714,36 +714,91 @@ verifyEqual(testCase, app.collect().Doric, S.Doric);
 end
 
 function testTheCalibrationWindowSavesWhatWasRead(testCase)
+% Two cables at a time, one per channel, each saved as its own cable's calibration.
 assumeUIFigures(testCase);
 folder = tempname;
 mkdir(folder);
 removeFolder = onCleanup(@() rmdir(folder, 's'));
-S = testCase.TestData.S;
-S.Light.Bundle = '4-to-19';
-path = lum.led.lightPath(S, 2);
 saved = {};
-w = lum.gui.DoricCalibration(path, 'Folder', folder, 'Visible', 'off', ...
-                             'OnSaved', @(cal) assignSaved(cal));
+w = lum.gui.DoricCalibration('4-to-19', {'orange', 'blue'}, 'Folder', folder, 'Visible', 'off', ...
+                             'MaxCurrentmA', [300 700], 'OnSaved', @(cal) assignSaved(cal));
 cleanup = onCleanup(@() w.close());
-verifyEqual(testCase, w.Controls.On.Enable, matlab.lang.OnOffSwitchState('off'), ...
+verifyEqual(testCase, w.Controls.On(1).Enable, matlab.lang.OnOffSwitchState('off'), ...
             'No driver: the currents are set by hand');
 verifyEqual(testCase, w.Controls.Save.Enable, matlab.lang.OnOffSwitchState('off'), 'No readings yet');
+verifyEqual(testCase, cell2mat(w.Controls.Table(2).Data(:, 1))', 0:50:700, 'The default currents');
+verifyEqual(testCase, cell2mat(w.Controls.Table(1).Data(:, 1))', 0:50:300, 'Never above the limit');
+verifyEqual(testCase, {w.Paths{1}.Cable, w.Paths{2}.Cable}, {'orange', 'blue'});
+verifySubstring(testCase, w.Controls.BundleNote.Text, 'black: not yet');
+
 w.Controls.Unit.Value = 'uW';
-w.setPower(1, 0);
-w.setPower(3, 800);
-w.setPower(5, 1500);
+w.setPower(2, 1, 0);
+w.setPower(2, 3, 800);
+w.setPower(2, 5, 1500);
 verifyEqual(testCase, w.Controls.Save.Enable, matlab.lang.OnOffSwitchState('on'));
-data = w.Controls.Table.Data;
-verifyEqual(testCase, data{3, 3}, 0.8 / path.Area, 'RelTol', 1e-9, 'uW to mW/mm2');
-verifyTrue(testCase, w.save());
-verifyNotEmpty(testCase, saved);
-loaded = lum.led.loadCalibration(path, folder);
+data = w.Controls.Table(2).Data;
+verifyEqual(testCase, data{3, 3}, 0.8 / w.Paths{2}.Area, 'AbsTol', 0.005, 'uW to mW/mm2, shown to 0.01');
+verifyTrue(testCase, w.save(), 'Channel A has no readings and is skipped');
+verifyNumElements(testCase, saved, 1);
+loaded = lum.led.loadCalibration(w.Paths{2}, folder);
 verifyEqual(testCase, loaded.CurrentmA, [0; 100; 200]);
 verifyEqual(testCase, loaded.PowerUnit, 'uW');
+verifyEqual(testCase, loaded.MeasuredOn, 'B');
+verifySubstring(testCase, w.Controls.BundleNote.Text, 'blue: ');
+
+% The next pair: black on A and green on B, with fresh tables.
+w.setCables('4-to-19', {'black', 'green'});
+verifyEqual(testCase, {w.Paths{1}.Cable, w.Paths{2}.Cable}, {'black', 'green'});
+verifyTrue(testCase, all(isnan(cellfun(@double, w.Controls.Table(2).Data(:, 2)))));
+w.setPower(1, 1, 0);
+w.setPower(1, 2, 1000);
+w.setPower(2, 1, 0);
+w.setPower(2, 2, 2000);
+verifyTrue(testCase, w.save());
+verifyNumElements(testCase, saved, 3);
+verifyNotEmpty(testCase, lum.led.loadCalibration(w.Paths{1}, folder));
+verifySubstring(testCase, w.Controls.BundleNote.Text, 'black: ');
+
+w.setCables('4-to-19', {'green', 'green'});
+w.setPower(1, 2, 1000);
+verifyFalse(testCase, w.save(), 'One cable cannot be on both channels');
+verifySubstring(testCase, w.Controls.Status.Text, 'same cable');
 
     function assignSaved(cal)
-        saved = {cal};
+        saved{end+1} = cal;
     end
+end
+
+function testTheCalibrationWindowLightsEachChannelContinuously(testCase)
+assumeUIFigures(testCase);
+testCase.assumeNotEmpty(lum.dev.DoricLED.locatePackage(''), 'The DoricLED package is not on the path.');
+S = testCase.TestData.S;
+led = lum.dev.openDoricLED(true, S);
+cleanupLED = onCleanup(@() led.close());
+led.ensureReady(10);
+transport = led.LightSource.Transport;
+folder = tempname;
+mkdir(folder);
+removeFolder = onCleanup(@() rmdir(folder, 's'));
+w = lum.gui.DoricCalibration('2-to-19', {'blue', 'green'}, 'LED', led, 'Folder', folder, ...
+                             'Visible', 'off');
+cleanup = onCleanup(@() w.close());
+verifyEqual(testCase, w.Controls.On(2).Enable, matlab.lang.OnOffSwitchState('on'));
+transport.clearCalls();
+w.select(2, 3);
+w.lightOn(2);
+settings = transport.callsOf('SETTINGS');
+verifyEqual(testCase, char(settings(end).Args.Settings.Mode), 'CW');
+verifyEqual(testCase, settings(end).Args.Settings.CurrentmA, 100);
+verifySubstring(testCase, w.Controls.Light(2).Text, 'On, continuous, 100 mA');
+w.next(2);
+settings = transport.callsOf('SETTINGS');
+verifyEqual(testCase, settings(end).Args.Settings.CurrentmA, 150, 'A lit channel follows the row');
+verifySubstring(testCase, w.Controls.Light(1).Text, 'Off', 'Channel A was never lit');
+transport.clearCalls();
+w.switchOff(2);
+verifyNotEmpty(testCase, transport.callsOf('STOP'));
+verifySubstring(testCase, w.Controls.Light(2).Text, 'Off');
 end
 
 function testTheLEDWindowAsksForAChangeAtTheNextTrial(testCase)

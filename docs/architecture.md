@@ -766,6 +766,16 @@ settings it ran with.
 - Closing a plot window during a session hides it; it is still updated and saved.
 - The protocol runs through MATLAB's `run`, which makes the protocol folder the current folder, so
   `+lum` still resolves in a teardown that follows the End button's `rmpath`.
+- Windows with a timer are not protocol figures (0.8.1). The End button's callback can run inside
+  any `drawnow` or `pause` that processes callbacks, including one in a timer callback. The camera
+  window was registered with Bpod and drew with `drawnow limitrate` from its timer, so Stop could
+  close it, and stop and delete its timer, from inside that timer's own callback; on the rig this
+  froze MATLAB, and after Ctrl+C the protocol's workspace was cleared outside the protocol folder,
+  so the timer and `lum.SessionRunner`'s destructor could no longer find their classes. Now the
+  camera and LED windows are closed by the teardown, first; the camera timer draws with
+  `drawnow limitrate nocallbacks`, is stopped by its figure's `DeleteFcn`, and runs through a local
+  function that stops it, with built-ins only, whenever the window cannot refresh. Any new timer
+  that draws follows the same rules.
 - A settings file is a *last session* file: to keep a set of settings apart, create another settings
   file in the launch manager.
 
@@ -806,7 +816,9 @@ unchanged. What MATLAB adds is the current:
   converting by linear interpolation, never extrapolating, and rounding to whole mA. Calibrations
   live in `calibration/` at the repository root, one file per bundle and cable
   (`DoricLED_<bundle>_<cable>.mat`), replaced by the next calibration of that cable, and ignored by
-  git.
+  git. They are measured two cables at a time (`lum.gui.DoricCalibration`, 0.8.1), because the
+  commutator takes two: one table, On/Off and graph per channel, the channel lit in the driver's
+  continuous mode at the selected current, 0–700 mA in 50 mA steps by default.
 
 **Why.**
 
@@ -1041,8 +1053,11 @@ session type (D11; sleep and ePhys calibration hand over to `lum.sleep.run`), se
 components, open the runtime window, plots and analog viewer, send the barcode, then the D3 loop.
 All per-trial work — runtime sync, any LED current asked for, trial spec, PulsePal programming, plot
 update, saving — happens
-inside the prepare window, and its cost is written to `Data.Timing`. Teardown saves the plots as an
-image, writes the final file, writes the settings back and stops the video (D14, D16).
+inside the prepare window, and its cost is written to `Data.Timing`. Each step before the first trial
+is timed (`lum.StartupTimes`, dialogs counted as the operator's time, `lum.dev.open` device by device),
+printed as the first trial starts and written to `Data.Session.Startup`. Teardown closes the camera
+and LED windows, saves the plots as an image, writes the final file, writes the settings back and
+stops the video (D14, D16).
 
 The loop is wrapped in a `try`. Bpod runs a protocol file with no `try` of its own, so an error
 thrown from the loop used to leave the trial manager's polling timer running, the runtime window

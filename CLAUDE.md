@@ -55,8 +55,10 @@ box). Permission covers that request only. Close nothing of theirs: if the MATLA
 light, hearing sound, poking, moving a cable. The operator works remotely at times, so run those checks
 the next time they say they are at the rig. That doc also says how to run a headless session on the
 rig: do what `RunProtocol` does, open `_ANLG.dat` and reset the session clock. **Pending now (all need
-eyes at the rig): P4 the first calibration of each cable; P5 valve 2's calibration, the centre reward
-and the punishment noise heard to its end.** (P1–P3 passed on 2026-09-21.)
+eyes at the rig): P4 the first calibration of each cable (with the 0.8.1 two-cable window); P5 valve
+2's calibration, the centre reward and the punishment noise heard to its end; P6 the End button with
+the camera and LED windows open (it froze MATLAB before 0.8.1); P7 the startup line, to see where the
+time goes.** (P1–P3 passed on 2026-09-21.)
 
 ## Stay inside the working folder
 
@@ -185,6 +187,10 @@ stops the session part way through as though the End button had been pressed.
 - `..._ANLG.dat` is Bpod's raw stream of the Flex analog input (flow meter), opened by the launch
   manager and written as samples arrive; the `.mat` gets it as `Data.Analog` at teardown. Kept as
   the raw copy; see `docs/data-format.md`.
+- `Data.Session.Startup` (0.8.1, `lum.StartupTimes`): each startup step's seconds, dialogs marked as
+  the operator's, `Parts.devices` per device from `lum.dev.open`'s `devices.openSeconds`; printed as
+  the first trial or block starts. A new startup step gets a `startup.lap(...)` in both `LuminoseFM`
+  and `lum.sleep.run` (the object is cleared before the loop: no `lum.*` object may outlive Stop).
 - Teardown (D16) saves the plot figure as `<data file name>_plots.png` beside the data file
   (`lum.gui.savePlotsImage`, path in `Data.Session.PlotsImage`) before the final save, and after it
   writes the settings back to the settings file captured at session start (`settingsFile`), runtime
@@ -322,8 +328,11 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   windows show mW/mm² for a channel whose cable is calibrated, through `lum.gui.IntensityField`. A
   calibration is per **cable** (bundle and colour), not per channel (`lum.led.calibrationFile`): the
   two LED channels are taken to give equal power at equal current, so a cable swapped to the other
-  channel keeps its calibration. It records the channel it was measured on (`MeasuredOn`). Saved to
-  `calibration/` by `lum.gui.DoricCalibration`, replaced by the next one of that cable. `lum.led.validate(S)` is the LED
+  channel keeps its calibration. It records the channel it was measured on (`MeasuredOn`). Measured two
+  cables at a time, the pair on the commutator, from the Doric LED tab's one **Calibrate LED power…**
+  button (`lum.gui.DoricCalibration(bundle, {cableA, cableB}, ...)`: a table, On/Off and graph per
+  channel, continuous mode, 0–700 mA in 50 mA steps capped at each channel's limit). Saved to
+  `calibration/`, replaced by the next one of that cable. `lum.led.validate(S)` is the LED
   check every session's validation runs (errors cals-independent; notes only when given cals).
   The DoricLED package is optional: without it, or with `S.Doric.Enabled` off, the driver is used as
   set by hand and currents are NaN.
@@ -425,7 +434,9 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   dialogs after `registerTooltips`), the help line, updated on every change. Add a format to both
   lists together. `lum.dev.openCameras` refuses a SpinVideo format (`needsSpinVideo`) when the
   engine lacks SpinVideo (`SpinCam.Engine.HasSpinVideo`), before recording starts;
-  `Session.Cameras.EngineVersion` records `SpinCam.Engine.Version`. Use only SpinCam's public API
+  `Session.Cameras.EngineVersion` records `SpinCam.Engine.Version`. The camera window
+  (`lum.gui.CameraWindow`) is not one of `BpodSystem.ProtocolFigures`: the teardown closes it (see
+  the gotcha on timers and the End button). Use only SpinCam's public API
   (`spincam.CameraManager`, `VideoRecorder`, `SpinCam.Engine`), never `spincam.internal.*`. The
   dependency list is `docs/hardware.md` §3. Never modify SpinCam
   from this repository — it is outside the working folder; changes to it are made in its own
@@ -617,7 +628,8 @@ where it can be tested with no hardware.
 | `+lum/punishmentFor.m` | Which mistakes are punished, and how; whether a wrong choice may be retried |
 | `+lum/SyncMode.m` | How trials drive the sync TTL; codes are part of the data format |
 | `+lum/SessionRunner.m` | TrialManager on the rig, blocking in the emulator (D3) |
-| `+lum/OnlinePlots.m` | The behaviour session's live figure: now and next, outcomes; performance, psychometric, evidence (u_A vs u_B: fraction of the window each channel is lit); by side, side bias, reaction time, centre hold (time in the port vs asked for); header: water (side and centre) and the running hold |
+| `+lum/StartupTimes.m` | How long the session took to start, step by step (`Data.Session.Startup`) |
+| `+lum/OnlinePlots.m` | The behaviour session's live figure: now and next, outcomes; performance, psychometric, evidence (u_A vs u_B: fraction of the window each channel is lit); by side, side bias, reaction time, centre hold (time in the port vs asked for); header: water (side and centre) and the running hold. Every key goes through `panelLegend`: one row under the axis label, never over data |
 | `+lum/loadSounds.m` | The session's sounds, loaded once |
 | `+lum/testSounds.m`, `toneFrequencies.m` | A session sound as `TestHiFiSound` arguments, for the Play buttons; group tone spacing |
 | `+lum/fiberBundles.m`, `experimentChoices.m` | Bundle cables and spot counts; the Experiment tab's lists |
@@ -667,6 +679,16 @@ where it can be tested with no hardware.
   `GlobalTimerExample_PWM.m` passes it under another name in that slot. Confirm on the rig.
 - Transitions on a global timer ending live in `sma.GlobalTimerEndMatrix(state, timer)`, and
   on conditions in `sma.ConditionMatrix(state, condition)`, not in `InputMatrix`.
+- **A timer callback must not let the End button in.** The console's End button runs
+  `RunProtocol('Stop')` from its callback, which MATLAB runs inside any `drawnow` or `pause` that
+  processes callbacks — including one inside a timer's callback. In 0.8.0 the camera window was a
+  protocol figure whose timer drew with `drawnow limitrate`, so Stop closed the window and stopped its
+  timer from inside that timer's callback, and MATLAB froze on the rig (2026-09-22); after Ctrl+C the
+  workspace was cleared outside the protocol folder and the timer kept calling a method it could no
+  longer find. So: a timer draws with `drawnow limitrate nocallbacks`; a window with a timer is not
+  registered in `BpodSystem.ProtocolFigures` (the teardown closes it, through a `try`); the timer is
+  stopped by its figure's `DeleteFcn`; and its callback is a local function that stops it with
+  built-ins if the window cannot refresh (`lum.gui.CameraWindow`).
 - `RunProtocol('Stop')` removes the protocol folder from the MATLAB path. Nothing needing
   `+lum` may run after it, object destructors included — release devices, close the runtime
   window and clear handles first, as `LuminoseFM` does.

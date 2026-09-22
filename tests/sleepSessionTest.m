@@ -65,6 +65,14 @@ verifyFalse(testCase, isfield(sessionData, 'LightSegments'), 'No test pulses, no
 verifyFalse(testCase, sessionData.Session.TestPulses.Enabled);
 end
 
+function testTheStartupIsTimed(testCase)
+startup = testCase.TestData.sessionData.Session.Startup;
+verifyEqual(testCase, {startup.Steps.Name}, ...
+            {'preflight', 'checks', 'devices', 'video start', 'windows', 'barcode'}, ...
+            'Headless: no dialogs; carried on from LuminoseFM to the first block');
+verifyTrue(testCase, isfield(startup.Parts.devices, 'PulsePal'));
+end
+
 function testTheHouseLightIsRecordedPerBlock(testCase)
 % On in the settings, and clicked off from the sleep window while a block runs: the block
 % started on and carries the edge; any after it start off.

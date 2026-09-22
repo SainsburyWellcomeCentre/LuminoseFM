@@ -105,6 +105,12 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
 - `SyncFit` — what `lum.sync.fitToCameras` widened so the cameras could read the sync line, one text
   per value (e.g. `'0 bit 20 -> 66.7 ms'`); empty when nothing was. `Settings` and `Barcode.Params`
   hold the fitted values; the settings file keeps the typed ones
+- `Startup` (0.8.1) — how long the session took to start, from the protocol's launch to the first
+  trial (`lum.StartupTimes`): `Steps` (`Name`, `Seconds`, `Operator`: true for a dialog, the
+  operator's time), in order — `preflight`, `session type dialog`, `setup dialog`, `checks`,
+  `devices`, `video start`, `sounds`, `windows`, `barcode`, `first trial`; `Parts.devices`, seconds
+  per device as `lum.dev.open` opened it (`DoricLED`, `PulsePal`, `Cameras`, `HouseLight`, `HiFi`,
+  `Flex`); `TotalSeconds` and `OperatorSeconds`. Headless sessions have no dialog steps
 
 ### One value per trial
 
@@ -186,6 +192,8 @@ sent, start and end time, barcode, `TestPulses`, version, PulsePal and Flex logs
   0 when off; switches during a block are `BNC1High`/`BNC1Low` events in it.
 - `Session.PlotsImage`, `Session.SyncFit`, `Session.HouseLight`, `DeviceLog.HouseLight`,
   `Session.DoricLED`, `DeviceLog.DoricLED` — as for behaviour.
+- `Session.Startup` — as for behaviour, up to the first block: its steps end at `barcode`, and have no
+  `sounds`.
 
 Per-pulse carrier copies are never stored: the compiled steps are written once.
 
@@ -346,6 +354,7 @@ the null device shims swallowed is recorded in `Data.Session.DeviceLog`. See
   `Settings.Sleep.HouseLight`, no `Session.HouseLight` record, and switches took effect only at the
   next trial or block: their `Data.HouseLight` is the level through the whole trial or block. Their
   `Session.Subject` may be empty; the subject is in the file name.
+- **Sessions before 0.8.1** have no `Session.Startup`.
 - **Sessions before 0.6.1** have 10 ms / 30 ms barcode bits by default, no `Session.SyncFit`, no
   `HouseLight` series and no `Session.PlotsImage` (the house light
   was off in every state), and their settings file holds the settings as Start was pressed, not as

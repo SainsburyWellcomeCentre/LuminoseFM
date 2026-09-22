@@ -42,11 +42,15 @@ function text = version()
 % centre reward (state CentreReward, Data.CentreReward), lets an unpunished incorrect choice
 % go on to the correct port (state RetryResponse, Data.ResponseRetries; no punishment is the
 % new default), lets a punishment noise play to its end, records Data.CentreHoldTime and
-% plots it, and switches automatic shaping on for habituation as well as training.
+% plots it, and switches automatic shaping on for habituation as well as training. 0.8.1
+% stops the camera window's timer from the teardown rather than from the console's End
+% button (which froze MATLAB on the rig), calibrates LED power two cables at a time from
+% one window, keeps the plots' keys off their data, and records how long the session
+% took to start (Data.Session.Startup).
 %
 % See also: LuminoseFM
 
-release = '0.8.0';
+release = '0.8.1';
 text = release;
 
 try
