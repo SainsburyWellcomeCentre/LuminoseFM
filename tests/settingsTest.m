@@ -201,6 +201,58 @@ verifyFalse(testCase, isfield(S.Task, 'StimulusNames'));
 verifyTrue(testCase, any(contains(added, 'retired')));
 end
 
+function testOldStimulusFamiliesBecomeTheNewOnes(testCase)
+% 0.9.0 redesigned the families: each old one is converted, and P(left) survives only
+% where the groups are still the same ones.
+old = oldGenerator('pure', 'OnFraction', 0.75);
+[S, added] = lum.mergeSettings(lum.defaultSettings, withGenerator(old, [1 0]));
+g = S.Stimulus.Generator;
+verifyEqual(testCase, {g.Family, g.PureChannels}, {'pure', 'A and B'});
+verifyEqual(testCase, g.PureFractions, 0.75);
+verifyEqual(testCase, S.Task.GroupPLeft, [1 0]);
+verifyFalse(testCase, any(isfield(g, {'OnFraction', 'PureChannel', 'Motif', 'CycleBins'})), ...
+            'The old fields are removed');
+verifyTrue(testCase, any(contains(added, 'stimulus families redesigned')));
+
+old = oldGenerator('sequence', 'Motif', [1 3 2 0], 'NumCycles', 2, 'DutyCycle', [0.5 0.5]);
+S = lum.mergeSettings(lum.defaultSettings, withGenerator(old, [1 0]));
+g = S.Stimulus.Generator;
+verifyEqual(testCase, {g.Family, g.MotifLeftWords, g.MotifRightWords}, ...
+            {'motif', 'AXB-AXB-', 'BXA-BXA-'}, 'The motif and its mirror, as words');
+verifyEqual(testCase, g.MotifFill, 0.5);
+verifyEqual(testCase, S.Task.GroupPLeft, [1 0]);
+
+old = oldGenerator('occupancy', 'nGroups', 5);
+S = lum.mergeSettings(lum.defaultSettings, withGenerator(old, linspace(1, 0, 5)));
+verifyEqual(testCase, S.Stimulus.Generator.Family, 'mixture');
+verifyEmpty(testCase, S.Task.GroupPLeft, 'Other groups: the family''s contingency');
+verifyEqual(testCase, lum.validateSettings(S, RigConfig).nGroups, 6, 'And it runs');
+
+old = oldGenerator('overlap_order', 'Continuous', true, 'CycleBins', 50, 'PureWidth', 15, ...
+                   'ShortGuard', 5);
+S = lum.mergeSettings(lum.defaultSettings, withGenerator(old, [1 0]));
+g = S.Stimulus.Generator;
+verifyEqual(testCase, {g.Family, g.OrderDesign}, {'order', 'guarded'});
+verifyEqual(testCase, [g.OrderCycles g.OrderShortOverlap g.OrderLongOverlap], [2 0.1 0.3], ...
+            'AbsTol', 1e-12);
+verifyTrue(testCase, g.Continuous, 'A random phase every trial, as before');
+
+old = oldGenerator('tiled_order');
+S = lum.mergeSettings(lum.defaultSettings, withGenerator(old, [1 0]));
+g = S.Stimulus.Generator;
+verifyEqual(testCase, {g.Family, g.OrderDesign, g.OrderOverlap}, {'order', 'simple', 0});
+end
+
+function testTheCurrentGeneratorIsLeftAlone(testCase)
+S = lum.defaultSettings;
+S.Stimulus.Generator = lum.pattern.familyDefaults(S.Stimulus.Generator, 'count');
+S.Task.GroupPLeft = [1 1 1 0 0 0];
+[merged, added] = lum.mergeSettings(lum.defaultSettings, S);
+verifyEqual(testCase, merged.Stimulus.Generator, S.Stimulus.Generator);
+verifyEqual(testCase, merged.Task.GroupPLeft, [1 1 1 0 0 0]);
+verifyFalse(testCase, any(contains(added, 'Generator')));
+end
+
 function testRuntimeFieldsCoverEveryRuntimeParameter(testCase)
 S = lum.defaultSettings;
 fields = lum.gui.runtimeFields(S);
@@ -372,6 +424,27 @@ reused = lum.validateSettings(S, rig, compiled);
 verifyEqual(testCase, reused, compiled);
 end
 
+
+function g = oldGenerator(family, varargin)
+% A generator as a settings file from before 0.9.0 held it.
+g = struct('Family', family, 'nGroups', 2, 'Continuous', false, 'BinDuration', 0.01, ...
+           'Seed', 1, 'NewSeedEachSession', true, 'PureChannel', 'A', 'OnFraction', 1, ...
+           'Motif', [1 2], 'DutyCycle', [1 1], 'SlotWeights', [], 'NumCycles', 2, ...
+           'BPhase', [], 'AOnFraction', 0.5, 'BOnFraction', 0.5, 'Overlap', 0.2, 'Beta', NaN, ...
+           'Layout', 'blocks', 'BlockOrder', [1 3 2 0], 'CycleBins', 10, 'PureWidth', 2, ...
+           'ShortGuard', 1, 'Phase', NaN, 'Pulses', zeros(0, 4), 'AOffset', 0, 'BOffset', 0, ...
+           'OffsetMode', 'circular');
+for i = 1:2:numel(varargin)
+    g.(varargin{i}) = varargin{i + 1};
+end
+end
+
+function loaded = withGenerator(generator, pLeft)
+% Settings holding an old generator and the P(left) typed for it.
+loaded = lum.defaultSettings;
+loaded.Stimulus.Generator = generator;
+loaded.Task.GroupPLeft = pLeft;
+end
 
 function S = wideJitter(S)
 S.Sync.WidthJitter = 1;

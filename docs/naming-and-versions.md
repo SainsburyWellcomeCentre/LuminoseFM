@@ -15,6 +15,20 @@ right — D8 in [`architecture.md`](architecture.md).
 | joint state | What A and B are doing together at one moment: dark, A only, B only, A and B |
 | group | One stimulus condition; groups are balanced across a session |
 | stimulus set | A session's patterns, their groups and contingency, and the trial order |
+| stimulus family | The kind of question a stimulus set asks: pure channel, mixture, sequence, order, motifs, or hand-drawn pulses (`S.Stimulus.Generator.Family`: `pure`, `mixture`, `count`, `order`, `motif`, `arbitrary`). Defined in [`stimulus_family.md`](stimulus_family.md) |
+| amount | How long a channel is lit in a pattern: u_A, u_B in seconds, or as a fraction of the window (the plots' axes) |
+| amount level | One of the amounts the mixture family pairs, as a fraction of the window (`MixtureLevels`) |
+| decision rule | The mixture's contingency (`MixtureRule`): A's *share* of the light or A *minus* B against a boundary (relative rules, both channels needed), or *A alone* / *B alone* (the controls: a vertical or horizontal boundary) |
+| A share | A's relative abundance in the mixture, `u_A / (u_A + u_B)` (π in `stimulus_family.md`); set as mixture ratios A:B (`MixtureRatios`, boundary `MixtureShareBoundary`) |
+| total light | `u_A + u_B` as a fraction of the window: what the mixture's relative rules rove, so that no amount alone tells the side (`MixtureShareTotals`, `MixtureDifferenceTotals`) |
+| flash | One stretch of light on one channel in the sequence and motif families: one light segment, filled by the carrier like any other |
+| slot | One of the equal parts the sequence family cuts the window into, holding one flash or nothing |
+| word, letter | The motif family's group, and its parts: letters A, B, X (both) and - (dark), one flash each |
+| turn | One handover from one channel to the other and back in the order family; the guarded cycle's turn has a short and a long overlap |
+| evidence | A family's decision variable, the psychometric axis: B share, A flashes minus B flashes, the deciding amount (`StimulusSet.Evidence`) |
+| family's contingency | The P(left) a family gives its groups (`FamilyPLeft`), used when `S.Task.GroupPLeft` is empty |
+| seed | The number that fixes every trial of a session, their order and whatever the family draws at random (`S.Stimulus.Generator.Seed`, `Session.StimulusSet.Seed`). New every session by default; typed in to repeat a session |
+| single-cue ceiling | The best score an observer reading one cue alone (A's amount, B's amount, total light, A's or B's time course) could reach (`StimulusSet.Shortcuts`) |
 | stimulus window | `S.Stimulus.Duration`, from stimulus onset |
 | latency | `S.Stimulus.Latency`: from the poke to stimulus onset, held with the cue on |
 | hold, hold break, grace | The centre-port hold; leaving during it; how long a break may last unpunished |
@@ -34,6 +48,7 @@ right — D8 in [`architecture.md`](architecture.md).
 | step back | Automatic shaping shortening the hold one growth step after `HoldStepBackAfter` early withdrawals at one hold |
 | early withdrawal | Leaving the centre port before the hold is complete, unforgiven (state `EarlyWithdrawal`; `Data.EarlyWithdrawals`) |
 | centre reward | Water at the centre port for a completed hold, on habituation's first trials (`S.GUI.CentreRewardAmount`, `S.GUI.CentreRewardTrials`; state `CentreReward`; `Data.CentreReward`, µL) |
+| centre reward again | The centre reward given again, in any stage, on a set number of trials after the operator ticks it in the runtime window (`S.GUI.CentreRewardAgain`, `S.GUI.CentreRewardAgainTrials`) |
 | retry | Going on to the correct port after an unpunished incorrect choice: state `RetryResponse`, then the response window again (`Data.ResponseRetries`). Not "correction trial": the trial is the same one |
 | centre hold time | How long the animal stayed in the centre port on a trial's last hold, from the poke to leaving (`Data.CentreHoldTime`); the time asked for is the latency plus `HoldDuration` |
 | view | A camera's name, the prefix of its files: `sideview` (24226887), `topview` (24226657) |
@@ -125,6 +140,23 @@ names.
 | — | the video stops after the final save (`SessionSaved` event), and a second save adds its summary; default format `avi-mjpeg-mt` (SpinCam 1.2.0 engine, multi-core MJPEG), with a note when a single-threaded format cannot keep up; the help line describes the format chosen; a SpinVideo format without SpinVideo is refused when the devices open; `Session.Cameras.EngineVersion` |
 | — | `GUIMeta.<name>.Help` for every runtime parameter; help line in the setup and runtime windows |
 | — | **▶ Play** buttons for the session's sounds in the setup dialog (`lum.testSounds`) |
+
+### 0.8.1 → 0.9.0 — stimulus families that say what the animal tells apart; centre reward again
+
+| 0.8.1 | 0.9.0 |
+|-------|-------|
+| families *pure*, *sequence* (a motif of joint states in cycles), *occupancy*, *overlap order*, *tiled order*, *hand-drawn*, organised by how a pattern is built | *pure channel*, *mixture*, *sequence* (`count`), *order*, *motifs*, *hand-drawn*, each named by what the animal tells apart; choosing one loads defaults that run on the machine, in the designer and on the Stimulus tab ([`stimulus_family.md`](stimulus_family.md)) |
+| generator fields `PureChannel`, `OnFraction`, `Motif`, `DutyCycle`, `SlotWeights`, `NumCycles`, `BPhase`, `AOnFraction`, `BOnFraction`, `Overlap`, `Beta`, `Layout`, `BlockOrder`, `CycleBins`, `PureWidth`, `ShortGuard`, `Phase` | `PureChannels`, `PureFractions`; `MixtureRule`, `MixtureRatios`, `MixtureShareBoundary`, `MixtureShareTotals`, `MixtureDifferences`, `MixtureDifferenceBoundary`, `MixtureDifferenceTotals`, `MixtureLevels`, `MixtureLayout`; `CountSlots`, `CountPairs`, `CountFill`; `OrderDesign`, `OrderCycles`, `OrderOverlap`, `OrderShortOverlap`, `OrderLongOverlap`; `MotifLeftWords`, `MotifRightWords`, `MotifFill`. Settings files are converted on load: the sequence motif becomes two words, the overlap order the guarded cycle, the tiled order the simple order, occupancy the mixture's defaults |
+| `nGroups` for every family | only for hand-drawn pulses; every other family's groups follow from its settings |
+| continuous mode: a pattern per trial in two categories, *A-led* and *B-led* | a pattern per trial within the family's own groups: new amounts, a new order of the flashes, a random phase |
+| `S.Task.GroupPLeft`: one value per group, default `[1 0]` | empty by default, meaning the family's contingency (`StimulusSet.FamilyPLeft`); typed values are kept while the groups stay the same |
+| `StimulusSet.SweepName`, `SweepValues` | `Evidence`, `EvidenceName`, `Boundary`, `FamilyPLeft`, `PLeftFromFamily`, `Shortcuts`, `Descriptors.ASegments`/`BSegments` |
+| a bin that did not divide the window, or cycles that did not divide the bins, was refused | the bin is adjusted to the window, and fractions of the window are shared out over whole bins |
+| — | the single-cue ceilings: how well one cue alone could do, in the designer, the setup dialog, the session log and the data file |
+| — | the mixture's relative rules: A's share of the light (mixture ratios A:B) or A minus B, each against a boundary that can move, at roving totals; `Boundary` gains `'line'` with `Slope` and `Intercept` |
+| psychometric panel by group or swept parameter; the evidence panel always drew the diagonal | psychometric along the family's evidence; the evidence panel draws the contingency's own boundary |
+| centre reward on habituation's first trials only | also **Centre reward again**, in any stage, for `CentreRewardAgainTrials` (10) trials, unticking itself |
+| *New trial order* on the Stimulus tab; the seed typed and kept only in the designer | **Seed**, **Randomise trials** and *a new seed for every session* on the Stimulus tab; the seed in the plots' header; `lum.pattern.newSeed` keeps one clock-seeded stream, so seeds drawn in quick succession differ |
 
 ### 0.8.0 → 0.8.1 — the End button, LED calibration by pairs, startup times
 

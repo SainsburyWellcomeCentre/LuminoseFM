@@ -81,7 +81,7 @@ end
 %% Online plots --------------------------------------------------------------------
 
 function testOnlinePlotsKeepEveryTrialOnScreen(testCase)
-[S, stimulusSet] = sessionFixture(testCase, 'pure', 2, false);
+[S, stimulusSet] = sessionFixture(testCase, 'pure');
 plots = lum.OnlinePlots(S, stimulusSet, 'Visible', 'off', 'nTrialsToShow', 40);
 cleanup = onCleanup(@() plots.close());
 feed(plots, S, stimulusSet, 150);
@@ -104,7 +104,7 @@ end
 function testThePanelsAreInThreeRows(testCase)
 % Top: now and next, then the outcomes. Middle: performance, psychometric, evidence.
 % Bottom: by side, side bias, reaction time, centre hold.
-[S, stimulusSet] = sessionFixture(testCase, 'pure', 2, false);
+[S, stimulusSet] = sessionFixture(testCase, 'pure');
 plots = lum.OnlinePlots(S, stimulusSet, 'Visible', 'off');
 cleanup = onCleanup(@() plots.close());
 rows = {{'Now and next', 'Outcomes'}, ...
@@ -129,7 +129,7 @@ delete(cleanup);
 end
 
 function testEveryChoiceLandsAtTheLightItsTrialDelivered(testCase)
-[S, stimulusSet] = sessionFixture(testCase, 'pure', 2, false);
+[S, stimulusSet] = sessionFixture(testCase, 'pure');
 plots = lum.OnlinePlots(S, stimulusSet, 'Visible', 'off', 'RefreshEvery', 1);
 cleanup = onCleanup(@() plots.close());
 feed(plots, S, stimulusSet, 40);
@@ -158,7 +158,7 @@ delete(cleanup);
 end
 
 function testTheUpcomingTrialsShowBeforeAnyTrialEnds(testCase)
-[S, stimulusSet] = sessionFixture(testCase, 'pure', 2, false);
+[S, stimulusSet] = sessionFixture(testCase, 'pure');
 plots = lum.OnlinePlots(S, stimulusSet, 'Visible', 'off');
 cleanup = onCleanup(@() plots.close());
 [spec, queue] = lum.nextTrialSpec(S, stimulusSet, stimulusSet.TrialPattern, ...
@@ -171,26 +171,69 @@ verifyTrue(testCase, any(contains(strings, 'queued #4')), 'And the three after i
 delete(cleanup);
 end
 
-function testThePsychometricPanelFollowsTheSweep(testCase)
-[S, stimulusSet] = sessionFixture(testCase, 'occupancy', 5, false);
+function testThePsychometricPanelFollowsTheEvidence(testCase)
+% Groups with one A share (a mixture ratio at every total) pool into one point along it.
+[S, stimulusSet] = sessionFixture(testCase, 'mixture', 'MixtureRatios', [4 1; 2 1; 1 2; 1 4]);
 plots = lum.OnlinePlots(S, stimulusSet, 'Visible', 'off');
 cleanup = onCleanup(@() plots.close());
 psychometric = axesTitled(plots.Figure, 'Psychometric');
-verifyEqual(testCase, psychometric.XLabel.String, 'B share, beta');
+verifyEqual(testCase, psychometric.XLabel.String, 'A share of the light');
 points = findobj(psychometric, 'Type', 'errorbar');
-verifyEqual(testCase, points.XData, sort(stimulusSet.SweepValues), 'AbsTol', 1e-12);
+verifyEqual(testCase, points.XData, unique(stimulusSet.Evidence), 'AbsTol', 1e-12);
+verifyNumElements(testCase, points.XData, 4);
 feed(plots, S, stimulusSet, 20);
 delete(cleanup);
 end
 
-function testThePsychometricPanelBinsContinuousPatterns(testCase)
-[S, stimulusSet] = sessionFixture(testCase, 'overlap_order', 2, true);
+function testThePsychometricPanelBinsPerTrialAmounts(testCase)
+[S, stimulusSet] = sessionFixture(testCase, 'mixture', 'Continuous', true);
 plots = lum.OnlinePlots(S, stimulusSet, 'Visible', 'off');
 cleanup = onCleanup(@() plots.close());
 psychometric = axesTitled(plots.Figure, 'Psychometric');
-verifyEqual(testCase, psychometric.XLabel.String, 'B share of the light');
+verifyEqual(testCase, psychometric.XLabel.String, 'A share of the light');
 points = findobj(psychometric, 'Type', 'errorbar');
 verifyNumElements(testCase, points.XData, 8);
+outcomes = axesTitled(plots.Figure, 'Outcomes');
+verifyEqual(testCase, outcomes.YLabel.String, 'A share of the light');
+feed(plots, S, stimulusSet, 30);
+delete(cleanup);
+end
+
+function testTheEvidencePanelDrawsAMovedBoundary(testCase)
+% "More than 60% A": the boundary is the ratio line u_B = (2/3) u_A through the origin.
+[S, stimulusSet] = sessionFixture(testCase, 'mixture', 'MixtureShareBoundary', [3 2]);
+plots = lum.OnlinePlots(S, stimulusSet, 'Visible', 'off');
+cleanup = onCleanup(@() plots.close());
+edge = findobj(axesTitled(plots.Figure, 'Evidence'), 'Type', 'line', 'LineStyle', '--');
+verifyNumElements(testCase, edge, 1);
+verifyEqual(testCase, edge.YData ./ edge.XData, [2/3 2/3], 'AbsTol', 1e-12);
+delete(cleanup);
+end
+
+function testTheEvidencePanelDrawsTheContingencysBoundary(testCase)
+% A alone decides: the boundary is vertical, at the middle of the levels.
+[S, stimulusSet] = sessionFixture(testCase, 'mixture', 'MixtureRule', 'A alone');
+plots = lum.OnlinePlots(S, stimulusSet, 'Visible', 'off');
+cleanup = onCleanup(@() plots.close());
+plane = axesTitled(plots.Figure, 'Evidence');
+edge = findobj(plane, 'Type', 'line', 'LineStyle', '--');
+verifyNumElements(testCase, edge, 1);
+verifyEqual(testCase, edge.XData, [0.3 0.3], 'AbsTol', 1e-12);
+psychometric = axesTitled(plots.Figure, 'Psychometric');
+verifyEqual(testCase, findobj(psychometric, 'Type', 'errorbar').XData, [0.1 0.2 0.4 0.8], ...
+            'AbsTol', 1e-12);
+delete(cleanup);
+end
+
+function testASequenceIsPlottedByItsCounts(testCase)
+[S, stimulusSet] = sessionFixture(testCase, 'count');
+verifyTrue(testCase, stimulusSet.Continuous, 'A new order of the flashes every trial');
+plots = lum.OnlinePlots(S, stimulusSet, 'Visible', 'off');
+cleanup = onCleanup(@() plots.close());
+outcomes = axesTitled(plots.Figure, 'Outcomes');
+verifyEqual(testCase, cellstr(outcomes.YTickLabel)', stimulusSet.GroupLabels, 'A row per count');
+psychometric = axesTitled(plots.Figure, 'Psychometric');
+verifyEqual(testCase, psychometric.XLabel.String, 'A flashes minus B flashes');
 feed(plots, S, stimulusSet, 30);
 delete(cleanup);
 end
@@ -218,7 +261,7 @@ delete(cleanup);
 end
 
 function testBothSessionWindowsSwitchTheHouseLightAtOnce(testCase)
-[S, stimulusSet] = sessionFixture(testCase, 'pure', 2, false);
+[S, stimulusSet] = sessionFixture(testCase, 'pure');
 for kind = {'Sleep', 'Behaviour'}
     houseLight = lum.dev.NullHouseLight(lum.dev.NullPulsePal('test'), RigConfig().HouseLight, true, 'test');
     if strcmp(kind{1}, 'Sleep')
@@ -256,7 +299,7 @@ end
 function testAClosedPlotWindowIsHiddenAndCanStillBeSaved(testCase)
 % The console's End button closes every protocol figure before the protocol's teardown
 % saves the plots, so a close request only hides them; close() deletes.
-[S, stimulusSet] = sessionFixture(testCase, 'pure', 2, false);
+[S, stimulusSet] = sessionFixture(testCase, 'pure');
 plots = lum.OnlinePlots(S, stimulusSet, 'Visible', 'off');
 cleanup = onCleanup(@() plots.close());
 feed(plots, S, stimulusSet, 10);
@@ -851,15 +894,83 @@ candidate = app.collect();
 verifyEqual(testCase, candidate.Stimulus.Generator, ...
             lum.pattern.withGeneratorDefaults(S.Stimulus.Generator));
 verifyEqual(testCase, candidate.Task.GroupPLeft, S.Task.GroupPLeft);
+verifySubstring(testCase, app.status(), '2 group(s)');
 
-app.controls.Family.Value = 'occupancy';
-app.controls.nGroups.Value = 5;
+app.chooseFamily('mixture');
+verifySubstring(testCase, app.status(), '6 group(s)');
+verifyEmpty(testCase, app.collect().Task.GroupPLeft, 'The family''s contingency');
+verifyEqual(testCase, app.stimulusSet().GroupPLeft, [1 0 1 0 1 0]);
+verifySubstring(testCase, app.controls.Shortcuts.Text, 'A''s amount 67%');
+
+typed = [0.9 0.1 0.9 0.1 0.9 0.1];
+app.editPLeft(typed);
+verifyEqual(testCase, app.collect().Task.GroupPLeft, typed, 'Typed, for these groups');
+app.controls.MixtureLayout.Value = 'centred';
 app.refresh();
-verifySubstring(testCase, app.status(), '5 group(s)');
-verifyEqual(testCase, app.collect().Task.GroupPLeft, linspace(1, 0, 5), 'AbsTol', 1e-12);
+verifyEqual(testCase, app.collect().Task.GroupPLeft, typed, 'The same groups: kept');
+app.controls.MixtureRule.Value = 'A alone';
+app.refresh();
+verifySubstring(testCase, app.status(), '16 group(s)');
+verifyEmpty(testCase, app.collect().Task.GroupPLeft, 'Other groups: the family''s again');
+
+% Choosing any family loads defaults that run on this machine, without a warning.
+for family = {lum.pattern.families().Name}
+    app.chooseFamily(family{1});
+    verifySubstring(testCase, app.status(), 'group(s) over', family{1});
+end
+
+app.chooseFamily('count');
 [ok, applied] = app.apply();
 verifyTrue(testCase, ok);
-verifyEqual(testCase, applied.Stimulus.Generator.Family, 'occupancy');
+verifyEqual(testCase, applied.Stimulus.Generator.Family, 'count');
+verifyTrue(testCase, applied.Stimulus.Generator.Continuous);
+delete(cleanup);
+end
+
+function testTheSetupDialogChoosesAFamilyWithItsDefaults(testCase)
+assumeUIFigures(testCase);
+S = testCase.TestData.S;
+[~, ~, app] = lum.gui.SetupDialog(S, testCase.TestData.rig, 'Wait', false, 'Visible', 'off');
+cleanup = onCleanup(@() closeIfOpen(app.Figure));
+for family = {lum.pattern.families().Name}
+    app.chooseFamily(family{1});
+    verifySubstring(testCase, app.status(), 'Ready to start', family{1});
+    verifyEqual(testCase, app.controls.Family.Value, family{1});
+end
+app.chooseFamily('motif');
+verifyEqual(testCase, app.stimulusSet().nGroups, 8);
+verifyEmpty(testCase, app.collect().Task.GroupPLeft);
+app.editPLeft([1 1 1 0 0 0 0 0]);
+verifyEqual(testCase, app.collect().Task.GroupPLeft, [1 1 1 0 0 0 0 0]);
+verifySubstring(testCase, app.controls.SetSummary.Text, 'P(left) as typed');
+app.chooseFamily('pure');
+verifyEmpty(testCase, app.collect().Task.GroupPLeft, 'A new family brings its own contingency');
+verifySubstring(testCase, app.controls.SetSummary.Text, 'One cue alone');
+delete(cleanup);
+end
+
+
+function testTheStimulusTabRandomisesAndRepeatsTheTrials(testCase)
+assumeUIFigures(testCase);
+S = testCase.TestData.S;
+[~, ~, app] = lum.gui.SetupDialog(S, testCase.TestData.rig, 'Wait', false, 'Visible', 'off');
+cleanup = onCleanup(@() closeIfOpen(app.Figure));
+first = app.stimulusSet();
+verifyEqual(testCase, app.controls.Seed.Value, first.Seed, 'The seed is shown');
+app.randomise();
+second = app.stimulusSet();
+verifyNotEqual(testCase, second.Seed, first.Seed);
+verifyNotEqual(testCase, second.TrialPattern, first.TrialPattern, 'Every trial drawn again');
+verifyEqual(testCase, app.controls.Seed.Value, second.Seed);
+app.typeSeed(first.Seed);
+verifyEqual(testCase, app.stimulusSet().TrialPattern, first.TrialPattern, ...
+            'A typed seed repeats the trials');
+verifyEqual(testCase, app.collect().Stimulus.Generator.Seed, first.Seed);
+box = app.controls.NewSeedEachSession;
+verifyTrue(testCase, box.Value, 'A new seed every session, by default');
+box.Value = false;
+box.ValueChangedFcn(box, []);
+verifyFalse(testCase, logical(app.collect().Stimulus.Generator.NewSeedEachSession));
 delete(cleanup);
 end
 
@@ -900,18 +1011,16 @@ end
 
 %% Helpers -----------------------------------------------------------------------
 
-function [S, stimulusSet] = sessionFixture(testCase, family, nGroups, continuous)
-% A stimulus set for the plots, which spend no timers: the budget is generous so a
-% family's default cycle fits whatever the machine.
+function [S, stimulusSet] = sessionFixture(testCase, family, varargin)
+% A stimulus set for the plots, which spend no timers: the budget is generous so any
+% family's settings fit whatever the machine. The family's defaults, overridden by
+% generator name/value pairs, with its own contingency.
 S = testCase.TestData.S;
-S.Stimulus.Generator.Family = family;
-S.Stimulus.Generator.nGroups = nGroups;
-S.Stimulus.Generator.Continuous = continuous;
-if continuous
-    S.Task.GroupPLeft = [1 0];
-else
-    S.Task.GroupPLeft = lum.pattern.defaultPLeft(nGroups);
+S.Stimulus.Generator = lum.pattern.familyDefaults(S.Stimulus.Generator, family);
+for i = 1:2:numel(varargin)
+    S.Stimulus.Generator.(varargin{i}) = varargin{i + 1};
 end
+S.Task.GroupPLeft = [];
 stimulusSet = lum.pattern.stimulusSet(S, 64, 2);
 end
 

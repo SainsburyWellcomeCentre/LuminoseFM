@@ -1,54 +1,77 @@
 function generator = withGeneratorDefaults(generator)
 % lum.pattern.withGeneratorDefaults fills in any generator field that is missing.
 %
-% The generator struct has a field for every family, most of which any one family
-% ignores. Settings files written before a field existed, and the short structs
-% tests and scripts write by hand, would otherwise fail on the first field they
-% lack. Present fields always win, including empty ones where empty is meaningful.
+% The generator struct has fields for every family, most of which any one family
+% ignores, so that switching family and back keeps what was set. Settings files
+% written before a field existed, and the short structs tests and scripts write by
+% hand, would otherwise fail on the first field they lack. Present fields always win,
+% including empty ones where empty is meaningful. docs/stimulus_family.md explains
+% what each family does with its fields.
 %
-% Fields and their defaults (lum.defaultSettings uses the same values):
-%   Family              'pure'
-%   nGroups             2       Groups balanced across the session
-%   Continuous          false   A new pattern for every trial instead of groups
-%   BinDuration         0.01    Seconds per bin
+% Shared by every family:
+%   Family              'pure'  Which family (lum.pattern.families)
+%   Continuous          false   A new pattern for every trial, where the family offers
+%                               it (lum.pattern.families, PerTrial)
+%   BinDuration         0.01    Seconds per bin; adjusted to divide the window exactly
 %   Seed                1       Stream seed; the session draws a fresh one unless
 %   NewSeedEachSession  true    ... this is false
-%   PureChannel         'A'     pure, one group: which channel
-%   OnFraction          1       pure: lit fraction, one value or one per group
-%   Motif               [1 2]   sequence: joint states of one cycle
-%   DutyCycle           [1 1]   sequence: lit fraction of a slot, [A B]
-%   SlotWeights         []      sequence: relative slot lengths; [] = equal
-%   NumCycles           2       sequence: motif repeats in the window
-%   BPhase              []      sequence, more than two groups: B phase per group (deg)
-%   AOnFraction         0.5     occupancy: A lit fraction, overlap included
-%   BOnFraction         0.5     occupancy: B lit fraction, overlap included
-%   Overlap             0.2     occupancy: fraction with both channels on
-%   Beta                NaN     occupancy: B share of non-overlap light; NaN = use
-%                               AOnFraction and BOnFraction; one per group sweeps it
-%   Layout              'blocks' occupancy: 'blocks' or 'shuffle'
-%   BlockOrder          [1 3 2 0] occupancy: order of the blocks
-%   CycleBins           10      overlap_order: bins per cycle
-%   PureWidth           2       overlap_order: bins of each pure block
-%   ShortGuard          1       overlap_order: bins of the short overlap guard
-%   Phase               NaN     overlap_order: cycle phase in bins; NaN = random in
-%                               continuous mode, 0 otherwise
-%   Pulses              zeros(0, 4) arbitrary: rows of [group channel start end]
 %   AOffset, BOffset    0       Latency of each channel (s), one or one per group
 %   OffsetMode          'circular' 'circular' wraps round the window, 'linear' drops
 %
+% Pure channel ('pure'):
+%   PureChannels        'A and B'  'A and B', or 'A' or 'B' alone (one group per fraction)
+%   PureFractions       1       Lit fractions of the window, from onset; one group per
+%                               fraction and channel
+%
+% Mixture ('mixture'):
+%   MixtureRule         'share' 'share' (A's share of the light against a boundary),
+%                               'difference' (A minus B against a boundary), or the
+%                               controls 'A alone' and 'B alone'
+%   MixtureRatios       [2 1; 1 2]  share: mixture ratios, rows of [A B] parts
+%   MixtureShareBoundary [1 1]  share: the ratio A:B where the sides change
+%   MixtureShareTotals  [0.3 0.6 1.2]  share: total light (A plus B, fractions of the
+%                               window) each ratio is given at
+%   MixtureDifferences  [0.1 -0.1]  difference: A minus B, fractions of the window
+%   MixtureDifferenceBoundary 0 difference: the A minus B where the sides change
+%   MixtureDifferenceTotals [0.3 0.5 0.7 0.9]  difference: total light each is given at
+%   MixtureLevels       [0.1 0.2 0.4 0.8]  alone rules: amounts a channel can be lit for,
+%                               as fractions of the window
+%   MixtureLayout       'onset' 'onset' (both lit from stimulus onset) or 'centred'
+%
+% Sequence ('count'):
+%   CountSlots          5       Slots in the window, one flash (or nothing) each
+%   CountPairs          [5 0; 4 1; ... 0 5]  One row per group: [A flashes, B flashes]
+%   CountFill           0.5     Fraction of each slot its flash lasts
+%
+% Order ('order'):
+%   OrderDesign         'simple'  'simple' or 'guarded'
+%   OrderCycles         1       Turns in the window
+%   OrderOverlap        0.2     simple: fraction of a turn both channels are on
+%   OrderShortOverlap   0.1     guarded: the overlap as the first channel hands over
+%   OrderLongOverlap    0.3     guarded: the overlap at the end of the turn
+%
+% Motifs ('motif'):
+%   MotifLeftWords      'AAA AAB ABB BAB'  Words that pay left (letters A, B, X, -)
+%   MotifRightWords     'ABA BAA BBA BBB'  Words that pay right
+%   MotifFill           0.5     Fraction of each letter's slot its flash lasts
+%
+% Hand-drawn pulses ('arbitrary'):
+%   nGroups             2       Groups the table describes
+%   Pulses              [1 1 0 0.5; 2 2 0 0.5]  Rows of [group channel start end] (s)
+%
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.pattern.generate, lum.defaultSettings
+% See also: lum.pattern.familyDefaults, lum.pattern.generate, lum.defaultSettings
 
-defaults = struct( ...
-    'Family', 'pure', 'nGroups', 2, 'Continuous', false, 'BinDuration', 0.01, ...
-    'Seed', 1, 'NewSeedEachSession', true, ...
-    'PureChannel', 'A', 'OnFraction', 1, ...
-    'Motif', [1 2], 'DutyCycle', [1 1], 'SlotWeights', [], 'NumCycles', 2, 'BPhase', [], ...
-    'AOnFraction', 0.5, 'BOnFraction', 0.5, 'Overlap', 0.2, 'Beta', NaN, ...
-    'Layout', 'blocks', 'BlockOrder', [1 3 2 0], ...
-    'CycleBins', 10, 'PureWidth', 2, 'ShortGuard', 1, 'Phase', NaN, ...
-    'Pulses', zeros(0, 4), 'AOffset', 0, 'BOffset', 0, 'OffsetMode', 'circular');
+defaults = struct('Family', 'pure', 'Continuous', false, 'BinDuration', 0.01, ...
+                  'Seed', 1, 'NewSeedEachSession', true, ...
+                  'AOffset', 0, 'BOffset', 0, 'OffsetMode', 'circular');
+for family = {lum.pattern.families().Name}
+    defaults = lum.pattern.familyDefaults(defaults, family{1});
+end
+% familyDefaults leaves the family it was last given chosen, and its Continuous.
+defaults.Family = 'pure';
+defaults.Continuous = false;
 
 if ~isstruct(generator) || ~isscalar(generator)
     generator = struct();

@@ -46,8 +46,11 @@ function [spec, queue] = nextTrialSpec(S, stimulusSet, queue, history, trialNumb
 %   .HoldSteppedBack  True when automatic shaping stepped the hold back for this trial,
 %                     after too many early withdrawals
 %   .CentreReward     True when a completed hold on this trial is rewarded at the
-%                     centre port: habituation only, on trials 1 to
-%                     S.GUI.CentreRewardTrials, with S.GUI.CentreRewardAmount above 0
+%                     centre port, with S.GUI.CentreRewardAmount above 0: on trials 1
+%                     to S.GUI.CentreRewardTrials of a habituation session, and in any
+%                     stage while the operator's Centre reward again runs
+%                     (history.centreRewardAgainFrom, lum.centreRewardAgain)
+%   .CentreRewardAgain  True when the centre reward is the one asked for again
 %   .CentreRewardAmount  Microlitres the centre reward gives; 0 when there is none
 %
 % Side draws and pulse widths come from rand(), so seeding with rng() makes a
@@ -126,11 +129,19 @@ spec.SyncPulseWidth = syncPulseWidth(S);
 [spec.HoldDuration, spec.HoldGrace, spec.HoldSteppedBack] = lum.HoldShaping.next(S, history);
 
 % The centre reward teaches a new animal that the centre port is worth visiting, so it
-% belongs to habituation's first trials. Counted in trials, not in rewards given, so it
-% does not depend on a trial still running while this one is prepared; both settings
-% are runtime ones, and raising the count mid-session carries it on.
-spec.CentreReward = S.Task.TrainingStage == 1 && S.GUI.CentreRewardAmount > 0 ...
-                    && trialNumber <= S.GUI.CentreRewardTrials;
+% belongs to habituation's first trials, and to any run the operator starts again later
+% for an animal that has stopped coming to it. Counted in trials, not in rewards given,
+% so it does not depend on a trial still running while this one is prepared; the
+% settings are runtime ones, and raising a count mid-session carries it on.
+habituation = S.Task.TrainingStage == 1 && trialNumber <= S.GUI.CentreRewardTrials;
+from = 0;
+if isfield(history, 'centreRewardAgainFrom')
+    from = history.centreRewardAgainFrom;
+end
+spec.CentreRewardAgain = from > 0 && isfield(S.GUI, 'CentreRewardAgainTrials') ...
+                         && trialNumber >= from ...
+                         && trialNumber < from + S.GUI.CentreRewardAgainTrials;
+spec.CentreReward = S.GUI.CentreRewardAmount > 0 && (habituation || spec.CentreRewardAgain);
 spec.CentreRewardAmount = double(spec.CentreReward) * S.GUI.CentreRewardAmount;
 
 

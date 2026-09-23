@@ -31,10 +31,11 @@ function S = defaultSettings()
 %   channel A / B   The two optical channels: A = BNC1 -> PulsePal OUT1 -> LED ch1,
 %                   B = BNC2 -> OUT2 -> LED ch2. Never 'pattern 1/2' or 'ch1/ch2'.
 %   group           One stimulus condition of the session; K groups are balanced
-%                   across trials. In continuous mode the groups are the two
-%                   categories, A-led and B-led.
+%                   across trials. The family decides what they are (A only and B
+%                   only, pairs of amounts, counts of flashes, words...).
 %   pattern         The light one trial delivers: joint states of A and B over the
-%                   stimulus window. Several trials share a pattern within a group.
+%                   stimulus window. Trials of a group share a pattern, unless the
+%                   family gives every trial its own (Generator.Continuous).
 %   stimulus window S.Stimulus.Duration, from stimulus onset.
 %   hold            The centre-port hold, from the poke: the stimulus latency, then
 %                   the stimulus window and the post-stimulus hold.
@@ -87,10 +88,12 @@ S.Task.TrainingStageNames = {'Habituation', 'Training', 'Experiment'};
 % set, the plots and every trial record agree on the contingency actually in force;
 % S.Task.GroupPLeft keeps the unreversed values, and the set records both.
 S.Task.ReverseContingency = false;
-% Chance that the left port pays, one value per stimulus group; in continuous mode
-% one for A-led and one for B-led patterns. 1 and 0 give a fixed contingency,
-% values in between a psychometric one.
-S.Task.GroupPLeft = [1 0];
+% Chance that the left port pays, one value per stimulus group: 1 and 0 give a fixed
+% contingency, values in between a psychometric one. Empty means the family's own
+% contingency (lum.pattern.generate, FamilyPLeft), which is what a family is designed
+% around; the setup dialog and the designer store values here only once the operator
+% types them, and forget them when the groups change.
+S.Task.GroupPLeft = [];
 S.Task.MaxSameSide = 3;             % Cap on consecutive same-side trials; 0 = no cap
 % Automatic shaping (lum.HoldShaping): trains the centre hold from the animal's
 % performance. Off by default; choosing the Habituation or Training stage switches it on
@@ -122,8 +125,10 @@ S.Stimulus.Duration = 1.0;          % The stimulus window, seconds from stimulus
 % Seconds the animal holds the centre port after poking before the stimulus starts. 0
 % starts it on the poke. Leaving during it is a broken hold (S.Task.OnHoldBreak).
 S.Stimulus.Latency = 0;
-% The light patterns and the order trials come in. lum.pattern.withGeneratorDefaults
-% documents every field; lum.gui.StimulusDesigner edits them.
+% The light patterns and the order trials come in: a stimulus family and its settings
+% (docs/stimulus_family.md). lum.pattern.withGeneratorDefaults documents every field;
+% lum.gui.StimulusDesigner edits them, and choosing a family loads its defaults
+% (lum.pattern.familyDefaults).
 S.Stimulus.Generator = lum.pattern.withGeneratorDefaults(struct());
 % What else is delivered during the hold, each timed from stimulus onset. A
 % component on for the whole window is free; one timed within it costs a global
@@ -312,17 +317,27 @@ S = numericParam(S, 'RewardDelay',      0,    'Reward delay (s)',         [0 60]
 S = numericParam(S, 'DrinkingGrace',    0.5,  'Drinking grace (s)',       [0 60], ...
     'How long the animal may leave the reward port and come back while drinking.');
 
-% Centre reward, habituation only (lum.nextTrialSpec): water at the centre port when a
-% hold is completed, on the first CentreRewardTrials trials of the session, so a new
-% animal learns the centre port is worth visiting. Both may change mid-session: raising
-% the trial count extends it, 0 ends it.
+% Centre reward (lum.nextTrialSpec): water at the centre port when a hold is completed.
+% Habituation gives it on the first CentreRewardTrials trials of the session, so a new
+% animal learns the centre port is worth visiting; raising the count mid-session extends
+% it, 0 ends it. In any stage, ticking CentreRewardAgain gives it again on the next
+% CentreRewardAgainTrials trials, and the box unticks itself when they are done
+% (lum.centreRewardAgain), for an animal that has stopped coming to the centre port.
 S = numericParam(S, 'CentreRewardAmount', 1,  'Centre reward (uL)',       [0 100], ...
-    ['Habituation only: water at the centre port as the hold is completed, in microlitres; '...
-     'the valve time comes from valve 2''s calibration. 0 = no centre reward.']);
+    ['Water at the centre port as the hold is completed, in microlitres; the valve time '...
+     'comes from valve 2''s calibration. Used on habituation''s first trials and whenever '...
+     'Centre reward again is ticked. 0 = no centre reward.']);
 S = numericParam(S, 'CentreRewardTrials', 10, 'Centre reward for trials', [0 100000], ...
     ['Habituation only: the centre reward is given on trials 1 to N of the session, when the '...
      'hold is completed; trials with no completed hold count too. Raise it during the session '...
      'to go on, or set 0 to stop. Ignored in Training and Experiment.']);
+S = checkboxParam(S, 'CentreRewardAgain', false, 'Centre reward again', ...
+    ['Tick to give the centre reward again, in any stage, on the next trials (how many: the '...
+     'field below), counted from the next trial prepared. It unticks itself when they are '...
+     'done; untick it to stop sooner.']);
+S = numericParam(S, 'CentreRewardAgainTrials', 10, 'Again for trials', [1 100000], ...
+    ['How many trials one tick of Centre reward again rewards at the centre port. Raise it '...
+     'while the box is ticked to go on for longer.']);
 
 % From trial start, across every restart of the stimulus: the trial lapses if no hold
 % is completed in time. Was the initiation window before 0.3.
@@ -392,7 +407,8 @@ S = numericParam(S, 'PortLightIntensity', 100, 'Port light brightness (0-255)', 
 % Panel order is the order the windows lay them out in; tabs group panels in the
 % tabbed runtime window (Bpod's own window shows the panels on one page).
 S.GUIPanels.Reward = {'RewardAmount', 'RewardDelay', 'DrinkingGrace'};
-S.GUIPanels.CentreReward = {'CentreRewardAmount', 'CentreRewardTrials'};
+S.GUIPanels.CentreReward = {'CentreRewardAmount', 'CentreRewardTrials', 'CentreRewardAgain', ...
+                            'CentreRewardAgainTrials'};
 S.GUIPanels.Timing = {'HoldWindow', 'PostStimulusHold', 'ResponseWindow', 'ITI'};
 S.GUIPanels.Punishment = {'PunishCondition', 'PunishType', 'PunishTimeout'};
 S.GUIPanels.Bias = {'BiasCorrection', 'BiasWindow'};

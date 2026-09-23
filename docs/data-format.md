@@ -55,9 +55,7 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
 
 - `Type` — `'Behaviour'`
 - `Settings` — the frozen settings struct
-- `StimulusSet` — every pattern as a segment table, the trial order, each group's label and
-  `P(left)` as run (`GroupPLeft`), as typed (`BasePLeft`) and whether the contingency was
-  `Reversed`, and descriptors of each pattern
+- `StimulusSet` — the session's light patterns and trial order (below)
 - `Subject` — the subject the session was launched for (`lum.launchSubject`)
 - `Rig` — the channel map
 - `DevicesAvailable` — which devices the session had (e.g. `FlexSync`)
@@ -149,6 +147,39 @@ the centre port for a completed hold (state `CentreReward`; habituation's first
 centre poke that began it (the start of the latency, when there is one) to the first `Port2Out` after
 it, in seconds; NaN when the stimulus never started or the animal never left. Compare it with
 `HoldDuration` plus `Session.Settings.Stimulus.Latency`, the time asked for.
+
+`CentreReward` counts every centre reward: habituation's and those given while *Centre reward
+again* was ticked (in any stage, for `CentreRewardAgainTrials` trials from the tick;
+`TrialSettings{k}.CentreRewardAgain` says whether the box was ticked as trial *k* was prepared).
+
+### `SessionData.Session.StimulusSet`
+
+Written once. [`stimulus_family.md`](stimulus_family.md) defines every quantity; section 7 of it
+shows how to analyse with them.
+
+| Field | What it holds |
+|-------|---------------|
+| `Family` | `'pure'`, `'mixture'`, `'count'` (sequence), `'order'`, `'motif'` or `'arbitrary'` (hand-drawn) |
+| `Duration`, `BinDuration`, `nBins` | The window, and the bin as used: adjusted to divide the window into whole bins |
+| `nTrials`, `Seed` | The order's length and the seed it came from. Typed in *Seed* on the Stimulus tab, the seed gives another session the same trials |
+| `Continuous` | True when every trial has a pattern of its own (`nPatterns` = `nTrials`) |
+| `nGroups`, `GroupLabels` | The groups, e.g. `'A 200 : B 100 ms'`, `'3 A : 2 B'`, `'AAB'` |
+| `GroupPLeft` | `P(left)` of each group as run: after any reversal |
+| `BasePLeft` | The same before the reversal: typed, or the family's |
+| `FamilyPLeft` | The family's own contingency |
+| `PLeftFromFamily` | True when the family's was used (`Settings.Task.GroupPLeft` empty) |
+| `Reversed` | Whether `Settings.Task.ReverseContingency` swapped the sides |
+| `EvidenceName`, `Evidence` | The family's decision variable and its value per pattern: `'A share of the light'`, `'A minus B, fraction of the window'`, `'A lit, fraction of the window'`, `'A flashes minus B flashes'`… (`''` and NaN when the groups are categories) |
+| `Boundary` | Where the contingency divides the plane of the fractions of the window A and B are lit: `Kind` (`'diagonal'`, `'vertical'`, `'horizontal'`, `'line'` or `'none'`); `Value`, the fraction a vertical or horizontal boundary sits at; `Slope` and `Intercept` of a line `u_B = Slope * u_A + Intercept` (a mixture ratio through the origin, or a difference parallel to the diagonal); NaN where they do not apply |
+| `nPatterns`, `PatternGroup`, `PatternPLeft` | Each pattern's group and chance of paying left |
+| `TrialPattern` | The pattern of each trial of the order, before the run limit and bias correction swapped any (the trial records' `PatternIndex` is what ran) |
+| `Segments`, `SegmentStart` | Every pattern's light: rows of `[pattern channel onset duration]` (s), pattern *k* in rows `SegmentStart(k)` to `SegmentStart(k+1) - 1` |
+| `nTimers` | Global timers each pattern cost |
+| `Descriptors` | Per pattern: `AOn`, `BOn`, `Overlap`, `Dark` (s), `BShare`, `ASegments`, `BSegments` |
+| `Shortcuts` | The best score one cue alone could reach: `AAmount`, `BAmount`, `TotalLight`, `ATimeCourse`, `BTimeCourse`, `AllLight` (the whole pattern) and `Method` (`'exact'`, or `'threshold'` when every trial has its own pattern) |
+
+The settings that made it are in `Session.Settings.Stimulus.Generator` (the family's settings) and
+`Session.Settings.Task.GroupPLeft` (empty when the family's contingency was used).
 
 To get trial *k*'s light:
 
@@ -330,6 +361,17 @@ the null device shims swallowed is recorded in `Data.Session.DeviceLog`. See
 
 ## Reading older files
 
+- **Sessions before 0.9.0** used the earlier stimulus families (`'pure'`, `'sequence'` — a motif
+  of joint states repeated in cycles, `'occupancy'`, `'overlap_order'`, `'tiled_order'`,
+  `'arbitrary'`) and their generator fields (`OnFraction`, `Motif`, `DutyCycle`, `NumCycles`,
+  `Beta`, `CycleBins`...). Their `StimulusSet` has `SweepName` and `SweepValues` (what more than two
+  groups swept, per group) where later sets have `Evidence`, `EvidenceName` and `Boundary`, and no
+  `FamilyPLeft`, `PLeftFromFamily`, `Shortcuts`, `ASegments` or `BSegments`; `Settings.Task.GroupPLeft`
+  always holds one value per group. In continuous mode their groups were the two categories *A-led*
+  and *B-led*. A settings file from before 0.9.0 is converted when loaded (the console lists how).
+  The bin had to divide the window exactly; segment durations were rounded to the 100 µs cycle on
+  their own, not from rounded edges. `CentreReward` counts habituation's rewards only (there was no
+  *Centre reward again*).
 - **Sessions before 0.8.0** have no `CentreReward`, `ResponseRetries` or `CentreHoldTime`, and no
   `CentreReward` or `RetryResponse` states. An unpunished incorrect choice passed through
   `IncorrectChoice` with a zero timer and ended the trial unrewarded, and the default was to punish

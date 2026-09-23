@@ -58,7 +58,9 @@ rig: do what `RunProtocol` does, open `_ANLG.dat` and reset the session clock. *
 eyes at the rig): P4 the first calibration of each cable (with the 0.8.1 two-cable window); P5 valve
 2's calibration, the centre reward and the punishment noise heard to its end; P6 the End button with
 the camera and LED windows open (it froze MATLAB before 0.8.1); P7 the startup line, to see where the
-time goes.** (P1–P3 passed on 2026-09-21.)
+time goes; P8 the 0.9.0 stimulus families at the fiber tips, the designer in a desktop MATLAB, and
+centre reward again.** (P1–P3 passed on 2026-09-21; the 0.9.0 families' light timers were checked on
+the state machine on 2026-09-22, with virtual pokes written to its serial port.)
 
 ## Stay inside the working folder
 
@@ -166,7 +168,11 @@ stops the session part way through as though the End button had been pressed.
 - Store session-level things (settings, stimulus set, rig config, barcode, metadata)
   **once** in `Data.Session`; per-trial records hold only events, timestamps, outcome and
   indices into them (`PatternIndex` into `Session.StimulusSet`). Strip `States` from the
-  stimulus set before storing it — segments are enough.
+  stimulus set before storing it — segments are enough. Since 0.9.0 the set also carries the
+  family's contingency (`FamilyPLeft`, `PLeftFromFamily`), its evidence per pattern (`Evidence`,
+  `EvidenceName`), the contingency's boundary in the u_A–u_B plane (`Boundary`), the single-cue
+  ceilings (`Shortcuts`) and `Descriptors.ASegments`/`BSegments`; `SweepName`/`SweepValues` are
+  gone. `S.Task.GroupPLeft` empty means the family's contingency.
 - `Data.Session.StoppedReason` is `''` for a session that ran to its end or was stopped from
   the console, and the error message for one that failed. `Session.StimulusSet.GroupPLeft` is
   the contingency as run, `BasePLeft` the one typed in, `Reversed` says whether
@@ -180,8 +186,9 @@ stops the session part way through as though the End button had been pressed.
   (the level the trial started at; sleep sessions store one per block too; switches are
   `Data.Session.HouseLight` and `BNC1High`/`BNC1Low` events); since 0.7.0 `LEDCurrentA`,
   `LEDCurrentB` (mA the trial ran at; NaN when the LED was set by hand); since 0.8.0
-  `CentreReward` (µL given at the centre port, 0 when none), `ResponseRetries` (visits to
-  `RetryResponse`) and `CentreHoldTime` (s in the centre port on the last hold, poke to exit).
+  `CentreReward` (µL given at the centre port, 0 when none; habituation's and, since 0.9.0, those
+  asked for again), `ResponseRetries` (visits to `RetryResponse`) and `CentreHoldTime` (s in the
+  centre port on the last hold, poke to exit).
   `Choice`/`Correct`/`Outcome` are always the **first** side poke; a retried trial is `Incorrect`
   with `Rewarded` 1, so water totals use `Rewarded` and `CentreReward`, never `Outcome`.
 - `..._ANLG.dat` is Bpod's raw stream of the Flex analog input (flow meter), opened by the launch
@@ -265,6 +272,15 @@ doc that does not:
 | joint state | 0 dark, 1 A only, 2 B only, 3 A and B | silence (for light) |
 | group | one stimulus condition; K groups balanced over the session | stimulus index, trial type |
 | stimulus set | patterns + groups + contingency + trial order | dictionary |
+| stimulus family | the question a stimulus set asks: pure channel, mixture, sequence, order, motifs, hand-drawn pulses (`Generator.Family`: `pure`, `mixture`, `count`, `order`, `motif`, `arbitrary`; `docs/stimulus_family.md`) | paradigm, stimulus type |
+| amount | how long a channel is lit: u_A, u_B (s), or a fraction of the window | duration (alone), occupancy |
+| decision rule | the mixture's contingency (`MixtureRule`): `share` (A's share of the light) or `difference` (A minus B), each against a boundary that can move, or the controls `A alone`, `B alone` | boundary (that is its line in the plane) |
+| A share, mixture ratio | A's relative abundance, u_A / (u_A + u_B); typed as ratios A:B (`MixtureRatios`, `MixtureShareBoundary`) | proportion (in operator text), B share (its complement, `Descriptors.BShare`) |
+| total light | u_A + u_B, what the relative rules rove (`MixtureShareTotals`, `MixtureDifferenceTotals`) | concentration, intensity |
+| flash | one light segment in the sequence and motif families; slot, word, letter, turn as in `stimulus_family.md` | pulse (PulsePal's carrier pulses fill it) |
+| evidence | a family's decision variable, the psychometric axis (`StimulusSet.Evidence`) | sweep |
+| single-cue ceiling | best score reading one cue alone (`StimulusSet.Shortcuts`, `lum.pattern.shortcuts`) | shortcut score |
+| family's contingency | the P(left) a family gives its groups (`FamilyPLeft`), used when `S.Task.GroupPLeft` is empty | default P(left) |
 | stimulus window | `S.Stimulus.Duration` from stimulus onset | stimulus duration of the hold |
 | latency | `S.Stimulus.Latency`, poke to stimulus onset, held with the cue on | delay, pre-stimulus hold (as a setting) |
 | hold / hold break / grace | centre hold; leaving during it; forgiven break length | |
@@ -284,6 +300,7 @@ doc that does not:
 | step back | automatic shaping shortening the hold one growth step after `HoldStepBackAfter` early withdrawals at one hold | regress, reset (in names too) |
 | early withdrawal | leaving the centre port before the hold is complete, unforgiven (state `EarlyWithdrawal`) | hold break (that is the forgiven kind) |
 | centre reward | water at the centre port for a completed hold, habituation's first `CentreRewardTrials` trials (state `CentreReward`, `Data.CentreReward`) | centre drop, initiation reward |
+| centre reward again | the centre reward given again in any stage, `CentreRewardAgainTrials` trials from a tick of `S.GUI.CentreRewardAgain` (`lum.centreRewardAgain`) | reactivated reward, bonus |
 | retry | going on to the correct port after an unpunished incorrect choice (state `RetryResponse`, `Data.ResponseRetries`) | correction trial (it is the same trial) |
 | centre hold time | seconds in the centre port on a trial's last hold, poke to exit (`Data.CentreHoldTime`) | hold duration (that is what the trial asked for) |
 | view | a camera's name and file prefix: `sideview`, `topview` | camera name, cam1 |
@@ -490,12 +507,31 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
     dark palette. The logo comes from `lum.gui.logo(n)` (block-averaged, cached, no toolbox).
 - **The stimulus is a stimulus set (D5).** `lum.pattern.generate` makes the patterns and a
   balanced order from `S.Stimulus.Generator` and a seed; `lum.pattern.stimulusSet` compiles it
-  into segments, applies `S.Task.GroupPLeft` and then `S.Task.ReverseContingency` (`GroupPLeft`
-  is the contingency as run, `BasePLeft` as typed, `Reversed` says which), and refuses a pattern
-  over the timer budget or identical groups paying different sides. `lum.pattern.patternAt(set, k)` recovers one
+  into segments and refuses a pattern over the timer budget; `lum.pattern.applyContingency`
+  applies `S.Task.GroupPLeft` (empty: the family's `FamilyPLeft`) and then
+  `S.Task.ReverseContingency` (`GroupPLeft` is the contingency as run, `BasePLeft` before the
+  reversal, `Reversed` says which), refuses identical groups paying different sides, and measures
+  the single-cue ceilings (`lum.pattern.shortcuts`). `lum.pattern.patternAt(set, k)` recovers one
   pattern. The seed is drawn per session by `lum.pattern.prepareSeed` before the setup dialog
-  opens, so the preview is the session. The generator uses a private `RandStream` — never the
-  global rng.
+  opens, so the preview is the session, and no two sessions of an animal repeat their trials by
+  default. To repeat one, the operator types its saved seed (`Session.StimulusSet.Seed`, also in
+  the plots' header) into the Stimulus tab's *Seed*; *Randomise trials* draws a new one. Never make
+  a session depend on finding earlier data files: data move to the cloud. `lum.pattern.newSeed`
+  keeps one clock-seeded stream per MATLAB process. The generator uses a private `RandStream` —
+  never the global rng.
+- **A stimulus family is a question (D20, `docs/stimulus_family.md`).** `lum.pattern.families` is
+  the one list (name, label, question, description, what a pattern per trial means). Each family
+  derives its groups from its own settings (`nGroups` is the hand-drawn family's alone), gives each
+  group a side (`FamilyPLeft`), names its evidence and boundary. Choosing a family (designer, or
+  the Stimulus tab's *Family*) applies `lum.pattern.familyDefaults(generator, family, budget,
+  window)`, and **every family's defaults must compile within 4 timers (the emulator) and 15 (the
+  rig) with no warning** — `generateTest` checks it; a new family or default must pass it. Typed
+  P(left) is kept only while the group labels are unchanged (`lum.pattern.typedPLeft`); the dialogs
+  compile with the family's contingency and apply a typed one on top. Fractions of the window are
+  shared over whole bins (never demand that one setting divides another), and the bin is adjusted to
+  the window. Old families are converted in `lum.mergeSettings`; never reuse a retired family name
+  (`sequence`, `occupancy`, `overlap_order`, `tiled_order`) for something else, since data files
+  keep them.
 - **The optical carrier is per channel.** `S.Light.Carrier` is a struct array, one element per
   optical channel, each with `Channel`, `Frequency`, `PulseWidth`, `Voltage`;
   `lum.stim.OptoPattern` adds `MaxDuration`. Element *k* programs PulsePal output *k*, and a
@@ -572,8 +608,12 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
     `CentreHoldResumed` must **not** re-trigger them.
   - **Centre reward and retries (D19).** `CentreReward` and `RetryResponse` exist in every trial.
     A completed hold goes through `CentreReward` (centre valve open for the calibrated time,
-    response configuration up) only when `spec.CentreReward` (habituation, trial number ≤
-    `S.GUI.CentreRewardTrials`, amount > 0; `lum.nextTrialSpec`); never put it on the poke's path.
+    response configuration up) only when `spec.CentreReward` (amount > 0 and either habituation with
+    trial number ≤ `S.GUI.CentreRewardTrials`, or a run of *Centre reward again*;
+    `lum.nextTrialSpec`); never put it on the poke's path. The run is kept by
+    `lum.centreRewardAgain` in `history.centreRewardAgainFrom`, called in the prepare window before
+    `nextTrialSpec`; it unticks `S.GUI.CentreRewardAgain` when its trials are done, and the session
+    syncs the runtime window again so the box shows it at once.
     A wrong side poke goes to `RetryResponse` (0 s, back to `WaitForResponse`, whose timer restarts)
     when `lum.punishmentFor(S, 'IncorrectChoice').Retry` — the default, `PunishCondition` 1 — and to
     `IncorrectChoice` (a trigger state; timeout, noise, no reward, ITI) when punished. Neither new
@@ -621,7 +661,8 @@ where it can be tested with no hardware.
 | `+lum/timerBudget.m` | Global timers left for light after sync, hold clock and timed components |
 | `+lum/buildTrialSM.m` | The state graph (fixed names; outputs, timers and transitions vary) |
 | `+lum/cueTiming.m` | What each cue component does once the stimulus starts: continues, off, or timed (D12) |
-| `+lum/nextTrialSpec.m` | Trial policy: follow the order, run limit and bias correction by swapping, stage, hold |
+| `+lum/nextTrialSpec.m` | Trial policy: follow the order, run limit and bias correction by swapping, stage, hold, centre reward |
+| `+lum/centreRewardAgain.m` | The centre reward asked for again mid-session: starts, ends and unticks its run |
 | `+lum/HoldShaping.m` | Automatic shaping of the centre hold: active mode, next hold and grace, step back after early withdrawals, description; break modes (restart or end) |
 | `+lum/triggerStates.m` | The states that open the prepare window, by break mode |
 | `+lum/scoreTrial.m` | Outcome classification from states and events, including hold breaks and attempts |
@@ -629,14 +670,14 @@ where it can be tested with no hardware.
 | `+lum/SyncMode.m` | How trials drive the sync TTL; codes are part of the data format |
 | `+lum/SessionRunner.m` | TrialManager on the rig, blocking in the emulator (D3) |
 | `+lum/StartupTimes.m` | How long the session took to start, step by step (`Data.Session.Startup`) |
-| `+lum/OnlinePlots.m` | The behaviour session's live figure: now and next, outcomes; performance, psychometric, evidence (u_A vs u_B: fraction of the window each channel is lit); by side, side bias, reaction time, centre hold (time in the port vs asked for); header: water (side and centre) and the running hold. Every key goes through `panelLegend`: one row under the axis label, never over data |
+| `+lum/OnlinePlots.m` | The behaviour session's live figure: now and next, outcomes; performance, psychometric (along the family's evidence, or by group), evidence (u_A vs u_B: fraction of the window each channel is lit, with the contingency's boundary); by side, side bias, reaction time, centre hold (time in the port vs asked for); header: water (side and centre) and the running hold. Every key goes through `panelLegend`: one row under the axis label, never over data |
 | `+lum/loadSounds.m` | The session's sounds, loaded once |
 | `+lum/testSounds.m`, `toneFrequencies.m` | A session sound as `TestHiFiSound` arguments, for the Play buttons; group tone spacing |
 | `+lum/fiberBundles.m`, `experimentChoices.m` | Bundle cables and spot counts; the Experiment tab's lists |
 | `+lum/mergeActions.m`, `timerMaskAction.m` | Output-action assembly; see the gotchas below |
 | `+lum/launchSubject.m` | The subject the session was launched for, from wherever Bpod kept it |
 | `+lum/trainingStageNote.m` | One line saying what the training stage does to rewards |
-| `+lum/+pattern/` | `generate` (families, groups, order) → `stimulusSet` (segments, contingency, checks) → `patternAt`; `fromStates`, `canonicalise`, `check`, `validate`, `describe`; `families`, `withGeneratorDefaults`, `defaultPLeft`, `newSeed`, `prepareSeed` |
+| `+lum/+pattern/` | `generate` (families, groups, order, evidence, boundary) → `stimulusSet` (segments, budget) → `applyContingency` (P(left), reversal, checks, ceilings) → `patternAt`; `families`, `familyDefaults`, `typedPLeft`, `shortcuts`, `describeShortcuts`; `fromStates`, `canonicalise`, `check`, `validate`, `describe`; `withGeneratorDefaults`, `defaultPLeft`, `newSeed`, `prepareSeed` |
 | `+lum/+stim/` | Components: `OptoPattern`, `TimedOutput` → `PortLight`, `Air`; `Sound`; `CueTone`; `build`; `isTimed`, `timerCost` |
 | `+lum/+sync/` | Session barcode: `barcode` (kinds), `markerWidth`, `barcodeKinds`, `sleepMarkerWidth`, `barcodeValue`, `barcodeTime`, `decodeBarcode`, `barcodeStateMachine`; `fitToCameras` (widths the cameras can read) |
 | `+lum/+sleep/` | Sleep and ePhys calibration sessions: `run`; sync pulses `pulseSchedule`, `syncPulseTimes`; test pulses `testPulsePlan`, `stepChoices`, `epochShape`, `describeTestPulses`, `describeTrain`; blocks `nextBlock`, `blockStateMachine`; `validate`, `validateClock`, `checkTimeline`, `validateTestPulses`, `deviceSettings`; `Plots` |
@@ -818,6 +859,9 @@ Keep documentation current in the same change that alters behaviour:
   reference material added there does not go back into it.
 - `docs/hardware.md` — the box, the channel map, the light path, Flex I/O, the cameras, the environment.
 - `docs/data-format.md` — the session file's every field, and reading older files.
+- `docs/stimulus_family.md` — the stimulus families from first principles (no biology): signal,
+  descriptors, contingency, evidence, single-cue ceilings, each family, analysis recipes. Update it
+  with any change to a family, its defaults or the set's fields.
 - `docs/sync-and-barcode.md` — the sync TTL and the session barcode.
 - `docs/naming-and-versions.md` — the glossary, and what changed between versions.
 - `docs/emulator.md` — what the emulator does and does not reproduce.
@@ -832,8 +876,9 @@ Keep documentation current in the same change that alters behaviour:
   sleep sessions, D12 the cue until the stimulus starts, and its latency, D13 test pulses in
   sleep sessions, D14 video through SpinCam, D15 the house light on PulsePal, looped back into Bpod, D16 the plots
   image and settings kept at teardown, D17 the Doric LED sets the intensity, D18 ePhys calibration
-  sessions, D19 the centre reward and the retry after an unpunished incorrect choice). Read it before changing the stimulus path, the state graph, sleep blocks or
-  the GUI.
+  sessions, D19 the centre reward and the retry after an unpunished incorrect choice, and centre
+  reward again, D20 stimulus families as questions, their contingency and single-cue ceilings). Read
+  it before changing the stimulus path, the state graph, sleep blocks or the GUI.
 - `docs/` — rig drawings, `BpodSystemInfo.png`, logo.
 
 If you change a public helper's signature, the state-machine flow, the data schema, the

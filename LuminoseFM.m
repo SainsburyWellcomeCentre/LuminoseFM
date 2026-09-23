@@ -179,8 +179,11 @@ if S.Session.UseOpto
 end
 fprintf('LuminoseFM: %s\n', lum.HoldShaping.describe(S));
 fprintf('LuminoseFM: %s\n', lum.HoldShaping.describeBreak(S));
-fprintf('LuminoseFM: %s stimulus set, %d group(s), %d trial(s) ordered (seed %d)\n', ...
-        stimulusSet.Family, stimulusSet.nGroups, stimulusSet.nTrials, stimulusSet.Seed);
+families = lum.pattern.families();
+fprintf('LuminoseFM: stimulus set "%s", %d group(s), %d trial(s) ordered (seed %d)\n', ...
+        families(strcmp({families.Name}, stimulusSet.Family)).Label, stimulusSet.nGroups, ...
+        stimulusSet.nTrials, stimulusSet.Seed);
+fprintf('LuminoseFM: %s\n', lum.pattern.describeShortcuts(stimulusSet.Shortcuts));
 if ~stimulusSet.Continuous
     for k = 1:stimulusSet.nPatterns
         fprintf('  %s  P(left) %.2f\n', lum.pattern.describe(lum.pattern.patternAt(stimulusSet, k)), ...
@@ -248,8 +251,8 @@ queue = stimulusSet.TrialPattern;
 runner = lum.SessionRunner(devices.emulated, lum.triggerStates(S));
 fprintf('LuminoseFM: running in %s mode, %s runtime window.\n', runner.Mode, lower(windowMode));
 
-[S, spec, sma, valveCache, queue, ledCurrent] = prepareTrial(S, rig, devices, history, stimulusSet, queue, ...
-    sounds, cueComponents, stimulusComponents, 1, valveCache, runtime);
+[S, spec, sma, valveCache, queue, ledCurrent, history] = prepareTrial(S, rig, devices, history, ...
+    stimulusSet, queue, sounds, cueComponents, stimulusComponents, 1, valveCache, runtime);
 % What the first trials will deliver is known now, so it is shown before trial 1 starts
 % rather than after it ends.
 plots.showNext(spec, queue);
@@ -280,9 +283,9 @@ try
 
         prepareTimer = tic;
         if currentTrial < maxTrials
-            [S, nextSpec, sma, valveCache, queue, nextLEDCurrent] = prepareTrial(S, rig, devices, history, ...
-                stimulusSet, queue, sounds, cueComponents, stimulusComponents, currentTrial + 1, ...
-                valveCache, runtime);
+            [S, nextSpec, sma, valveCache, queue, nextLEDCurrent, history] = prepareTrial(S, rig, ...
+                devices, history, stimulusSet, queue, sounds, cueComponents, stimulusComponents, ...
+                currentTrial + 1, valveCache, runtime);
         else
             nextSpec = [];
         end
@@ -456,10 +459,18 @@ end
 
 %% ---------------------------------------------------------------------------
 
-function [S, spec, sma, valveCache, queue, ledCurrent] = prepareTrial(S, rig, devices, history, ...
-    stimulusSet, queue, sounds, cueComponents, stimulusComponents, trialNumber, valveCache, runtime)
+function [S, spec, sma, valveCache, queue, ledCurrent, history] = prepareTrial(S, rig, devices, ...
+    history, stimulusSet, queue, sounds, cueComponents, stimulusComponents, trialNumber, ...
+    valveCache, runtime)
 % Everything needed to run one trial, done inside the previous trial's window.
 S = runtime.sync(S);
+
+% The centre reward the operator asked for again: its run starts, goes on or ends here,
+% and a run that has just ended unticks its box in the runtime window straight away.
+[S, history, unticked] = lum.centreRewardAgain(S, history, trialNumber);
+if unticked
+    S = runtime.sync(S);
+end
 
 % An LED current asked for from the LED window goes to the driver now, after the running
 % trial's stimulus, and is what the trial prepared here runs at (NaN when set by hand).
@@ -536,7 +547,9 @@ text = sprintf('running %d: %s, pays %s, hold %.2f s', spec.TrialNumber, label, 
 if spec.HoldSteppedBack
     text = sprintf('%s (stepped back after early withdrawals)', text);
 end
-if spec.CentreReward
+if spec.CentreReward && spec.CentreRewardAgain
+    text = sprintf('%s, centre reward %g uL (again)', text, spec.CentreRewardAmount);
+elseif spec.CentreReward
     text = sprintf('%s, centre reward %g uL', text, spec.CentreRewardAmount);
 end
 

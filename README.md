@@ -18,9 +18,10 @@ means. The rig, the data format and the design live in [`docs/`](docs):
 | [`docs/hardware.md`](docs/hardware.md) | The behaviour box, the channel map, the light path, Flex I/O, the software environment |
 | [`docs/data-format.md`](docs/data-format.md) | Every field a session file contains, and how to read older ones |
 | [`docs/sync-and-barcode.md`](docs/sync-and-barcode.md) | The sync TTL and the session barcode, for aligning other recordings |
+| [`docs/stimulus_family.md`](docs/stimulus_family.md) | The stimulus families from first principles: the maths of two-channel patterns, what each family asks, which cues could solve it, and how to analyse the choices |
 | [`docs/naming-and-versions.md`](docs/naming-and-versions.md) | Glossary, and what changed between versions |
 | [`docs/emulator.md`](docs/emulator.md) | Running the whole protocol with no hardware attached |
-| [`docs/architecture.md`](docs/architecture.md) | Design decisions (D1–D18) and the map from design to code |
+| [`docs/architecture.md`](docs/architecture.md) | Design decisions (D1–D20) and the map from design to code |
 | [`docs/rig-checks.md`](docs/rig-checks.md) | What has been checked on the rig, and the checks still waiting for someone at it |
 | [`docs/repository.md`](docs/repository.md) | Where the code lives, and what the test suite covers |
 
@@ -142,7 +143,8 @@ how many times the stimulus started on each trial.
 The Task tab's first field says which variant of the task this session runs: *Familiar/Novel*,
 *Mixture*, *Sequence* or *Motifs*. It names the kind of stimulus set the session is built around
 and is stored with the data (`Session.Settings.Task.Variant`), so a data set can be selected by it.
-Choosing one does not yet change any other setting; the per-variant defaults will be added here.
+Choosing one changes no other setting: the light patterns come from the stimulus family on the
+Stimulus tab (§4), which has families of the same names to match (Mixture, Sequence, Motifs).
 
 ### Training stages
 
@@ -221,33 +223,65 @@ recorded per trial. Later, automatic shaping will also choose easier or harder t
 
 ## 4. The stimulus
 
-**The stimulus set.** A session's light patterns and the order its trials come in are generated
-together, before the first trial, by a port of the generatePattern library. The **stimulus designer** (a button on the setup dialog's
-Stimulus tab, or `lum.gui.StimulusDesigner` on its own) shows every parameter and every trial.
+**What a trial delivers.** Each trial lights the two optical channels, A and B, in a *light
+pattern* over the stimulus window (1 s from stimulus onset, by default): when A is on, when B is on.
+A session has a handful of **groups** — its stimulus conditions — and every trial delivers the
+pattern of one of them. The groups come equally often, in a shuffled order that is fixed before the
+first trial, so the Stimulus tab lets you scroll through every trial of the session exactly as it
+will run.
 
-A session has **K groups** — its stimulus conditions — delivered equally often in a shuffled
-order, or, in **continuous** mode, a new pattern on every trial. The **family** decides what
-the patterns look like:
+**The family is the question.** The **stimulus family**, chosen on the Stimulus tab (*Family*),
+decides what the groups are, and so what the animal has to tell apart to find the paying side.
+Choosing a family loads its defaults, and they run as they are: there is nothing to fix first and no
+warning to clear. **Design stimuli…** opens the stimulus designer, which shows every setting of the
+family, with a preview of every trial.
 
-| Family | Patterns | Two groups | More groups sweep |
-|--------|----------|------------|-------------------|
-| Pure channel | One channel lit from onset for a fraction of the window | A against B | the lit fraction |
-| Sequence motif | A motif of joint states repeated for a number of cycles, with a duty cycle per channel | the motif and its A/B mirror | the phase of B against A |
-| Occupancy | The window shared between dark, A only, B only and both, as blocks or shuffled | which channel's block comes first | beta, B's share of the light |
-| Overlap order | Pure blocks joined by a short and a long overlap guard, never dark | which channel leads across the short guard | the phase of the cycle |
-| Tiled order | A and B alternating bin by bin, B the complement of A (a control) | A first against B first | — |
-| Hand-drawn pulses | Pulses typed as group, channel, start and end | — | — |
+| Family | The animal tells | Defaults | Also |
+|--------|------------------|----------|------|
+| **Pure channel: A or B** | which channel is lit | A for the whole window pays left, B pays right | several lit fractions, so that duration varies too; one channel only |
+| **Mixture: more A or more B** | how much of the mixture is A | both channels lit, as mixture ratios 2:1 (pays left) and 1:2 (pays right), each at three totals of light (0.3, 0.6 and 1.2 of the window), so that neither channel's amount alone tells the side | A's share judged against another boundary (is A more than 60% of the mixture?), a psychometric set of ratios (80:20 60:40 40:60 20:80), or *A minus B* instead of the share. *A alone decides* or *B alone decides*, the control: one channel's amount decides and the other is a distractor. New amounts every trial |
+| **Sequence: more A or more B flashes** | which channel flashes more often | the window cut into five slots (three in the emulator, which has fewer timers), each holding one flash of A or of B; every split from 5 A to 5 B, in a new order every trial | leave slots empty (*both channels needed*), so that counting one channel is not enough |
+| **Order: A first or B first** | which channel comes first | A alone, then both, then B pays left; B alone, then both, then A pays right | the *guarded cycle*, where only the timing of one channel against the other tells |
+| **Motifs: words of A and B** | which word it is | the eight three-letter words of A and B, four paying each side, split so that no simple rule tells them apart: each word has to be learnt | your own words; X lights both channels, - leaves a letter dark |
+| **Hand-drawn pulses** | whatever you draw | two groups: A, or B, in the first half of the window | any pulses, typed into a table |
 
-Every family also takes a latency offset per channel (one value, or one per group), wrapping
-round the window or falling off the end.
+[`docs/stimulus_family.md`](docs/stimulus_family.md) defines every family, explains why its defaults
+are what they are, and shows how to analyse the choices each one produces.
 
-- **Order and seed.** The order is fixed by a seed, so what the setup dialog lets you scroll
-  through is exactly what the session runs. Each session draws a new seed unless *draws a new
-  seed* is unticked in the designer, for a session that must be repeated exactly.
-- **Contingency.** Each group has `P(left)`, the chance the left port pays on its trials: 1
-  and 0 give a fixed contingency, values in between a psychometric one. In continuous mode the
-  two rows are *A-led* and *B-led* patterns: the channel that leads (overlap order) or is the
-  pure channel, or else the one carrying more of the light.
+**Which side pays.** Each group has a `P(left)`, the chance the left port pays on its trials: 1 and 0
+give a fixed contingency, values in between a psychometric one. The family sets it (more A, first A
+or an A-heavy word pays left), and the group table shows it. Type your own values in the table to
+change it; they are kept while the groups stay the same, and the family's come back as soon as the
+groups change (another family, other ratios, levels or counts). *Reverse* on the Task tab swaps every
+side (see *Reversing the contingency* in §3).
+
+**Could one channel alone solve it?** Under the group table, a line says how well an animal could
+do by reading only one simple cue: how long A is on, how long B is on, how much light there is in
+all, or when A (or B) is on. For example, *One cue alone could score at most: A's amount 67%, B's
+amount 67%, total light 50%…*. 100% means that cue alone solves the task; 50% means it tells nothing.
+So you can see before the session whether a task really needs both channels (the mixture's defaults
+do; a sequence with every slot filled does not). The data file keeps the numbers
+(`StimulusSet.Shortcuts`), to compare with how well the animal does.
+
+**Relative amounts.** The mixture family judges how much of the light is A in one of two ways: A's
+**share** of the mixture, `u_A / (u_A + u_B)` (its relative abundance, typed as ratios A:B), or the
+**difference** `u_A - u_B`. Either pays left above a boundary you set (1:1, or 0, by default), and the
+total light changes from group to group, so the animal has to weigh A against B. The two differ once
+the boundary moves (*more than 60% A* is a ratio, not a difference) and in what makes a trial hard:
+equal ratios are equally hard at any total, equal differences are not.
+
+- **A new random session every time.** A number, the **seed**, fixes every trial of a session:
+  their order, and whatever the family draws at random (the order of the flashes, the amounts, the
+  phase). Each session draws a new seed, so by default no two sessions of an animal deliver the
+  same trials, and nothing depends on earlier data being on this computer. **Randomise trials** on
+  the Stimulus tab draws a new seed whenever you like before the start: every trial is drawn again,
+  and what you scroll through is exactly what the session runs.
+- **Repeating a session.** The seed is saved with the data (`SessionData.Session.StimulusSet.Seed`),
+  printed in the command window as the session starts, and shown in the plots' header (so it is in
+  the `_plots.png` beside the data file too). To give an animal the same trials again, type that
+  seed in **Seed** on the Stimulus tab, from the data file or from wherever you noted it if the data
+  have gone to the cloud. Untick *a new seed for every session* to keep the seed for the sessions
+  after this one as well.
 - **Bias correction and the run limit** reorder the order, never change it: to offer the side
   the animal avoids, or to break a run of `MaxSameSide` trials on one side, the next trial is
   swapped with a later one within 50 trials that pays the needed side. Every group is still
@@ -255,9 +289,11 @@ round the window or falling off the end.
   side for a few dozen trials but cannot hold one side above the set's own share for hundreds.
 - **What a session refuses.** Every stretch of light on a channel costs one Bpod global timer
   (the rig has 16, the emulator 5; the hold window always takes one, and grace shaping or timed
-  components take more). A pattern that needs more is refused, naming its group. Two groups that
-  deliver identical light but pay different sides are refused too: that is a task the animal
-  cannot solve.
+  components take more). The families' defaults fit both; settings that need more are refused,
+  naming the group. Two groups that deliver identical light but pay different sides are refused
+  too: that is a task the animal cannot solve.
+- **Offsets.** Any family can delay channel A or B (one value, or one per group), wrapping the
+  light round the window or letting it fall off the end.
 
 **Other components.** Besides the light pattern, the stimulus can include air, a centre light
 flash and a tone (a different frequency for each group), each timed from stimulus onset. The
@@ -297,7 +333,7 @@ says what is wrong, and **Start session** stays disabled until nothing is.
 | Experiment | Subject (the one launched in the launch manager); whether the **house light** is on as the session starts; genotype (OSN-ChR or wild type offered, any other typed into the box); *Neuropixels recording* (probe, implant, target, coordinates, serial), *EEG/EMG recording* (channel counts), *Drug administration* (name, delivery route, dose and unit, vehicle, time given); session length, devices, runtime window, notes |
 | Task | Which task (Familiar/Novel, Mixture, Sequence, Motifs); training stage and what it does to rewards — choosing one sets the session up the way that stage is normally run; trial order, including the contingency reversal; centre hold — how long it is, what a broken hold does, and hold shaping; which components make up the cue, the stimulus and each side; a timeline of one trial, with the hold window |
 | Cue | For each cue component (centre light, tone, air): whether it continues through the stimulus, and if not, how long it stays on into it; the cue tone's frequency and sound output, each sound with a **▶ Play** button; a timeline of the cue against the latency and the stimulus, one row per component |
-| Stimulus | The stimulus window and its latency from the poke; a summary of the stimulus set with **Design stimuli…** and **New trial order**; P(left) per group; every trial of the session to scroll through; timing of air, centre light and tone, with **▶ Play tones** |
+| Stimulus | The stimulus window and its latency from the poke; the stimulus **family** (choosing one loads its defaults) and a summary of the stimulus set, with how well one cue alone could do; the **Seed**, **Randomise trials** and **Design stimuli…**, and whether each session draws a new seed; P(left) per group, the family's until you type your own; timing of air, centre light and tone, with **▶ Play tones**; every trial of the session to scroll through |
 | Light path | The carrier for each channel: frequency, pulse width, and PulsePal's TTL level into the LED driver (5 V) |
 | Doric LED | The LED driver (controlled from MATLAB, or set by hand), the fiber bundle and which cables are on A and B, each channel's intensity and limit, and **Calibrate LED power…** (§9) |
 | Left, Right | That side's port light and tone (with **▶ Play**), each timed from stimulus onset; its guide light; which groups pay that side |
@@ -330,8 +366,11 @@ window, relabelled. `Runtime window` on the Experiment tab can force either.
   choice / both; *None* by default) and how (timeout / white noise / both). An incorrect choice
   that is not punished lets the animal go on to the correct port (see *An incorrect choice* in §3).
   A noise always plays to its end before the next trial or the next poke.
-- *Centre reward* (habituation only): `CentreRewardAmount` µL at the centre port for a completed
-  hold, on trials 1 to `CentreRewardTrials`.
+- *Centre reward*: `CentreRewardAmount` µL at the centre port for a completed hold. In habituation
+  it is given on trials 1 to `CentreRewardTrials`. In any stage, tick **Centre reward again** to give
+  it on the next `Again for trials` trials (10 by default), for an animal that has stopped coming to
+  the centre port: the box unticks itself when they are done, and unticking it stops sooner.
+  `Data.CentreReward` records every centre reward given.
 - *Bias correction* pushes trials towards the side the animal has been avoiding. If it chose left
   on a fraction *f* of its last `BiasWindow` choices, the next trial pays left with chance
   0.5 + strength × (0.5 − *f*), kept within 0.1–0.9, by bringing forward a trial that pays that side:
@@ -354,7 +393,14 @@ window only shows it.
 
 ### Designers
 
-Both open on their own, away from the rig, and return the settings they built:
+The **stimulus designer** (*Design stimuli…* on the Stimulus tab) holds everything about the light
+patterns: the window and the bin, the seed (with **Randomise**, and whether each session draws a new
+one), the family with the question it asks, the family's own
+settings (with **Restore defaults**), channel offsets, the groups with their trials, timers and
+P(left) (**Family's P(left)** forgets values you typed), the line on what one cue alone could score,
+and every trial to scroll through. Each setting explains itself in its tooltip.
+
+Both designers also open on their own, away from the rig, and return the settings they built:
 
 ```matlab
 S = lum.gui.StimulusDesigner();    % sized to the connected machine's timers
@@ -366,7 +412,7 @@ S = lum.gui.TestPulseDesigner();   % defaults: paired-pulse probes on A and B fo
 ## 6. Watching a session
 
 One figure, updated in place once per trial, with a header giving the subject, stage, stimulus
-set, what a broken hold does, trial count, performance, the **water drunk** (total, then side
+set and its seed, what a broken hold does, trial count, performance, the **water drunk** (total, then side
 rewards and centre rewards apart), the **centre hold** the running trial asks for (latency plus
 hold), and session time — and the **House light** box.
 
@@ -386,19 +432,23 @@ Panels, in the order they are read:
   - **Now and next** (top left) — the pattern of the running trial and the next three in the order,
     channel A above B (the title is the key), with the side each pays; shown from the moment the
     session starts
-  - **Outcomes** — each trial's choice by stimulus group (by the B share of its light in continuous
-    mode): correct, incorrect or no choice
+  - **Outcomes** — each trial's choice by stimulus group (by the B share of its light when the
+    mixture draws amounts every trial): correct, incorrect or no choice
 - Middle row
   - **Performance** — fraction correct over a moving window, for all, left- and right-rewarded trials
-  - **Psychometric** — P(choose left) with error bars, laid out for the stimulus set: one point for
-    one group, the groups for two, along the swept parameter for more, in B-share bins for
-    continuous patterns — with the contingency drawn behind it
+  - **Psychometric** — P(choose left) with error bars along the family's evidence: the B share of
+    the light (mixture), A flashes minus B flashes (sequence), or the deciding channel's amount (the
+    mixture's controls), a point per value, or eight bins when the amounts are drawn every trial;
+    one point per group for the pure channel, order, motif and hand-drawn families — with the
+    contingency drawn behind it
   - **Evidence, u_A vs u_B** — every choice at the latent evidence its trial's stimulus carried on
     each channel: u_A and u_B, the fraction of the stimulus window channel A and channel B were lit.
     Points are filled green when correct and outlined red when not, and point left (◀) or right (▶)
     for the side chosen. An animal reading one channel separates its left and right choices along a
-    vertical or horizontal boundary; one weighing both, along a diagonal. Light-off trials sit at
-    the origin, and a small fixed jitter keeps repeated patterns visible.
+    vertical or horizontal boundary; one weighing both, along a diagonal. The dashed line is the
+    boundary the contingency itself draws (diagonal for comparing, vertical or horizontal for the
+    mixture's controls, none for order and words). Light-off trials sit at the origin, and a small
+    fixed jitter keeps repeated patterns visible.
 - Bottom row
   - **By side** — fraction correct on left- and right-rewarded trials
   - **Side bias** — P(chose left) over the last `BiasWindow` choices (as set when the session

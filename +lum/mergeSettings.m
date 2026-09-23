@@ -229,6 +229,20 @@ if hasPath(loaded, 'Light.Bundle') && strcmp(loaded.Light.Bundle, '2-to-19')
     end
 end
 
+%% Reshaped (version 0.9.0): stimulus families that say what the animal tells apart
+% The families were redesigned around the question each asks (docs/stimulus_family.md).
+% A generator holding any field of the old families is converted: pure and hand-drawn
+% keep their meaning; the sequence motif becomes two words, the motif and its mirror;
+% the overlap order becomes the order family's guarded cycle and the tiled order its
+% simple design with no overlap; occupancy has no counterpart and becomes the mixture
+% family at its defaults. P(left) is kept only where the groups are still the same ones.
+if hasPath(loaded, 'Stimulus.Generator') && isstruct(loaded.Stimulus.Generator) ...
+        && isscalar(loaded.Stimulus.Generator) ...
+        && any(isfield(loaded.Stimulus.Generator, retiredGeneratorFields()))
+    [loaded, note] = migrateGenerator(defaults, loaded);
+    migrated{end+1} = note;
+end
+
 %% Retired (version 0.2, and 0.4)
 % The hand-written stimulus table was replaced by the stimulus generator; its rows
 % cannot be converted into generator parameters, so the defaults are used instead.
@@ -241,6 +255,113 @@ for i = 1:numel(retired)
         loaded = removePath(loaded, retired{i});
         migrated{end+1} = sprintf('%s (retired)', retired{i}); %#ok<AGROW>
     end
+end
+
+
+function names = retiredGeneratorFields()
+% Generator fields of the families before 0.9.0.
+names = {'PureChannel', 'OnFraction', 'Motif', 'DutyCycle', 'SlotWeights', 'NumCycles', ...
+         'BPhase', 'AOnFraction', 'BOnFraction', 'Overlap', 'Beta', 'Layout', 'BlockOrder', ...
+         'CycleBins', 'PureWidth', 'ShortGuard', 'Phase'};
+
+
+function [loaded, note] = migrateGenerator(defaults, loaded)
+% A generator from before 0.9.0 in the current families' terms.
+old = lum.pattern.withGeneratorDefaults(struct());
+old = mergeFields(old, loaded.Stimulus.Generator);  % Every field, the file's winning
+g = removeFields(loaded.Stimulus.Generator, retiredGeneratorFields());
+g = lum.pattern.withGeneratorDefaults(g);
+family = lower(char(old.Family));
+nGroups = oldValue(old, 'nGroups', 2);
+duration = defaultsWindow(defaults, loaded);
+nBins = max(1, round(duration / old.BinDuration));
+keepPLeft = true;
+switch family
+    case 'pure'
+        channel = upper(char(oldValue(old, 'PureChannel', 'A')));
+        if nGroups == 1 && ismember(channel, {'A', 'B'})
+            g.PureChannels = channel;
+        else
+            g.PureChannels = 'A and B';
+        end
+        g.PureFractions = unique(oldValue(old, 'OnFraction', 1), 'stable');
+        keepPLeft = nGroups <= 2 && isscalar(g.PureFractions);
+        g.Continuous = false;
+        what = 'pure channel, as before';
+    case 'sequence'
+        g.Family = 'motif';
+        letters = '-ABX';
+        motif = oldValue(old, 'Motif', [1 2]);
+        cycles = oldValue(old, 'NumCycles', 1);
+        duty = oldValue(old, 'DutyCycle', 1);
+        if nGroups <= 2 && ~isequal(logical(old.Continuous), true) && all(ismember(motif, 0:3))
+            word = repmat(letters(motif + 1), 1, cycles);
+            mirror = word;
+            mirror(word == 'A') = 'B';
+            mirror(word == 'B') = 'A';
+            g.MotifLeftWords = word;
+            g.MotifRightWords = '';
+            if nGroups == 2
+                g.MotifRightWords = mirror;
+            end
+            g.MotifFill = min(1, max(0.01, mean(duty)));
+            what = sprintf('sequence motif as the motif family: %s against %s', word, mirror);
+        else
+            g = lum.pattern.familyDefaults(g, 'motif');
+            keepPLeft = false;
+            what = 'sequence motif swept over groups: motif family at its defaults';
+        end
+        g.Continuous = false;
+    case 'occupancy'
+        g = lum.pattern.familyDefaults(g, 'mixture');
+        keepPLeft = false;
+        what = 'occupancy retired: mixture family at its defaults';
+    case 'overlap_order'
+        g.Family = 'order';
+        g.OrderDesign = 'guarded';
+        cycleBins = oldValue(old, 'CycleBins', 10);
+        short = oldValue(old, 'ShortGuard', 1) / cycleBins;
+        long = (cycleBins - 2 * oldValue(old, 'PureWidth', 2) - oldValue(old, 'ShortGuard', 1)) ...
+               / cycleBins;
+        g.OrderCycles = max(1, round(nBins / cycleBins));
+        if short > 0 && long > short && short + long < 1
+            g.OrderShortOverlap = short;
+            g.OrderLongOverlap = long;
+        end
+        keepPLeft = nGroups <= 2 || isequal(logical(old.Continuous), true);
+        what = 'overlap order as the order family''s guarded cycle';
+    case 'tiled_order'
+        g.Family = 'order';
+        g.OrderDesign = 'simple';
+        g.OrderCycles = 1;
+        g.OrderOverlap = 0;
+        g.Continuous = false;
+        keepPLeft = nGroups <= 2;
+        what = 'tiled order as the order family, no overlap';
+    otherwise
+        what = 'hand-drawn pulses, as before';
+end
+loaded.Stimulus.Generator = g;
+if ~keepPLeft && hasPath(loaded, 'Task.GroupPLeft')
+    loaded.Task.GroupPLeft = [];
+    what = [what '; P(left) from the family'];
+end
+note = sprintf('Stimulus.Generator (stimulus families redesigned in 0.9.0: %s)', what);
+
+
+function value = oldValue(old, name, default)
+% A field of an old generator, or its default where the file has none or an empty one.
+value = default;
+if isfield(old, name) && ~isempty(old.(name))
+    value = old.(name);
+end
+
+
+function target = mergeFields(target, source)
+% Copy every field of source into target.
+names = fieldnames(source);
+for i = 1:numel(names)
+    target.(names{i}) = source.(names{i});
 end
 
 

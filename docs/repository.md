@@ -21,6 +21,7 @@ LuminoseFM/
 │   ├── cueTiming.m               what each cue component does once the stimulus starts
 │   ├── triggerStates.m           where the next trial may be prepared
 │   ├── nextTrialSpec.m           trial policy: order, contingency, bias, run limit, stage
+│   ├── centreRewardAgain.m       the centre reward asked for again mid-session: its run and its box
 │   ├── HoldShaping.m             automatic shaping of the centre hold, and what a broken hold does
 │   ├── scoreTrial.m              outcome classification
 │   ├── punishmentFor.m           which mistakes are punished, and how
@@ -37,7 +38,7 @@ LuminoseFM/
 │   ├── toneFrequencies.m         stimulus tone frequencies, shared by the two above
 │   ├── defaultSettings.m         the two-tier settings struct
 │   ├── mergeSettings.m           old settings files converted (renames, reshapes, retirements)
-│   ├── +pattern/                 stimulus generator, stimulus set, light patterns
+│   ├── +pattern/                 stimulus families and generator, stimulus set, contingency, single-cue ceilings, light patterns
 │   ├── +stim/                    cue and stimulus components
 │   ├── +sync/                    session barcode; the sync line fitted to the cameras' frame rate
 │   ├── +sleep/                   sleep and ePhys calibration sessions: run, sync and test pulses, blocks, validation, plots
@@ -61,6 +62,7 @@ LuminoseFM/
     ├── architecture.md           design decisions and the map from design to code
     ├── hardware.md               the rig: box, ports, light path, Flex I/O, environment
     ├── data-format.md            what a session file contains
+    ├── stimulus_family.md        the stimulus families from first principles, and analysing them
     ├── sync-and-barcode.md       the sync TTL and the session barcode
     ├── naming-and-versions.md    glossary and what changed between versions
     ├── emulator.md               running with no hardware attached
@@ -94,8 +96,12 @@ matlab -batch "cd('/path/to/LuminoseFM'); addpath('tests'); runLuminoseTests"
 
 What it covers:
 
-- **Pure functions** — the stimulus generator and stimulus set, the cue's timing once the stimulus
-  starts, trial generation, bias correction, hold shaping and break modes, outcome scoring, the
+- **Pure functions** — the stimulus generator and stimulus set: every family's defaults compiling
+  within the rig's and the emulator's timers, what each family varies and holds equal, the family's
+  contingency and typed P(left) kept only for its groups, the single-cue ceilings (`generateTest`,
+  `stimulusSetTest`); old families converted on load (`settingsTest`); the cue's timing once the
+  stimulus starts, trial generation, the centre reward and its run when asked for again,
+  bias correction, hold shaping and break modes, outcome scoring, the
   barcode and its kinds, the analog realignment, settings conversion and validation, the PulsePal
   carrier and its health check (against a stub PulsePal that can stop answering), holding an output
   at a voltage and sending it only once a command under way has finished, the sleep pulse
@@ -115,7 +121,10 @@ What it covers:
 - `windowsTest` — the runtime window, both plot figures (a close request hides them, they save as an
   image, both figures' house light switch), the session type chooser, both setup
   dialogs (automatic shaping by stage, Play buttons, the help line, the Cameras tab, the format's
-  description on the help line, and its preview of simulated cameras) and both designers, built invisibly.
+  description on the help line, and its preview of simulated cameras, choosing each stimulus family
+  on the Stimulus tab) and both designers (every family's defaults ready to run, typed P(left) kept
+  and dropped as the groups change), built invisibly; the psychometric panel along each family's
+  evidence and the contingency's boundary on the evidence panel.
 - `cameraTest` — camera settings, the format note for single-threaded encoders, the note for a
   one sentence per
   format and which need SpinVideo, where videos go,

@@ -1,19 +1,20 @@
 function pLeft = defaultPLeft(nGroups, previous)
-% lum.pattern.defaultPLeft proposes a contingency for a given number of groups.
+% lum.pattern.defaultPLeft proposes a contingency for groups that have no natural one.
 %
-% One group is a session with nothing to discriminate, so it pays either side
-% equally. Two groups give the classic fixed contingency, the first paying left
-% and the second right. More groups sweep evenly from left to right, which is a
-% psychometric session. Values the operator already chose are kept wherever the
-% group still exists, so adding a group does not undo their edits.
+% Every family but the hand-drawn one knows which side each of its groups is meant to
+% pay (lum.pattern.generate, FamilyPLeft). Hand-drawn groups do not, so they get this:
+% one group pays either side equally, since there is nothing to discriminate; two give
+% the classic fixed contingency, the first paying left and the second right; more sweep
+% evenly from left to right, a psychometric session. Values already chosen are kept
+% wherever the group still exists, so adding a group does not undo them.
 %
 % Arguments:
-%   nGroups   Number of groups (2 in continuous mode: A-led and B-led)
+%   nGroups   Number of groups
 %   previous  Existing P(left) values to keep where they fit (optional)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.pattern.stimulusSet, lum.gui.StimulusDesigner
+% See also: lum.pattern.stimulusSet, lum.pattern.applyContingency
 
 if nGroups <= 1
     pLeft = 0.5;

@@ -46,11 +46,18 @@ function text = version()
 % stops the camera window's timer from the teardown rather than from the console's End
 % button (which froze MATLAB on the rig), calibrates LED power two cables at a time from
 % one window, keeps the plots' keys off their data, and records how long the session
-% took to start (Data.Session.Startup).
+% took to start (Data.Session.Startup). 0.9.0 redesigns the stimulus families around what
+% the animal tells apart (pure channel, mixture, sequence, order, motifs, hand-drawn;
+% docs/stimulus_family.md, D20): each gives its groups a contingency of its own, used when
+% S.Task.GroupPLeft is empty, and names its evidence and boundary (the mixture judges A's share
+% of the light, or A minus B, against a boundary that can move); every stimulus set records
+% how well one cue alone could do (StimulusSet.Shortcuts), and SweepName/SweepValues are gone.
+% The same release lets the operator give the centre reward again, in any stage, for a set
+% number of trials (S.GUI.CentreRewardAgain).
 %
 % See also: LuminoseFM
 
-release = '0.8.1';
+release = '0.9.0';
 text = release;
 
 try

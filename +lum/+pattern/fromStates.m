@@ -28,14 +28,14 @@ perChannel = cell(2, 1);
 for channel = 1:2
     lit = bitand(states, uint8(channel)) ~= 0;
     edges = diff([false; lit; false]);
-    starts = find(edges == 1);
-    stops = find(edges == -1);
-    perChannel{channel} = [repmat(channel, numel(starts), 1), ...
-                           (starts - 1) * binDuration, (stops - starts) * binDuration];
+    % Each edge is rounded to the cycle, and the duration taken between the rounded
+    % edges, so a segment never ends past the window however the bin divides it.
+    onsets = round((find(edges == 1) - 1) * binDuration / cyclePeriod);
+    offsets = round((find(edges == -1) - 1) * binDuration / cyclePeriod);
+    perChannel{channel} = [repmat(channel, numel(onsets), 1), ...
+                           onsets * cyclePeriod, (offsets - onsets) * cyclePeriod];
 end
 segments = [perChannel{1}; perChannel{2}];
 if isempty(segments)
     segments = zeros(0, 3);
-    return
 end
-segments(:, 2:3) = round(segments(:, 2:3) / cyclePeriod) * cyclePeriod;

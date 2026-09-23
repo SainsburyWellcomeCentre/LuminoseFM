@@ -37,7 +37,9 @@ below).
 
 - **Five global timers, five counters, five conditions** instead of 16/8/16. A pattern with more
   than four stretches of light is refused in the emulator (the hold window always takes one timer)
-  and accepted on the rig.
+  and accepted on the rig. Every stimulus family's defaults fit in four; the sequence family, whose
+  default is five flashes, loads three slots instead when it is chosen in the emulator
+  (`lum.pattern.familyDefaults`).
 - **No Flex I/O at all** — so no airflow stream, no sync pulses and no session barcode (it is
   recorded as not sent).
 - **PulsePal and the HiFi module are unavailable**, so sound states run silently and no light is

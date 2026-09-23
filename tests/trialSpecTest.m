@@ -41,7 +41,7 @@ end
 
 function testPsychometricGroupsDrawTheirSide(testCase)
 S = testCase.TestData.S;
-S.Stimulus.Generator.nGroups = 1;
+S.Stimulus.Generator.PureChannels = 'A';   % One group: channel A
 S.Task.GroupPLeft = 0.7;
 stimulusSet = lum.pattern.stimulusSet(S, 16, 2);
 queue = stimulusSet.TrialPattern;
@@ -279,7 +279,7 @@ S.GUI.CentreRewardAmount = 0;    % No volume, no reward
 verifyFalse(testCase, lum.nextTrialSpec(S, stimulusSet, stimulusSet.TrialPattern, history, 1).CentreReward);
 end
 
-function testThereIsNoCentreRewardOutsideHabituation(testCase)
+function testThereIsNoCentreRewardOutsideHabituationUnlessAskedForAgain(testCase)
 [S, stimulusSet] = fixture(testCase);
 S.GUI.CentreRewardAmount = 2;
 S.GUI.CentreRewardTrials = 10;
@@ -289,6 +289,56 @@ for stage = 2:3
     verifyFalse(testCase, spec.CentreReward, sprintf('Stage %d', stage));
     verifyEqual(testCase, spec.CentreRewardAmount, 0);
 end
+end
+
+function testCentreRewardAgainRunsForItsTrialsAndUnticksItself(testCase)
+% Ticked in the runtime window during training, the centre reward is given on the next
+% CentreRewardAgainTrials trials prepared, and the box is unticked when they are done.
+[S, stimulusSet] = fixture(testCase);
+S.Task.TrainingStage = 2;
+S.GUI.CentreRewardAmount = 2;
+S.GUI.CentreRewardAgainTrials = 3;
+history = lum.newHistory(20);
+given = false(1, 8);
+unticks = false(1, 8);
+for trial = 1:8
+    if trial == 3
+        S.GUI.CentreRewardAgain = 1;   % The operator ticks it while trial 2 runs
+    end
+    [S, history, unticks(trial)] = lum.centreRewardAgain(S, history, trial);
+    spec = lum.nextTrialSpec(S, stimulusSet, stimulusSet.TrialPattern, history, trial);
+    given(trial) = spec.CentreReward;
+    verifyEqual(testCase, spec.CentreRewardAgain, spec.CentreReward);
+    verifyEqual(testCase, spec.CentreRewardAmount, 2 * double(spec.CentreReward));
+end
+verifyEqual(testCase, given, [false false true true true false false false]);
+verifyEqual(testCase, find(unticks), 6, 'Unticked as the first trial after the run is prepared');
+verifyEqual(testCase, S.GUI.CentreRewardAgain, 0);
+verifyEqual(testCase, history.centreRewardAgainFrom, 0);
+end
+
+function testCentreRewardAgainStopsWhenUntickedAndGrowsWhenRaised(testCase)
+[S, stimulusSet] = fixture(testCase);
+S.Task.TrainingStage = 3;
+S.GUI.CentreRewardAmount = 1;
+S.GUI.CentreRewardAgainTrials = 2;
+S.GUI.CentreRewardAgain = 1;
+history = lum.newHistory(20);
+[S, history] = lum.centreRewardAgain(S, history, 4);
+verifyTrue(testCase, lum.nextTrialSpec(S, stimulusSet, stimulusSet.TrialPattern, history, 4).CentreReward);
+S.GUI.CentreRewardAgainTrials = 10;   % Raised during the run: it goes on
+[S, history] = lum.centreRewardAgain(S, history, 7);
+verifyTrue(testCase, lum.nextTrialSpec(S, stimulusSet, stimulusSet.TrialPattern, history, 7).CentreReward);
+S.GUI.CentreRewardAgain = 0;          % Unticked by the operator: it stops at once
+[S, history] = lum.centreRewardAgain(S, history, 8);
+verifyFalse(testCase, lum.nextTrialSpec(S, stimulusSet, stimulusSet.TrialPattern, history, 8).CentreReward);
+verifyEqual(testCase, history.centreRewardAgainFrom, 0);
+S.GUI.CentreRewardAgain = 1;          % Ticked again: a new run from here
+S.GUI.CentreRewardAmount = 0;
+[S, history] = lum.centreRewardAgain(S, history, 9);
+verifyEqual(testCase, history.centreRewardAgainFrom, 9);
+verifyFalse(testCase, lum.nextTrialSpec(S, stimulusSet, stimulusSet.TrialPattern, history, 9).CentreReward, ...
+            'No volume, no reward');
 end
 
 function [S, stimulusSet] = fixture(testCase)

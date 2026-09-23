@@ -19,21 +19,24 @@ classdef OnlinePlots < handle
     %   Top row
     %     Now and next  The pattern of the running trial and the next three queued,
     %                   shown from the start of the session (showNext)
-    %     Outcomes      Each trial's choice by stimulus group (or, in continuous mode,
-    %                   by the B share of its light): correct, incorrect or no choice
+    %     Outcomes      Each trial's choice by stimulus group (or, where every trial has
+    %                   its own pattern and the evidence runs continuously, by the
+    %                   evidence): correct, incorrect or no choice
     %   Middle row
     %     Performance   Fraction correct over a moving window: all, left- and
     %                   right-rewarded trials
     %     Psychometric  P(choose left) with binomial error bars, laid out for the set:
-    %                   one point for one group, the two groups for two, the swept
-    %                   parameter for more, B-share bins in continuous mode — with the
-    %                   contingency the animal is trained on drawn behind it
+    %                   along the family's evidence (B share, flash difference, the
+    %                   deciding amount), a point per value or eight bins when it runs
+    %                   continuously, or one point per group when the family has none —
+    %                   with the contingency the animal is trained on drawn behind it
     %     Evidence      Every choice at the latent evidence its trial's stimulus carried
     %                   on each channel, u_A against u_B (the fraction of the stimulus
     %                   window A and B were lit), coloured correct or incorrect and
     %                   pointing to the side chosen, so the animal's decision boundary
     %                   shows: vertical or horizontal if it reads one channel, diagonal
-    %                   if it weighs both
+    %                   if it weighs both. The contingency's own boundary is drawn behind
+    %                   (stimulusSet.Boundary)
     %   Bottom row
     %     By side       Fraction correct on left- and right-rewarded trials
     %     Side bias     P(chose left) over the last BiasWindow choices, with the
@@ -158,8 +161,8 @@ classdef OnlinePlots < handle
             obj.planeX = NaN(4, nTrials);
             obj.planeY = NaN(4, nTrials);
 
-            if stimulusSet.Continuous
-                obj.rasterOfPattern = stimulusSet.Descriptors.BShare;
+            if rasterByEvidence(stimulusSet)
+                obj.rasterOfPattern = stimulusSet.Evidence;
             else
                 obj.rasterOfPattern = stimulusSet.PatternGroup;
             end
@@ -504,9 +507,11 @@ classdef OnlinePlots < handle
             else
                 breakText = 'a broken hold ends the trial';
             end
-            titleText = sprintf('LuminoseFM  |  %s  |  %s  |  %s, %d group(s)  |  %s', ...
-                                orDash(subject), stage, obj.stimulusSet.Family, ...
-                                obj.stimulusSet.nGroups, breakText);
+            families = lum.pattern.families();
+            family = families(strcmp({families.Name}, obj.stimulusSet.Family));
+            titleText = sprintf('LuminoseFM  |  %s  |  %s  |  %s, %d group(s), seed %d  |  %s', ...
+                                orDash(subject), stage, family.Label, ...
+                                obj.stimulusSet.nGroups, obj.stimulusSet.Seed, breakText);
             if S.Task.TrainingStage == 1
                 titleText = [titleText '  |  habituation: both side ports pay'];
             end
@@ -533,9 +538,11 @@ classdef OnlinePlots < handle
                 'MarkerEdgeColor', t.Incorrect, 'LineWidth', 1.3);
             obj.handles.noChoice = line(ax, x, obj.noChoiceY, 'LineStyle', 'none', 'Marker', 'x', ...
                 'MarkerSize', 5, 'MarkerEdgeColor', t.NoChoice);
-            if obj.stimulusSet.Continuous
-                set(ax, 'YLim', [-0.05 1.05], 'YTick', [0 0.5 1]);
-                ylabel(ax, 'B share of the light');
+            if rasterByEvidence(obj.stimulusSet)
+                span = [min(obj.stimulusSet.Evidence), max(obj.stimulusSet.Evidence)];
+                pad = max(0.05 * diff(span), 0.02);
+                set(ax, 'YLim', span + [-pad pad]);
+                ylabel(ax, obj.stimulusSet.EvidenceName);
             else
                 K = obj.stimulusSet.nGroups;
                 set(ax, 'YLim', [0.5 K + 0.5], 'YTick', 1:K, 'YTickLabel', obj.stimulusSet.GroupLabels, ...
@@ -604,7 +611,10 @@ classdef OnlinePlots < handle
             styleAxes(ax, t, layout.Title);
             obj.axesOf.psychometric = ax;
             span = [min(layout.X), max(layout.X)];
-            pad = max(0.5, 0.08 * diff(span));
+            pad = 0.5;  % Half a group
+            if isempty(layout.TickLabels) && diff(span) > 0
+                pad = 0.08 * diff(span);
+            end
             line(ax, span + [-pad pad], [0.5 0.5], 'Color', t.Faint, 'LineStyle', '--');
             target = line(ax, layout.X, layout.Target, 'Color', t.Muted, 'LineStyle', ':', ...
                           'Marker', 'd', 'MarkerSize', 5, 'MarkerEdgeColor', t.Muted, 'LineWidth', 1);
@@ -627,7 +637,27 @@ classdef OnlinePlots < handle
             styleAxes(ax, t, sprintf('Evidence, u_A vs u_B, by choice  (%s left, %s right)', ...
                                      char(9664), char(9654)));
             obj.axesOf.evidence = ax;
-            line(ax, [0 1], [0 1], 'Color', t.Faint, 'LineStyle', '--', 'LineWidth', 1);
+            % The line the contingency divides the plane along, where it is one.
+            edge = struct('Kind', 'diagonal', 'Value', NaN);
+            if isfield(obj.stimulusSet, 'Boundary')
+                edge = obj.stimulusSet.Boundary;
+            end
+            switch edge.Kind
+                case 'diagonal'
+                    line(ax, [0 1], [0 1], 'Color', t.Faint, 'LineStyle', '--', 'LineWidth', 1);
+                case 'vertical'
+                    line(ax, [1 1] * edge.Value, [0 1], 'Color', t.Faint, 'LineStyle', '--', ...
+                         'LineWidth', 1);
+                case 'horizontal'
+                    line(ax, [0 1], [1 1] * edge.Value, 'Color', t.Faint, 'LineStyle', '--', ...
+                         'LineWidth', 1);
+                case 'line'
+                    % u_B = Slope * u_A + Intercept: a mixture ratio through the origin, or a
+                    % difference parallel to the diagonal. The axes clip it to the plane.
+                    x = [-0.1 1.1];
+                    line(ax, x, edge.Slope * x + edge.Intercept, 'Color', t.Faint, ...
+                         'LineStyle', '--', 'LineWidth', 1);
+            end
             nTrials = size(obj.planeX, 2);
             blank = NaN(1, nTrials);
             % Rows of planeX: correct-left, correct-right, incorrect-left, incorrect-right.
@@ -720,12 +750,21 @@ end
 
 
 function layout = psychometricLayout(stimulusSet)
-% Where each pattern's choices land on the psychometric panel, and how it is labelled.
+% Where each pattern's choices land on the psychometric panel, and how it is labelled:
+% along the family's evidence when it has one, a point per value, or eight bins when the
+% evidence runs continuously; otherwise one point per group.
 layout = struct();
-if stimulusSet.Continuous
-    edges = linspace(0, 1, 9);
-    layout.X = edges(1:end-1) + diff(edges) / 2;
-    layout.Index = discretize(stimulusSet.Descriptors.BShare, edges);
+if hasEvidence(stimulusSet)
+    evidence = stimulusSet.Evidence;
+    values = unique(evidence);
+    if numel(values) <= 12
+        layout.X = values;
+        [~, layout.Index] = ismember(evidence, values);
+    else
+        edges = linspace(min(values), max(values), 9);
+        layout.X = edges(1:end-1) + diff(edges) / 2;
+        layout.Index = discretize(evidence, edges);
+    end
     layout.Target = NaN(1, numel(layout.X));
     for b = 1:numel(layout.X)
         members = layout.Index == b;
@@ -734,31 +773,33 @@ if stimulusSet.Continuous
         end
     end
     layout.TickLabels = {};
-    layout.XLabel = 'B share of the light';
-    layout.Title = 'Psychometric, continuous patterns';
+    layout.XLabel = stimulusSet.EvidenceName;
+    layout.Title = 'Psychometric';
     return
 end
 
 nGroups = stimulusSet.nGroups;
-layout.Target = stimulusSet.GroupPLeft;
+layout.X = 1:nGroups;
 layout.Index = stimulusSet.PatternGroup;
-swept = nGroups > 2 && ~isempty(stimulusSet.SweepName) && numel(unique(stimulusSet.SweepValues)) == nGroups;
-if swept
-    % Plotted along the swept parameter, in its order, with each group mapped to
-    % its place so the line joins neighbours rather than groups in index order.
-    [layout.X, order] = sort(stimulusSet.SweepValues);
-    position = zeros(1, nGroups);
-    position(order) = 1:nGroups;
-    layout.Index = position(stimulusSet.PatternGroup);
-    layout.Target = stimulusSet.GroupPLeft(order);
-    layout.TickLabels = {};
-    layout.XLabel = stimulusSet.SweepName;
-else
-    layout.X = 1:nGroups;
-    layout.TickLabels = stimulusSet.GroupLabels;
-    layout.XLabel = 'Stimulus group';
-end
+layout.Target = stimulusSet.GroupPLeft;
+layout.TickLabels = stimulusSet.GroupLabels;
+layout.XLabel = 'Stimulus group';
 layout.Title = sprintf('Psychometric, %d group(s)', nGroups);
+end
+
+
+function tf = hasEvidence(stimulusSet)
+% Whether the family gives each pattern a value of its decision variable.
+tf = isfield(stimulusSet, 'EvidenceName') && ~isempty(stimulusSet.EvidenceName) ...
+     && all(isfinite(stimulusSet.Evidence));
+end
+
+
+function tf = rasterByEvidence(stimulusSet)
+% The outcome raster runs along the evidence when every trial has a pattern of its own
+% and the evidence takes too many values for a row each.
+tf = stimulusSet.Continuous && hasEvidence(stimulusSet) ...
+     && numel(unique(stimulusSet.Evidence)) > 12;
 end
 
 

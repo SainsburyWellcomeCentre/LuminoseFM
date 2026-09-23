@@ -51,7 +51,49 @@ opening the cameras to starting the recording took 22 s (SpinCam's `HostClockAnc
 `RecordingStart`), which covers the cameras, the house light, the HiFi module and Flex: the line now
 splits it. Record it here; it decides what to speed up next.
 
+### P8. The stimulus families at the fiber tips, and centre reward again (0.9.0)
+
+1. From a desktop MATLAB, launch a behaviour session and open the Stimulus tab: choose each family in
+   *Family* and open **Design stimuli…**; both windows must keep updating (the desktop-only stall of
+   0.7.0 cannot be seen by the test suite). Check the family's line *One cue alone could score at
+   most…* appears under the group table.
+2. With the LED on and a card (or the power meter) at the fiber tips, run a few trials of each family,
+   playing the animal from the console, and compare the light with the designer's preview: the
+   sequence family's five 100 ms flashes in a new order each trial, the guarded order's overlaps, a
+   motif's three flashes. The state machine side is checked (2026-09-22, below); this is the light.
+3. In a Training session, tick **Centre reward again** in the runtime window: water at the centre port
+   on the next 10 completed holds, and the box unticks itself after them (needs valve 2's
+   calibration, P5).
+
 ## Done
+
+### 2026-09-22 — 0.9.0 stimulus families on the state machine, no animal, run by an agent with the operator's permission
+
+Bpod r2+ on COM3 (16 global timers), PulsePal firmware v21 on COM9 (connected, outputs stopped,
+handshake answered, programmed for each session), Flex2 sync (barcode sent each session). No sound, no
+video; the Doric LED left as set by hand (`S.Doric.Enabled` off), so this checks timing, not light
+(P8). One headless behaviour session per family at its defaults (Experiment stage: 1 s window, 1 s
+hold), 4 trials each, the animal played by virtual input events written to the state machine's serial
+port (`'V'`, what the console's port buttons send), every 5 s from the first trial: centre poke, 1.35 s
+hold, leave, left poke, right poke. Session files written to `%TEMP%\LuminoseFM_rigcheck`, not the data
+folder, and not kept.
+
+A trial *matches* when each light segment of its pattern has its `GlobalTimer<k>_Start` at the
+segment's onset after the last `CentreHold` entry, and its `_End` at onset plus duration, within 1.5 ms.
+
+| Family (defaults) | Segments per pattern | Trials with a hold | Matching | Worst difference |
+|-------------------|:---:|:---:|:---:|:---:|
+| Pure channel | 1 | 4 | 4 of 4 | 0.10 ms |
+| Mixture, compare | 2 | 4 | 4 of 4 | 0.10 ms |
+| Sequence, 5 flashes in a new order each trial | 5 | 4 | 4 of 4 | 0.10 ms |
+| Order, guarded cycle, random phase | 3 | 4 | 4 of 4 | 0.10 ms |
+| Motifs | 3 | 4 | 4 of 4 | 0.10 ms |
+
+Every session reached its first trial 5–7 s after launch (`Session.Startup`), printed its family and
+its single-cue ceilings, and ended with Correct or Incorrect on every trial (a wrong left poke was
+followed by the right one, as the script plays both). With 4 trials the ceilings are the session's own
+(the mixture's amounts read 75%, not the 67% of a full session, because 4 trials cannot cover 6
+groups evenly).
 
 ### 2026-09-21 — P1, P2 and P3, operator at the rig, run by an agent (0.7.1)
 

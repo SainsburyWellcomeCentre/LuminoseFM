@@ -28,10 +28,13 @@ function history = newHistory(capacity)
 %                      window (visits to RetryResponse)
 %   .centreHoldTime    Seconds the animal stayed in the centre port on its last hold
 %
-% and one running count, a scalar:
+% and two scalars kept as the session goes:
 %   .withdrawalsAtHold  Early withdrawals since the hold last changed or was last
 %                  completed; automatic shaping steps the hold back when it reaches
 %                  S.GUI.HoldStepBackAfter (lum.HoldShaping)
+%   .centreRewardAgainFrom  First trial of the centre reward the operator asked for
+%                  again (S.GUI.CentreRewardAgain), 0 when none is running
+%                  (lum.centreRewardAgain)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
@@ -44,4 +47,5 @@ history = struct('capacity', capacity, 'nTrials', 0, ...
                  'outcome', blank, 'reactionTime', blank, 'holdDuration', blank, ...
                  'holdGrace', blank, 'holdBreaks', blank, 'holdAttempts', blank, ...
                  'earlyWithdrawals', blank, 'centreRewarded', blank, ...
-                 'responseRetries', blank, 'centreHoldTime', blank, 'withdrawalsAtHold', 0);
+                 'responseRetries', blank, 'centreHoldTime', blank, 'withdrawalsAtHold', 0, ...
+                 'centreRewardAgainFrom', 0);

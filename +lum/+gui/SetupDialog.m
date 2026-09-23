@@ -21,9 +21,11 @@ function [S, accepted, app] = SetupDialog(S, rig, varargin)
 %               long it stays on into it; the cue tone, sound output (each with a Play
 %               button), and a timeline of the cue against the stimulus
 %   Stimulus    The stimulus window and its latency from the poke; the light patterns
-%               and trial order (the stimulus designer opens from
-%               here), P(left) per group, every trial of the session to scroll
-%               through, and the timing of the other stimulus components
+%               and trial order: the stimulus family (choosing one loads its defaults),
+%               the stimulus designer for its settings, P(left) per group (the family's
+%               until typed over), how well one cue alone could do, every trial of the
+%               session to scroll through; and the timing of the other stimulus
+%               components
 %   Light path  Each channel's carrier (PulsePal)
 %   Doric LED   The LED driver, the fiber bundle and its cables, each channel's
 %               intensity and its calibration (lum.gui.DoricSetup)
@@ -59,7 +61,8 @@ function [S, accepted, app] = SetupDialog(S, rig, varargin)
 %   S         The edited settings
 %   accepted  True if the operator started the session, false if they cancelled
 %   app       With 'Wait' false: .Figure, .collect(), .refresh(), .start(),
-%             .cancel(), .status(), .playSound(which), .controls, .helpLine (the
+%             .cancel(), .status(), .playSound(which), .chooseFamily(name),
+%             .editPLeft(values), .stimulusSet(), .controls, .helpLine (the
 %             lum.gui.HelpLine), .cameras (the lum.gui.CameraSetup) and .doric (the
 %             lum.gui.DoricSetup)
 %
@@ -87,10 +90,15 @@ choices = lum.experimentChoices();
 runtime = lum.gui.runtimeFields(S);
 
 % Compiling the stimulus set is the slow part of validation, and most edits do not
-% touch it, so the last set is kept with the settings it came from. Diagrams are
-% redrawn only when what they show has changed.
+% touch it, so the last set is kept with the settings it came from, compiled with the
+% family's own contingency; the contingency in force is applied to it on each refresh.
+% P(left) typed in the group table is kept while the groups stay the same
+% (lum.pattern.typedPLeft). Diagrams are redrawn only when what they show has changed.
 cachedSet = [];
 cachedKey = {};
+shownSet = [];
+pLeftTyped = S.Task.GroupPLeft;  % Empty: the family's contingency
+pLeftFor = {};                   % The groups typed values belong to; {} when not known
 drawnKeys = struct('Flow', {{}}, 'Cue', {{}}, 'Barcode', {{}}, 'Browser', {{}});
 
 fig = uifigure('Name', 'LuminoseFM - session setup', 'Position', [40 40 1280 850], ...
@@ -105,7 +113,11 @@ controls = struct();
 controls = buildExperimentTab(tabGroup, S, controls, choices, t, @refresh);
 controls = buildTaskTab(tabGroup, S, controls, runtime, t, @refresh, @stageChosen);
 controls = buildCueTab(tabGroup, S, controls, t, @refresh, @playSound);
-controls = buildStimulusTab(tabGroup, S, controls, t, @refresh, @openDesigner, @newTrialOrder, @playSound);
+stimulusActions = struct('edit', @refresh, 'design', @openDesigner, 'play', @playSound, ...
+                         'family', @chooseFamily, 'pLeftEdit', @onPLeftEdit, ...
+                         'randomise', @randomiseTrials, 'seed', @typeSeed, ...
+                         'seedEachSession', @setSeedEachSession);
+controls = buildStimulusTab(tabGroup, S, controls, t, stimulusActions);
 controls = buildLightPathTab(tabGroup, S, controls, t, @refresh);
 doricTab = uitab(tabGroup, 'Title', 'Doric LED', 'BackgroundColor', t.Background);
 controls.Tabs.Doric = doricTab;
@@ -147,8 +159,10 @@ cameras.useHelpLine(helpLine);  % The format's description follows the choice
 refresh();
 app = struct('Figure', fig, 'collect', @collectSettings, 'refresh', @refresh, ...
              'start', @onStart, 'cancel', @onCancel, 'status', @statusText, ...
-             'playSound', @playSound, 'controls', controls, 'helpLine', helpLine, 'cameras', cameras, ...
-             'doric', doric);
+             'playSound', @playSound, 'chooseFamily', @chooseFamily, 'editPLeft', @editPLeft, ...
+             'randomise', @randomiseTrials, 'typeSeed', @typeSeed, ...
+             'stimulusSet', @currentSet, 'controls', controls, 'helpLine', helpLine, ...
+             'cameras', cameras, 'doric', doric);
 if p.Results.Wait
     uiwait(fig);
 end
@@ -205,7 +219,40 @@ end
         end
         S.Stimulus.Generator = designed.Stimulus.Generator;
         controls.StimulusDuration.Value = designed.Stimulus.Duration;
-        setGroupTable(controls.GroupTable, designed.Task.GroupPLeft);
+        pLeftTyped = designed.Task.GroupPLeft;  % Resolved by the designer for its groups
+        pLeftFor = {};
+        refresh();
+    end
+
+    function chooseFamily(name)
+        % Load a family's defaults, sized to this machine's timers and the window, with
+        % the family's own contingency.
+        try
+            candidate = collectSettings();
+        catch readError
+            setStatus(readError.message, false);
+            return
+        end
+        S.Stimulus.Generator = lum.pattern.familyDefaults(candidate.Stimulus.Generator, name, ...
+            lum.timerBudget(candidate, rig), candidate.Stimulus.Duration);
+        pLeftTyped = [];
+        pLeftFor = {};
+        refresh();
+    end
+
+    function current = currentSet()
+        % The stimulus set as last compiled and shown.
+        current = shownSet;
+    end
+
+    function onPLeftEdit()
+        % P(left) typed in the group table, for the groups the table shows.
+        editPLeft(readPLeft(controls.GroupTable.Data));
+    end
+
+    function editPLeft(values)
+        pLeftTyped = values;
+        pLeftFor = controls.GroupTable.Data(:, 2)';
         refresh();
     end
 
@@ -227,8 +274,20 @@ end
         end
     end
 
-    function newTrialOrder()
+    function randomiseTrials()
+        % A new seed: every trial of the session drawn again.
         S.Stimulus.Generator.Seed = lum.pattern.newSeed();
+        refresh();
+    end
+
+    function typeSeed(value)
+        % A seed typed in, e.g. an earlier session's, to repeat its trials.
+        S.Stimulus.Generator.Seed = round(value);
+        refresh();
+    end
+
+    function setSeedEachSession(value)
+        S.Stimulus.Generator.NewSeedEachSession = logical(value);
         refresh();
     end
 
@@ -273,13 +332,20 @@ end
         updateAppearance(candidate);
         try
             key = setKey(candidate, rig);
-            if isequal(key, cachedKey)
-                [stimulusSet, budget, notes] = lum.validateSettings(candidate, rig, cachedSet);
-            else
-                [stimulusSet, budget, notes] = lum.validateSettings(candidate, rig);
-                cachedSet = stimulusSet;
+            if ~isequal(key, cachedKey)
+                familyOwn = candidate;
+                familyOwn.Task.GroupPLeft = [];
+                familyOwn.Task.ReverseContingency = false;
+                cachedSet = lum.pattern.stimulusSet(familyOwn, lum.timerBudget(candidate, rig), ...
+                                                    rig.Opto.nChannels);
                 cachedKey = key;
             end
+            [pLeftTyped, pLeftFor] = lum.pattern.typedPLeft(pLeftTyped, pLeftFor, ...
+                                                            cachedSet.GroupLabels);
+            candidate.Task.GroupPLeft = pLeftTyped;
+            stimulusSet = lum.pattern.applyContingency(cachedSet, pLeftTyped, ...
+                                                       candidate.Task.ReverseContingency);
+            [stimulusSet, budget, notes] = lum.validateSettings(candidate, rig, stimulusSet);
         catch validationError
             setStatus(validationError.message, false);
             return
@@ -350,7 +416,7 @@ end
         candidate.Task.AutoShaping = c.AutoShaping.Value;
         candidate.Task.HoldShaping = c.HoldShaping.Value;
         candidate.Task.OnHoldBreak = c.OnHoldBreak.Value;
-        candidate.Task.GroupPLeft = readPLeft(c.GroupTable.Data);
+        candidate.Task.GroupPLeft = pLeftTyped;
 
         for k = 1:numel(candidate.Cue.Components)
             candidate.Cue.Components(k).Enabled = c.CueEnabled(k).Value;
@@ -408,6 +474,13 @@ end
     function updateAppearance(candidate)
         % Chips, enables, tab titles, notes and diagrams follow the settings.
         c = controls;
+        generator = candidate.Stimulus.Generator;  % Changed by the designer, a family, Randomise
+        if c.Seed.Value ~= generator.Seed
+            c.Seed.Value = generator.Seed;
+        end
+        if c.NewSeedEachSession.Value ~= logical(generator.NewSeedEachSession)
+            c.NewSeedEachSession.Value = logical(generator.NewSeedEachSession);
+        end
         c.StageNote.Text = lum.trainingStageNote(candidate);
         c.ShapingNote.Text = sprintf('%s %s', lum.HoldShaping.describeBreak(candidate), ...
                                      lum.HoldShaping.describe(candidate));
@@ -509,19 +582,33 @@ end
             controls.GroupTable.Data = data;
         end
 
+        shownSet = stimulusSet;
         families = lum.pattern.families();
         family = families(strcmp({families.Name}, stimulusSet.Family));
-        if stimulusSet.Continuous
-            groupsText = 'a new pattern every trial';
-        else
-            groupsText = sprintf('%d group(s)', nGroups);
+        if ~strcmp(controls.Family.Value, family.Name)
+            controls.Family.Value = family.Name;
         end
-        controls.SetSummary.Text = sprintf('%s  |  %s  |  %g ms bins  |  seed %d', ...
-            family.Label, groupsText, 1000 * stimulusSet.BinDuration, stimulusSet.Seed);
+        groupsText = sprintf('%d group(s)', nGroups);
+        if stimulusSet.Continuous
+            groupsText = sprintf('%s, %s', groupsText, family.PerTrial);
+        end
+        if stimulusSet.PLeftFromFamily
+            pLeftText = 'the family''s P(left)';
+        else
+            pLeftText = 'P(left) as typed';
+        end
+        question = '';
+        if ~isempty(family.Question)
+            question = sprintf('The animal tells: %s  |  ', family.Question);
+        end
+        controls.SetSummary.Text = sprintf('%s%s  |  %s  |  %.3g ms bins\n%s', question, ...
+            groupsText, pLeftText, 1000 * stimulusSet.BinDuration, ...
+            lum.pattern.describeShortcuts(stimulusSet.Shortcuts));
 
-        if ~isequal(cachedKey, drawnKeys.Browser)
+        browserKey = {cachedKey, stimulusSet.GroupPLeft};  % It shows each trial's P(left)
+        if ~isequal(browserKey, drawnKeys.Browser)
             controls.Browser.show(stimulusSet);
-            drawnKeys.Browser = cachedKey;
+            drawnKeys.Browser = browserKey;
         end
 
         pays = {stimulusSet.GroupPLeft > 0, stimulusSet.GroupPLeft < 1};
@@ -819,17 +906,23 @@ disableDefaultInteractivity(controls.CueAxes);
 end
 
 
-function controls = buildStimulusTab(tabGroup, S, controls, t, onEdit, onDesign, onNewOrder, onPlay)
+function controls = buildStimulusTab(tabGroup, S, controls, t, actions)
+% actions: edit, design, play, family, pLeftEdit, randomise, seed, seedEachSession
+onEdit = actions.edit;
+onPlay = actions.play;
 tab = uitab(tabGroup, 'Title', 'Stimulus', 'BackgroundColor', t.Background);
 controls.Tabs.Stimulus = tab;
 grid = uigridlayout(tab, [1 2], 'ColumnWidth', {520, '1x'}, 'Padding', 12, ...
                     'ColumnSpacing', 12, 'BackgroundColor', t.Background);
 
+% The light patterns take the left column whole, so the group table where P(left) is typed
+% has room; the other components are timed at the top right, above every trial.
 components = S.Stimulus.Components;
 nComponents = numel(components);
-left = uigridlayout(grid, [4 1], 'RowHeight', {panelHeight(2), '1x', ...
-                    panelHeight(nComponents + 2), 64}, 'Padding', 0, 'RowSpacing', 10, ...
-                    'BackgroundColor', t.Background);
+left = uigridlayout(grid, [2 1], 'RowHeight', {panelHeight(2), '1x'}, 'Padding', 0, ...
+                    'RowSpacing', 10, 'BackgroundColor', t.Background);
+right = uigridlayout(grid, [3 1], 'RowHeight', {panelHeight(nComponents + 2), 64, '1x'}, ...
+                     'Padding', 0, 'RowSpacing', 10, 'BackgroundColor', t.Background);
 
 form = formPanel(left, 'Stimulus window', 2, t, 190);
 label(form, 'Duration (s)', t);
@@ -842,26 +935,53 @@ controls.StimulusLatency.Tooltip = ['How long the animal holds the centre port a
 
 panel = uipanel(left, 'Title', 'Light patterns and trial order', 'FontWeight', 'bold', ...
                 'BackgroundColor', t.Panel, 'ForegroundColor', t.Accent);
-patterns = uigridlayout(panel, [3 1], 'RowHeight', {'fit', 30, '1x'}, 'Padding', [10 8 10 8], ...
-                        'RowSpacing', 6, 'BackgroundColor', t.Panel);
-summaryRow = uigridlayout(patterns, [1 2], 'ColumnWidth', {50, '1x'}, 'Padding', 0, ...
-                          'BackgroundColor', t.Panel);
-controls.OptoChip = makeChip(summaryRow, t);
-controls.SetSummary = uilabel(summaryRow, 'Text', '', 'WordWrap', 'on', 'FontColor', t.Ink);
-buttons = uigridlayout(patterns, [1 3], 'ColumnWidth', {'1x', 150, 130}, 'Padding', 0, ...
+patterns = uigridlayout(panel, [6 1], 'RowHeight', {26, 'fit', 28, 22, 'fit', '1x'}, ...
+                        'Padding', [10 8 10 8], 'RowSpacing', 6, 'BackgroundColor', t.Panel);
+familyRow = uigridlayout(patterns, [1 3], 'ColumnWidth', {50, 60, '1x'}, 'Padding', 0, ...
+                         'ColumnSpacing', 8, 'BackgroundColor', t.Panel);
+controls.OptoChip = makeChip(familyRow, t);
+label(familyRow, 'Family', t);
+families = lum.pattern.families();
+family = S.Stimulus.Generator.Family;
+if ~ismember(family, {families.Name})
+    family = families(1).Name;
+end
+controls.Family = uidropdown(familyRow, 'Items', {families.Label}, 'ItemsData', {families.Name}, ...
+    'Value', family, 'ValueChangedFcn', @(source, ~) actions.family(source.Value), ...
+    'Tooltip', ['What the animal tells apart. Choosing a family loads its defaults, ready to '...
+                'run; Design stimuli... changes its settings (docs/stimulus_family.md).']);
+controls.SetSummary = uilabel(patterns, 'Text', '', 'WordWrap', 'on', 'FontColor', t.Ink, ...
+                              'FontSize', 11);
+seedRow = uigridlayout(patterns, [1 4], 'ColumnWidth', {40, '1x', 130, 140}, 'Padding', 0, ...
                        'ColumnSpacing', 8, 'BackgroundColor', t.Panel);
-note(buttons, 'P(left) is editable here and in the designer.', t);
-uibutton(buttons, 'Text', 'Design stimuli...', 'FontWeight', 'bold', ...
-         'ButtonPushedFcn', @(~, ~) onDesign());
-uibutton(buttons, 'Text', 'New trial order', 'ButtonPushedFcn', @(~, ~) onNewOrder(), ...
-         'Tooltip', 'Draw a new seed: same patterns, a new shuffle');
+label(seedRow, 'Seed', t);
+controls.Seed = uieditfield(seedRow, 'numeric', 'Value', S.Stimulus.Generator.Seed, ...
+    'Limits', [0 2^32 - 1], 'RoundFractionalValues', 'on', 'ValueDisplayFormat', '%.0f', ...
+    'ValueChangedFcn', @(source, ~) actions.seed(source.Value), ...
+    'Tooltip', ['Fixes every trial of the session: their order, and whatever the family draws '...
+                'at random. Saved with the data (Session.StimulusSet.Seed) and shown on the '...
+                'plots: type an earlier session''s seed to repeat its trials.']);
+uibutton(seedRow, 'Text', 'Randomise trials', 'ButtonPushedFcn', @(~, ~) actions.randomise(), ...
+         'Tooltip', ['Draw a new seed: every trial drawn again, the order and, where the family '...
+                     'draws them, the order of the flashes, the amounts or the phase']);
+uibutton(seedRow, 'Text', 'Design stimuli...', 'FontWeight', 'bold', ...
+         'ButtonPushedFcn', @(~, ~) actions.design(), ...
+         'Tooltip', 'Every setting of the family, with a preview of every trial');
+controls.NewSeedEachSession = uicheckbox(patterns, ...
+    'Text', 'a new seed for every session (untick to keep this one)', ...
+    'Value', S.Stimulus.Generator.NewSeedEachSession, ...
+    'ValueChangedFcn', @(source, ~) actions.seedEachSession(source.Value), ...
+    'Tooltip', ['On (the default), each session of this animal starts with a new seed, so no two '...
+                'sessions deliver the same trials. Off, the next session keeps the seed above.']);
+note(patterns, 'P(left) follows the family until you type your own below or in the designer.', t);
 controls.GroupTable = uitable(patterns, 'ColumnName', {'Group', 'Label', 'Trials', 'Timers', 'P(left)'}, ...
     'ColumnEditable', [false false false false true], ...
     'ColumnWidth', {50, 'auto', 60, 60, 70}, ...
-    'CellEditCallback', @(~, ~) onEdit());
+    'ColumnFormat', {'shortG', 'char', 'shortG', 'shortG', 'shortG'}, ...
+    'CellEditCallback', @(~, ~) actions.pLeftEdit());
 setGroupTable(controls.GroupTable, S.Task.GroupPLeft);
 
-table = timingTable(left, 'Other stimulus components', nComponents + 1, ...
+table = timingTable(right, 'Other stimulus components', nComponents + 1, ...
                     {'Onset (s)', 'Duration (s)'}, t);
 captions = captionsFor({components.Type});
 for k = 1:nComponents
@@ -874,8 +994,10 @@ uilabel(table, 'Text', '');
 uilabel(table, 'Text', 'Tone range (Hz)', 'FontColor', t.Ink);
 controls.ToneLow = numberField(table, S.Stimulus.ToneFrequencyRange(1), [20 80000], onEdit, false);
 controls.ToneHigh = numberField(table, S.Stimulus.ToneFrequencyRange(2), [20 80000], onEdit, false);
+controls.ToneLow.ValueDisplayFormat = '%.0f';
+controls.ToneHigh.ValueDisplayFormat = '%.0f';
 
-row = uigridlayout(left, [1 2], 'ColumnWidth', {'1x', 130}, 'Padding', 0, 'ColumnSpacing', 8, ...
+row = uigridlayout(right, [1 2], 'ColumnWidth', {'1x', 130}, 'Padding', 0, 'ColumnSpacing', 8, ...
                    'BackgroundColor', t.Background);
 note(row, ['Timed from stimulus onset. A component on for the whole window is free; one '...
            'that starts late or ends early uses a global timer. The stimulus tone has a '...
@@ -885,7 +1007,7 @@ controls.PlayStimulusTones = uibutton(row, 'Text', [char(9654) ' Play tones'], .
     'Tooltip', ['Play each group''s stimulus tone in turn, lowest first, with the tone duration '...
                 'and the sound output set on the Cue tab']);
 
-panel = uipanel(grid, 'Title', 'Every trial of the session', 'FontWeight', 'bold', ...
+panel = uipanel(right, 'Title', 'Every trial of the session', 'FontWeight', 'bold', ...
                 'BackgroundColor', t.Panel, 'ForegroundColor', t.Accent);
 browserGrid = uigridlayout(panel, [1 1], 'Padding', 8, 'BackgroundColor', t.Panel);
 controls.Browser = lum.gui.PatternBrowser(browserGrid);
@@ -1128,9 +1250,10 @@ end
 
 
 function key = setKey(S, rig)
-% Everything the stimulus set depends on, to decide whether it has to be rebuilt.
+% Everything the stimulus set's patterns depend on, to decide whether it has to be
+% rebuilt; the contingency is applied to it afresh on every refresh.
 key = {S.Stimulus.Generator, S.Stimulus.Duration, S.Session.MaxTrials, S.Session.UseOpto, ...
-       S.Task.GroupPLeft, S.Task.ReverseContingency, lum.timerBudget(S, rig)};
+       lum.timerBudget(S, rig)};
 end
 
 

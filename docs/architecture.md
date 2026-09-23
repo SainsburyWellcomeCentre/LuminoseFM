@@ -1,7 +1,7 @@
 # LuminoseFM — Architecture
 
-Design record for the LuminoseFM protocol. Status: **implemented** (version 0.7.2); decisions
-D1–D19 confirmed. Update this file whenever the architecture changes.
+Design record for the LuminoseFM protocol. Status: **implemented** (version 0.9.0); decisions
+D1–D20 confirmed. Update this file whenever the architecture changes.
 
 ---
 
@@ -209,18 +209,21 @@ happens inside the hold, where leaving the port must end it at any instant.
 together before the first trial by `lum.pattern.generate` — a port of the generatePattern
 library — and compiled by `lum.pattern.stimulusSet`:
 
-- A **family** (pure channel, sequence motif, occupancy, overlap order, tiled order,
-  hand-drawn pulses) and its parameters produce **K groups** of joint states (dark, A only,
-  B only, both) over bins of the stimulus window, or in **continuous** mode a pattern per
-  trial with a category (A-led or B-led).
+- A **family** (pure channel, mixture, sequence, order, motifs, hand-drawn pulses; D20) and its
+  parameters produce **K groups** of joint states (dark, A only, B only, both) over bins of the
+  stimulus window. Families that offer it (`Generator.Continuous`) give every trial a pattern of
+  its own, drawn within its group.
 - Groups are **balanced**: each is assigned ⌊N/K⌋ trials, the remainder to random groups,
   and the assignment shuffled — all from a private `RandStream` seeded with
-  `S.Stimulus.Generator.Seed`, drawn per session (`lum.pattern.prepareSeed`) unless fixed.
+  `S.Stimulus.Generator.Seed`, drawn per session (`lum.pattern.prepareSeed`) unless fixed, so no
+  two sessions repeat their trials by default. The Stimulus tab's *Randomise trials* draws a new
+  one and its *Seed* takes one typed in, which repeats a session from the seed saved in its data
+  and nothing else of it; nothing reads earlier data files, which may have moved off the rig.
 - Each pattern is compiled to segments `[channel onset duration]` (`fromStates`), one per
   stretch of light, and stored in one table with row offsets per pattern (`Segments`,
   `SegmentStart`); `patternAt` recovers one in constant time.
-- `S.Task.GroupPLeft` gives each group its chance of paying left; in continuous mode, one
-  value for A-led and one for B-led patterns.
+- Each group's chance of paying left is the family's (`FamilyPLeft`) unless
+  `S.Task.GroupPLeft` gives one value per group (D20).
 - The set is **refused** if any pattern needs more global timers than `lum.timerBudget`
   leaves for light, or if two groups deliver identical light but pay different sides.
 - `lum.nextTrialSpec` takes the next pattern from a queue initialised to the order. The run
@@ -897,7 +900,8 @@ each stretch holds.
 ### D19 — Centre reward in habituation, and a retry after an unpunished incorrect choice
 
 **Decision.** Two additions to the behaviour trial, both as states that exist in every trial and
-are reached only when the runtime settings ask for them:
+are reached only when the runtime settings ask for them (the centre reward can also be asked for
+again later in a session, below):
 
 - **`CentreReward`**, between a completed hold and `WaitForCentreExit`. On trials 1 to
   `S.GUI.CentreRewardTrials` (10) of a habituation session, with `S.GUI.CentreRewardAmount` (1 µL)
@@ -937,6 +941,75 @@ five cannot spare.
   with `Rewarded` 1, and water totals must use `Rewarded`, not `Outcome`.
 - Settings files keep their `PunishCondition`; only new settings start with no punishment.
 - Valve 2 needs a liquid calibration before the centre reward can be used.
+
+**Centre reward again (0.9.0).** In any stage, ticking `S.GUI.CentreRewardAgain` in the runtime
+window gives the centre reward on the next `S.GUI.CentreRewardAgainTrials` (10) trials prepared, for
+an animal that has stopped coming to the centre port. `lum.centreRewardAgain`, called in the prepare
+window before `lum.nextTrialSpec`, keeps the run in the history (`history.centreRewardAgainFrom`, its
+first trial; 0 when none): it starts on the first trial prepared with the box ticked, ends when its
+trials are done or the box is unticked, and on ending unticks the box, which both runtime windows show
+at once (the protocol syncs again; a value the protocol changed is written back to the window).
+`nextTrialSpec` rewards a trial the run covers (`spec.CentreRewardAgain`). The latch is outside
+`nextTrialSpec` so that it stays pure and returns only the spec and the queue; it counts trials, not
+rewards, for the reason above. Nothing in the state graph changes.
+
+### D20 — A stimulus family is a question, with its own contingency and its shortcuts measured
+
+**Decision.** The families are organised by what the subject has to tell apart:
+
+| Family | Question | Groups from |
+|--------|----------|-------------|
+| `pure` | which channel is lit? | channels × lit fractions |
+| `mixture` | how much of the mixture is A? | relative rules: mixture ratios (A's share) or differences (A minus B) at roving totals of light, against a boundary that can move; controls *A alone* / *B alone*: every level with every level |
+| `count` (sequence) | which channel flashes more often? | pairs of counts over slots, in a new order every trial |
+| `order` | which channel comes first? | A first / B first; the guarded cycle, with a random phase |
+| `motif` | which word is it? | words listed for each side |
+| `arbitrary` | — | pulses typed by hand |
+
+Each family:
+
+- derives its groups from its own settings, not from a separate group count (only the hand-drawn
+  family keeps `nGroups`);
+- says which side each group pays (`FamilyPLeft`), and the session uses it whenever
+  `S.Task.GroupPLeft` is empty, which is the default. Values the operator types are kept only while
+  the group labels stay the same (`lum.pattern.typedPLeft`, in the setup dialog and the designer), and
+  are applied to a compiled set by `lum.pattern.applyContingency` without compiling it again;
+- names its evidence (`Evidence`, `EvidenceName`) and the boundary its contingency draws in the plane
+  of the fractions of the window A and B are lit (`Boundary`: diagonal, vertical, horizontal, or a
+  line with a slope and intercept, for a moved mixture boundary); the online plots use both;
+- has defaults that compile on the rig and in the emulator, sized to the timer budget
+  (`lum.pattern.familyDefaults`), and choosing a family loads them, in the designer and on the setup
+  dialog's Stimulus tab.
+
+Every stimulus set measures its **single-cue ceilings** (`lum.pattern.shortcuts`): the best accuracy
+of an observer reading only A's amount, B's amount, the total light, A's time course or B's time
+course, exactly over the groups, or for the best threshold when every trial has its own pattern. The
+dialogs show them in one line and the data file keeps them. Fractions of the window (levels, slots,
+overlaps) are shared out over whole bins with the remainder spread one bin at a time, and the bin is
+adjusted to divide the window, so no setting has to divide another exactly; segment edges, not
+durations, are rounded to the state machine's cycle.
+
+**Why.** The earlier families came from a signal-generation library and were organised by how a
+pattern is built (a repeated motif, occupancy of joint states, overlap guards), so choosing one said
+nothing about the task. Several defaults did not fit the machine (the overlap order's ten cycles took
+20 timers, the tiled order a timer per bin), and cycle counts had to divide bin counts. A task is its
+question and its contingency, and whether it tests what it is meant to depends on which simpler cues
+also solve it, which the design can state exactly ([`stimulus_family.md`](stimulus_family.md) §5)
+rather than leave to be found in the data. Keeping the family's contingency as the default removes the
+commonest setup error: a contingency typed for one set of groups applied to another.
+
+**Consequences.**
+
+- Data format: `StimulusSet` gains `FamilyPLeft`, `PLeftFromFamily`, `Evidence`, `EvidenceName`,
+  `Boundary`, `Shortcuts` and `Descriptors.ASegments`/`BSegments`, and loses `SweepName`/`SweepValues`;
+  `Settings.Task.GroupPLeft` may be empty.
+- `lum.mergeSettings` converts old generators: the sequence motif becomes two words, the overlap order
+  the guarded cycle, the tiled order the simple order with no overlap, occupancy the mixture's
+  defaults; P(left) is kept only where the groups are the same.
+- The sequence family's default draws a new order every trial, so a session holds a pattern per trial
+  (about five segments each): within what the segment table was designed for (D5).
+- Single-cue ceilings of per-trial designs are threshold-based and leave the time courses out.
+- The task variant (`S.Task.Variant`) is still only recorded; it does not choose the family.
 
 ---
 
@@ -1012,12 +1085,15 @@ Around it:
   `RetryResponse`.
 
 ### Stimuli
-`+lum/+pattern/`: `generate` (families, groups, balanced order, offsets, descriptors) →
-`stimulusSet` (segments, contingency, `S.Task.ReverseContingency`, budget and identical-group
-checks) → `patternAt`. A reversal is applied once, there, so the set, the plots and every trial
-record read one contingency; `BasePLeft` keeps the operator's own numbers beside it.
-`fromStates`, `canonicalise`, `check`, `validate` and `describe` work on single patterns;
-`families`, `withGeneratorDefaults`, `defaultPLeft`, `newSeed` and `prepareSeed` support the
+`+lum/+pattern/`: `generate` (families, groups, balanced order, offsets, descriptors, evidence,
+boundary, the family's contingency) → `stimulusSet` (segments, budget check) → `applyContingency`
+(typed or the family's P(left), `S.Task.ReverseContingency`, the identical-group check, `shortcuts`)
+→ `patternAt`. A reversal is applied once, there, so the set, the plots and every trial record read
+one contingency; `BasePLeft` keeps the operator's own numbers beside it. `families` lists the
+families with their questions, `familyDefaults` loads one's defaults for a timer budget, `typedPLeft`
+keeps typed P(left) only for its groups, `shortcuts` and `describeShortcuts` measure and word the
+single-cue ceilings (D20). `fromStates`, `canonicalise`, `check`, `validate` and `describe` work on
+single patterns; `withGeneratorDefaults`, `defaultPLeft`, `newSeed` and `prepareSeed` support the
 windows and the session.
 
 `+lum/+stim/` components share the interface `nTimersNeeded` → `configure` →
@@ -1100,10 +1176,11 @@ record through `lum.gui.ExperimentForm` and lay out forms with `lum.gui.Form`; a
 
 ### Online plots
 `+lum/OnlinePlots.m` owns one figure on a 12-column grid: header; top row now and next (left) and
-outcomes; middle row performance, psychometric (laid out by `psychometricLayout` from the set: one
-point, pair, sweep or B-share bins) and evidence (each choice at the latent evidence u_A and u_B its
-stimulus carried, the fraction of the window A and B were lit, by correctness and side chosen, jittered by a fixed sequence rather than `rand`, which the
-trial policy draws sides from); bottom row by side, side bias (P(chose left) over the bias window,
+outcomes; middle row performance, psychometric (laid out by `psychometricLayout` from the set: along
+the family's evidence, a point per value or eight bins, or a point per group when it has none) and
+evidence (each choice at the latent evidence u_A and u_B its stimulus carried, the fraction of the
+window A and B were lit, by correctness and side chosen, jittered by a fixed sequence rather than
+`rand`, which the trial policy draws sides from, with the contingency's boundary behind it); bottom row by side, side bias (P(chose left) over the bias window,
 and the correction target), reaction time and centre hold (time in the port on each trial's last
 hold, completed or broken, against latency plus hold). The header's summary gives the water drunk,
 side and centre apart, and the running trial's hold. Handles created once; aggregates kept incrementally;
