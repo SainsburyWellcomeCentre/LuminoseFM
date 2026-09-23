@@ -226,8 +226,8 @@ end
     end
 
     function durationEdited()
-        % The duration field is only editable with test pulses off, and then it is the
-        % recording's own length.
+        % The duration field is editable when the recording has a length of its own: test
+        % pulses off, or a schedule whose last step goes on until the recording ends.
         ownDuration = controls.Duration.Value;
         refresh();
     end
@@ -364,13 +364,16 @@ end
         end
 
         design = candidate.Sleep.TestPulses;
-        if ~isequal(design, drawnTestPulses)
+        drawn = {design, ownDuration};
+        if ~isequal(drawn, drawnTestPulses)
             drawTestPulses(design);
-            drawnTestPulses = design;
+            drawnTestPulses = drawn;
         end
-        % With test pulses the recording lasts as long as their schedule.
-        on = design.Enabled && ~isempty(designedPlan);
-        lum.gui.Form.setEnable({c.Duration}, ~design.Enabled);
+        % With test pulses the recording lasts as long as their schedule, unless its last
+        % step goes on until the recording ends.
+        ownLength = ~design.Enabled || lum.sleep.untilRecordingEnds(design);
+        on = design.Enabled && ~isempty(designedPlan) && ~ownLength;
+        lum.gui.Form.setEnable({c.Duration}, ownLength);
         if on
             c.Duration.Value = min(max(designedPlan.Duration / 60, 0.01), 1440);
         else
@@ -383,7 +386,7 @@ end
         c = controls;
         design.Enabled = true;
         try
-            designedPlan = lum.sleep.testPulsePlan(design);
+            designedPlan = lum.sleep.testPulsePlan(design, ownDuration);
         catch planError
             designedPlan = [];
             c.TestPulseSummary.Text = planError.message;

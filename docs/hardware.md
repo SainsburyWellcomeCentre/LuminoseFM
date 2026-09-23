@@ -79,8 +79,9 @@ Each spot is the end of one 100 µm fiber, so a cable's light leaves through its
 channels run in **external TTL mode**: a channel is lit at its LED current while PulsePal's output
 into its TTL input is high. With the DoricLED package found and **Control the LED from MATLAB** ticked
 (`S.Doric.Enabled`, the default), the protocol connects to the driver as it launches, each session sets
-both channels up at the session's intensity (limit `S.Doric.MaxCurrentmA`, at most 1000 mA, the LED's
-rating), and currents change only between trials, sleep blocks or ePhys calibration steps (D17). The
+both channels up at the session's intensity (limit `S.Doric.MaxCurrentmA`, 1000 mA by default and at
+most, the LED's rating; the driver's front knob caps the current as well, so it is turned to 1000 mA),
+and currents change only between trials, sleep blocks or ePhys calibration steps (D17). The
 state machine is not involved. Without the package, or with the control off, the driver is used as it
 was set by hand (its front panel or Doric Neuroscience Studio), which must then be external TTL mode;
 PulsePal's voltage (5 V) is a TTL level either way, not the intensity.
@@ -88,13 +89,20 @@ PulsePal's voltage (5 V) is a TTL level either way, not the intensity.
 **Calibration.** A cable's LED current can be calibrated against irradiance at its fiber tips: the
 Doric LED tab's **Calibrate LED power…** takes the two cables on the commutator at once, one per
 channel, and lights each channel continuously (the driver's continuous mode) at a series of currents,
-0–700 mA in 50 mA steps by default, while a power meter reads the power leaving the cable (mW or µW). Irradiance is that power over the
-cable's fiber area. A calibration belongs to a cable on a channel (bundle, colour and A or B): the light
+0–1000 mA in 100 mA steps by default, starting from the readings already saved for that cable on that
+channel, while a power meter reads the power leaving the cable (mW or µW). Irradiance is that power over
+the cable's fiber area. A calibration needs readings at 4 currents above 0 mA, up to 400 mA or more
+(`lum.led.checkCoverage`), and is used up to its highest reading. A calibration belongs to a cable on a channel (bundle, colour and A or B): the light
 leaving a cable depends on the LED and the commutator channel that feed it, so the orange cable on A and
 the orange cable on B are calibrated separately. It is kept in `calibration/` in the repository as
 `DoricLED_<bundle>_<cable>_<A|B>.mat` (not tracked by git, so each rig keeps its own), and is replaced by
 the next calibration of the same cable on the same channel. A per-cable file from 0.7.2–0.9.0
-(`DoricLED_<bundle>_<cable>.mat`) is still used, on the channel it was measured on only.
+(`DoricLED_<bundle>_<cable>.mat`) is still used, on the channel it was measured on only. On this rig
+(2026-09-23, 4-to-19 bundle) **channel B gives about 58% of channel A's irradiance for every cable**,
+10.5–10.6 mW/mm² at 700 mA against 17.5–18.6 on A. The cables agree with each other on each
+channel, so the difference lies in the LED channel or the commutator; B needs about twice A's current
+for the same irradiance (457–520 mA for 8 mW/mm²). Zero the meter with the LED off: a reading at
+0 mA above 0.3 mW/mm² gets a note in every session (`lum.led.validate`).
 
 **Intensity.** On a calibrated channel every session type asks for irradiance at the fiber tips
 (mW/mm²) and sets the LED current that gives it as it starts: 8 mW/mm² by default in behaviour, 2 for

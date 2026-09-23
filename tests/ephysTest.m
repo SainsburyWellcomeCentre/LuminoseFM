@@ -123,7 +123,7 @@ end
 function testWhatCannotRunIsRefused(testCase)
 S = ephysSettings();
 bad = S;
-bad.Ephys.InputOutput.MaxmA = [800 NaN];
+bad.Ephys.InputOutput.MaxmA = [1100 NaN];
 verifyError(testCase, @() lum.ephys.plan(bad), 'lum:ephys:plan:overLimit');
 bad = S;
 bad.Ephys.InputOutput.Enabled = false;

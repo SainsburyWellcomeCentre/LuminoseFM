@@ -14,7 +14,7 @@ function [plan, notes] = validateTestPulses(S, rig)
 % so the designer and the session refuse the same schedules.
 %
 % Arguments:
-%   S    Settings struct; reads S.Sleep.TestPulses and S.Sleep.Sync
+%   S    Settings struct; reads S.Sleep.TestPulses, S.Sleep.Sync and S.Sleep.DurationMinutes
 %   rig  Channel map from RigConfig, for rig.Limits.MaxStates
 %
 % Returns the compiled plan (empty when test pulses are off) and notes worth showing.
@@ -25,12 +25,17 @@ function [plan, notes] = validateTestPulses(S, rig)
 % See also: lum.sleep.testPulsePlan, lum.sleep.validate, lum.gui.TestPulseDesigner
 
 notes = {};
-plan = lum.sleep.testPulsePlan(S.Sleep.TestPulses);
+plan = lum.sleep.testPulsePlan(S.Sleep.TestPulses, S.Sleep.DurationMinutes);
 if ~S.Sleep.TestPulses.Enabled
     return
 end
 
 lum.sleep.checkTimeline(plan, S.Sleep.Sync, rig);
 
-notes{end+1} = sprintf(['With test pulses on, the recording lasts as long as their schedule, '...
-                        '%.4g min, and needs PulsePal.'], plan.Duration / 60);
+if plan.UntilEnd
+    notes{end+1} = sprintf(['Test pulses go on for the whole recording, %.4g min, and need '...
+                            'PulsePal.'], plan.Duration / 60);
+else
+    notes{end+1} = sprintf(['With test pulses on, the recording lasts as long as their schedule, '...
+                            '%.4g min, and needs PulsePal.'], plan.Duration / 60);
+end

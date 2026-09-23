@@ -338,10 +338,32 @@ duration vary within each channel, so a subject cannot solve the task by timing 
 
 **Question.** How much of the mixture is A?
 
-Both channels are lit, each for an amount: from stimulus onset (*onset* placement, where they
-overlap for the smaller amount) or both centred in the window (*centred*). What decides the side is
-the **decision rule**: a relative measure of A against B (both channels needed), or one channel's
-amount alone (the controls).
+Both channels are lit, each for an amount. What decides the side is the **decision rule**: a
+relative measure of A against B (both channels needed), or one channel's amount alone (the controls).
+
+**Placement.** Where in the window the amounts are lit (`MixtureLayout`):
+
+- *spread* (the default): the window is cut into $C$ **cycles** (`MixtureCycles`, bins shared out as
+  evenly as possible), each channel's amount is shared out over the cycles in proportion to their
+  length, and in every cycle both channels start together. A cycle holds both channels for the
+  smaller amount, the larger one alone, then dark. The mixture is present throughout the window,
+  and the dark is a gap at the end of each cycle.
+- *onset*: each channel in one stretch from stimulus onset, overlapping for the smaller amount;
+- *centred*: each channel in one stretch centred in the window.
+
+The amounts, and so the rule, the evidence and every single-cue ceiling of amounts, are the same
+under every placement; only the time course differs. Why spread is the default: the totals rove
+(below), so most pairs light far less than the window. In one stretch from onset, the last part of the
+window is then always dark, and the light is over within the first 20% of the window at the lowest
+total. Spread over cycles, every part of the window carries the same mixture. The cost is timers:
+each cycle is one light segment per channel, so $2C$ global timers. The defaults use 5 cycles where
+10 timers are left for light (the rig) and fewer where not (2 in the emulator), and no more cycles
+than the smallest default amount (0.1 of the window) has bins: 3 in a 0.3 s window of 10 ms bins.
+An amount with fewer bins than there are cycles is refused, naming the group; so are two groups that
+come to the same light once rounded to bins (a 0.3 s window in 100 ms bins has only three bins, and
+2:1 and 1:2 at the low totals both become one bin of each). Choosing a family (any family) avoids
+both: when its defaults cannot be drawn in the bin set, the bin is made finer, 10 ms, then 5, 2 or
+1 ms, until they can; a bin that works is kept, and none is made coarser.
 
 #### Relative rules: A's share, or A minus B
 
@@ -440,7 +462,8 @@ amount, a little above 50% for total light.
 | Sides change at A minus B | `MixtureDifferenceBoundary` | 0 |
 | Total light (difference) | `MixtureDifferenceTotals` | 0.3 0.5 0.7 0.9 |
 | Amount levels (controls) | `MixtureLevels` | 0.1 0.2 0.4 0.8 |
-| Placement | `MixtureLayout` | `'onset'` (`'centred'`) |
+| Placement | `MixtureLayout` | `'spread'` (`'onset'`, `'centred'`) |
+| Cycles (spread) | `MixtureCycles` | 5 (fewer where the timers or bins are short) |
 | Every trial | `Continuous` | off |
 
 **Why.** Two mixture ratios, 2:1 and 1:2, at totals that double: every trial is as hard as every

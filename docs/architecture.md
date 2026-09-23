@@ -549,7 +549,10 @@ cue's end from stimulus onset puts it on the same clock as every other stimulus 
 **Decision.** A sleep session may send *test pulses* (`S.Sleep.TestPulses`, off by default): probes
 — a single pulse or a pair, one epoch every inter-epoch interval — and named plasticity trains
 (theta burst and high frequency provided), in a schedule of steps: probe, rest or a train, on A and
-B, on one of them, or alternating epoch by epoch. They are delivered by the D1 split: Bpod gates
+B, on one of them, or alternating epoch by epoch. The default (0.9.2) is paired probes alternating
+between A and B every 30 s, for as long as the recording lasts: light on both channels at once would give an evoked response
+with two sources, so both at once is the operator's choice (*A and B*), never the default. They are
+delivered by the D1 split: Bpod gates
 BNC1/BNC2, and PulsePal, gated, fills each gate — with constant light for a probe, so the gate is the
 pulse, and with the train's pulses for a burst.
 
@@ -558,8 +561,11 @@ pulse, and with the train's pulses for a burst.
   integer cycles of the 100 µs clock, and each step's carrier. A burst's gate runs from its first
   pulse to half way through the gap after its last, so PulsePal completes the last pulse and cannot
   begin another. A probe step of M minutes holds `floor(60 M / interval)` epochs, each followed by a
-  whole interval inside the step; a train step lasts `nTrains × TrainInterval`. With test pulses on,
-  the recording lasts as long as the schedule.
+  whole interval inside the step; a train step lasts `nTrains × TrainInterval`. The last probe or
+  rest step may last until the recording ends (Minutes `Inf`, the default schedule): it takes what
+  the earlier steps leave of `S.Sleep.DurationMinutes`, and the recording lasts that long. Otherwise
+  the recording lasts as long as the schedule. The sleep dialog's duration is editable exactly when
+  the recording has a length of its own (`lum.sleep.untilRecordingEnds`).
 - `lum.sleep.syncPulseTimes` lays out the sync pulses over the same span, and `lum.sleep.nextBlock`
   cuts the two into state machines of about 10 s: only at a moment when every line is low, never
   inside an epoch, and before the first epoch of the next step — shortened until the block fits
@@ -829,7 +835,10 @@ unchanged. What MATLAB adds is the current:
   file from 0.7.2–0.9.0 is still read for the channel it was measured on. They are measured two cables
   at a time (`lum.gui.DoricCalibration`, 0.8.1), because the commutator takes two: one table, On/Off
   and graph per channel, the channel lit in the driver's continuous mode at the selected current,
-  0–700 mA in 50 mA steps by default.
+  0–1000 mA in 100 mA steps by default (0.9.3; 0–700 mA in 50 mA steps before), starting from the
+  cable's saved readings on that channel so that only new currents are measured. A calibration is
+  saved and used only when its readings cover the LED's range (`lum.led.checkCoverage`: 4 currents
+  above 0 mA, up to 400 mA or more), and is used up to its highest reading whatever the limit.
 
 **Why.**
 
@@ -862,7 +871,12 @@ unchanged. What MATLAB adds is the current:
 - A current changed during a session is acknowledged by the driver; whether the brightness follows
   at once in external TTL mode is a rig check (`rig-checks.md` P3).
 - The package keeps the 1000 mA ceiling of the 465 nm LED (`doric.Channel.DeviceMaxCurrentmA`);
-  `S.Doric.MaxCurrentmA` (700 mA by default) is refused above it here as well.
+  `S.Doric.MaxCurrentmA` is refused above it here as well. It is 1000 mA by default since 0.9.3
+  (700 mA, Doric's recommended current for an LED held on, before): the LED is rated 1000 mA, the
+  driver's front panel offers 1000 mA in continuous mode, and in a session the light is gated, not
+  held. The package's own default limit stays 700 mA; `lum.dev.DoricLED.setUp` sets the session's.
+  0.9.2 settings files holding 700 mA take 1000 mA (`lum.mergeSettings`). The driver's front knob
+  caps the current independently of USB, so it must be turned up to 1000 mA as well.
 - `hardware/TestDoricLED` checks the whole light path on the rig, from Bpod's BNC outputs through
   PulsePal to the driver, at one or more currents. Whether light comes out is checked by eye: the
   driver cannot be read back.
@@ -1023,6 +1037,13 @@ commonest setup error: a contingency typed for one set of groups applied to anot
   (about five segments each): within what the segment table was designed for (D5).
 - Single-cue ceilings of per-trial designs are threshold-based and leave the time courses out.
 - The task variant (`S.Task.Variant`) is still only recorded; it does not choose the family.
+- The mixture's roving totals leave most pairs lighting far less than the window. From 0.9.2 its
+  amounts are spread over the window in cycles by default (`MixtureLayout` `'spread'`,
+  `MixtureCycles`), both channels starting every cycle, so the mixture lasts the whole window rather
+  than ending early and leaving the rest dark; each cycle costs a timer per channel, so the defaults
+  take 5 cycles on the rig and 2 in the emulator. Groups that round to the same light are refused.
+  Coding amount as intensity (the LED current per trial) instead of time lit would remove the dark
+  altogether; it is not built.
 
 ---
 
@@ -1300,5 +1321,5 @@ These are properties of Bpod v1.9.0 that shaped the code and are easy to redisco
 - Confirm on the rig, with a scope downstream of PulsePal, that a sleep session's probes are 10 ms of
   light 50 ms apart, that a theta-burst gate holds exactly four pulses, and that PulsePal changes
   carrier between steps with nothing emitted.
-- Whether 5 ms is the right pulse width for the provided 100 Hz trains in OSN-ChR mice, and whether
-  paired probes on A and B should be simultaneous (the default) or alternate.
+- Whether 5 ms is the right pulse width for the provided 100 Hz trains in OSN-ChR mice. (Paired
+  probes alternate between A and B by default since 0.9.2, 30 s apart; see D13.)

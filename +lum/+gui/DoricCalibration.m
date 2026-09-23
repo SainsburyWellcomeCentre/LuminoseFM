@@ -10,9 +10,13 @@ classdef DoricCalibration < handle
     % The line under the choice says which of the bundle's cables are calibrated on which
     % channel already.
     %
-    % Each channel has its own table of currents, 0 to 700 mA in steps of 50 by default
-    % (Fill makes another series, never above the channel's limit), its own On and Off,
-    % and its own graph. On lights that channel continuously (continuous mode, through
+    % Each channel has its own table of currents, 0 to 1000 mA in steps of 100 by default
+    % ('CurrentsmA'), never above the channel's limit, its own On and Off, and its own graph.
+    % A cable already calibrated on that channel starts with its saved readings, shown in the
+    % meter's unit, and its saved currents join the table: measure only the rows left empty
+    % (for example 800 to 1000 mA after a calibration to 700). Fill adds a series of currents
+    % to both tables, keeping every reading (From = To adds one current); a row's mA can
+    % also be typed over. Rows without a power are left out of the calibration. On lights that channel continuously (continuous mode, through
     % the connected driver) at the selected row's current; while it is lit, choosing
     % another row, or Next, lights it at that row's current. The operator holds the power
     % meter at the cable's tip and types the power read, in mW or uW. The window shows the
@@ -20,9 +24,11 @@ classdef DoricCalibration < handle
     % irradiance as the readings come in (lum.led.plotCalibration), with the cable's saved
     % calibration dashed behind it when there is one.
     %
-    % Save calibrations writes each channel whose readings make a calibration
-    % (lum.led.saveCalibration), replacing any earlier one of that cable on that channel;
-    % every session type uses it from then on, with that cable on that channel. Choosing
+    % Save calibrations writes each channel whose readings changed (lum.led.saveCalibration),
+    % replacing any earlier one of that cable on that channel; every session type uses it
+    % from then on, with that cable on that channel. A channel's readings must cover the
+    % LED's range (lum.led.checkCoverage: 4 currents above 0 mA at least, up to 400 mA or
+    % more), or they are not saved; the line above each table says whether they do. Choosing
     % another cable drops that channel's
     % unsaved readings, after asking. Closing the window switches both channels off; the
     % session puts them back in external TTL mode.
@@ -32,17 +38,18 @@ classdef DoricCalibration < handle
     %
     % Usage:
     %   w = lum.gui.DoricCalibration('4-to-19', {'orange', 'blue'}, 'LED', led, ...
-    %                                'MaxCurrentmA', [700 700], 'OnSaved', @(cal) ...);
+    %                                'MaxCurrentmA', [1000 1000], 'OnSaved', @(cal) ...);
     %
     % Options:
     %   'LED'           A connected lum.dev.DoricLED, or [] to take readings only
-    %   'MaxCurrentmA'  The highest current offered on A and B (default 700 each; at most 1000)
+    %   'MaxCurrentmA'  The highest current offered on A and B (default 1000 each; at most 1000)
+    %   'CurrentsmA'    The currents each table starts with (default DefaultCurrentsmA)
     %   'Folder'        Where to save (default lum.led.calibrationFolder)
     %   'OnSaved'       Called with each saved calibration
     %   'Visible'       'on' (default) or 'off', for tests
     %
     % Members for tests: Figure, Controls, Paths, setCables(bundle, cables),
-    % setPower(k, row, value), select(k, row), next(k), lightOn(k), lightOff(k),
+    % setPower(k, row, value), fill(), select(k, row), next(k), lightOn(k), lightOff(k),
     % switchOff(k) (the Off button), save(), calibration(k), close().
     %
     % See also: lum.gui.DoricSetup, lum.led.makeCalibration, lum.led.saveCalibration
@@ -55,7 +62,7 @@ classdef DoricCalibration < handle
     end
 
     properties (Constant)
-        DefaultCurrentsmA = 0:50:700   % The table each channel starts with
+        DefaultCurrentsmA = 0:100:1000   % The table each channel starts with
     end
 
     properties (Access = private)
@@ -63,7 +70,9 @@ classdef DoricCalibration < handle
         theme
         onSaved
         folder
-        maxCurrent = [700 700]
+        maxCurrent = [1000 1000]
+        startCurrents = 0:100:1000
+        unit = 'mW'              % The unit the Power column is shown in
         selected = [1 1]
         lit = [false false]
         dirty = [false false]    % Readings typed since the last save or cable change
@@ -76,7 +85,8 @@ classdef DoricCalibration < handle
         function obj = DoricCalibration(bundle, cables, varargin)
             p = inputParser;
             addParameter(p, 'LED', []);
-            addParameter(p, 'MaxCurrentmA', [700 700]);
+            addParameter(p, 'MaxCurrentmA', [1000 1000]);
+            addParameter(p, 'CurrentsmA', lum.gui.DoricCalibration.DefaultCurrentsmA);
             addParameter(p, 'Folder', '');
             addParameter(p, 'OnSaved', []);
             addParameter(p, 'Visible', 'on');
@@ -89,6 +99,8 @@ classdef DoricCalibration < handle
                 limits = [limits limits];
             end
             obj.maxCurrent = min(limits(:)', 1000);
+            obj.startCurrents = unique(round(double(p.Results.CurrentsmA(:)')));
+            obj.startCurrents = obj.startCurrents(isfinite(obj.startCurrents) & obj.startCurrents >= 0);
             obj.theme = lum.gui.theme();
             obj.bundleName = char(bundle);
             obj.cables = cellfun(@char, cables, 'UniformOutput', false);
@@ -111,6 +123,11 @@ classdef DoricCalibration < handle
             obj.Controls.Table(k).Data = data;
             obj.dirty(k) = true;
             obj.redraw(k);
+        end
+
+        function fill(obj)
+            % fill() is the Fill button: adds From:Step:To to both tables, keeping readings.
+            obj.addSeries();
         end
 
         function select(obj, k, row)
@@ -184,9 +201,9 @@ classdef DoricCalibration < handle
         end
 
         function ok = save(obj)
-            % save() writes each channel's calibration, replacing any earlier one of its
-            % cable. Channels without readings are skipped; true when at least one was
-            % saved and none failed.
+            % save() writes the calibration of each channel whose readings changed,
+            % replacing any earlier one of its cable on that channel. Channels with no new
+            % readings are skipped; true when at least one was saved and none failed.
             ok = false;
             if strcmp(obj.Paths{1}.Cable, obj.Paths{2}.Cable)
                 obj.setStatus('The same cable is chosen on A and B: choose two cables.', false);
@@ -195,7 +212,7 @@ classdef DoricCalibration < handle
             savedNames = {};
             problems = {};
             for k = 1:2
-                if ~any(~isnan(cellfun(@readingOf, obj.Controls.Table(k).Data(:, 2))))
+                if ~obj.dirty(k) || ~any(~isnan(cellfun(@readingOf, obj.Controls.Table(k).Data(:, 2))))
                     continue
                 end
                 try
@@ -218,7 +235,7 @@ classdef DoricCalibration < handle
             if ~isempty(problems)
                 obj.setStatus(strjoin([{'Not saved:'}, problems], '  '), false);
             elseif isempty(savedNames)
-                obj.setStatus('No readings to save.', false);
+                obj.setStatus('No new readings to save.', false);
             else
                 ok = true;
                 obj.setStatus(sprintf('Saved %s in %s.', strjoin(savedNames, ' and '), ...
@@ -279,21 +296,24 @@ classdef DoricCalibration < handle
 
             form = lum.gui.Form.panel(top, 'Readings', 3, t, 150);
             lum.gui.Form.label(form, 'Power meter reads', t);
-            obj.Controls.Unit = uidropdown(form, 'Items', {'mW', 'uW'}, 'Value', 'mW', ...
-                'ValueChangedFcn', @(~, ~) obj.redraw(1:2), 'Tooltip', 'The unit the power meter shows.');
+            obj.Controls.Unit = uidropdown(form, 'Items', {'mW', 'uW'}, 'Value', obj.unit, ...
+                'ValueChangedFcn', @(~, ~) obj.unitChanged(), ...
+                'Tooltip', ['The unit the power meter shows. Changing it converts the powers already in '...
+                            'the tables, so each keeps its value.']);
             lum.gui.Form.label(form, 'Currents (mA)', t);
             row = uigridlayout(form, [1 4], 'ColumnWidth', {'1x', '1x', '1x', 60}, 'Padding', 0, ...
                                'ColumnSpacing', 4, 'BackgroundColor', t.Panel);
             highest = max(obj.maxCurrent);
             obj.Controls.From = uieditfield(row, 'numeric', 'Value', 0, 'Limits', [0 highest], ...
                 'RoundFractionalValues', 'on', 'Tooltip', 'The first current, mA.');
-            obj.Controls.To = uieditfield(row, 'numeric', 'Value', min(obj.DefaultCurrentsmA(end), highest), ...
+            obj.Controls.To = uieditfield(row, 'numeric', 'Value', min(max(obj.startCurrents), highest), ...
                 'Limits', [0 highest], 'RoundFractionalValues', 'on', ...
                 'Tooltip', 'The last current, mA; never above a channel''s limit.');
-            obj.Controls.Step = uieditfield(row, 'numeric', 'Value', 50, 'Limits', [1 1000], ...
+            obj.Controls.Step = uieditfield(row, 'numeric', 'Value', 100, 'Limits', [1 1000], ...
                 'RoundFractionalValues', 'on', 'Tooltip', 'The step between currents, mA.');
             uibutton(row, 'Text', 'Fill', 'ButtonPushedFcn', @(~, ~) obj.fill(), ...
-                     'Tooltip', 'Replace both tables'' currents; their readings are cleared.');
+                     'Tooltip', ['Add these currents to both tables, keeping every reading. From = To '...
+                                 'adds one current.']);
             lum.gui.Form.label(form, 'Notes', t);
             obj.Controls.Notes = uieditfield(form, 'text', 'Value', '', ...
                 'Placeholder', 'power meter, wavelength setting', ...
@@ -430,17 +450,24 @@ classdef DoricCalibration < handle
         end
 
         function useCables(obj)
-            % Each channel starts again: light off, the default currents, no readings.
+            % Each channel starts again: light off, the starting currents, and the saved
+            % readings of the cable on that channel, if any, to be added to.
             obj.lightOff();
             S = struct('Light', struct('Bundle', obj.bundleName, 'Cables', {obj.cables}));
             for k = 1:2
                 obj.Paths{k} = lum.led.lightPath(S, k);
-                obj.previous{k} = lum.led.loadCalibration(obj.Paths{k}, obj.folder);
-                path = obj.Paths{k};
-                obj.Controls.PathNote(k).Text = sprintf('%s cable: %d fibers of %g um = %.4g mm2', ...
-                    path.Cable, path.nFibers, 1000 * path.FiberDiameter, path.Area);
-                currents = obj.DefaultCurrentsmA(obj.DefaultCurrentsmA <= obj.maxCurrent(k))';
-                obj.setCurrents(k, currents);
+                obj.previous{k} = lum.led.loadCalibration(obj.Paths{k}, obj.folder, false);
+                currents = obj.startCurrents(obj.startCurrents <= obj.maxCurrent(k))';
+                powers = NaN(size(currents));
+                old = obj.previous{k};
+                if ~isempty(old)
+                    % Saved readings are kept whatever the limit: they were measured.
+                    currents = union(currents, old.CurrentmA(:));
+                    powers = NaN(size(currents));
+                    [~, at] = ismember(old.CurrentmA(:), currents);
+                    powers(at) = old.PowermW(:) / obj.unitScale();
+                end
+                obj.setCurrents(k, currents, powers);
             end
             obj.showBundle();
             if strcmp(obj.cables{1}, obj.cables{2})
@@ -448,23 +475,71 @@ classdef DoricCalibration < handle
             end
         end
 
-        function setCurrents(obj, k, currents)
+        function setCurrents(obj, k, currents, powers)
+            if nargin < 4
+                powers = NaN(numel(currents), 1);
+            end
             blank = num2cell(NaN(numel(currents), 1));
-            obj.Controls.Table(k).Data = [num2cell(currents(:)), blank, blank];
+            obj.Controls.Table(k).Data = [num2cell(currents(:)), num2cell(powers(:)), blank];
             obj.dirty(k) = false;
             obj.selected(k) = 1;
             obj.showSelected(k);
             obj.redraw(k);
         end
 
-        function fill(obj)
+        function addSeries(obj)
+            % Add the From:Step:To currents to both tables; every reading stays.
             currents = (obj.Controls.From.Value:obj.Controls.Step.Value:obj.Controls.To.Value)';
             if isempty(currents)
                 obj.setStatus('No currents between the first and the last.', false);
                 return
             end
             for k = 1:2
-                obj.setCurrents(k, currents(currents <= obj.maxCurrent(k)));
+                data = obj.Controls.Table(k).Data;
+                had = cellfun(@readingOf, data(:, 1));
+                added = setdiff(currents(currents <= obj.maxCurrent(k)), had);
+                if isempty(added)
+                    continue
+                end
+                data = [data; num2cell(added), num2cell(NaN(numel(added), 2))]; %#ok<AGROW>
+                [~, order] = sort(cellfun(@readingOf, data(:, 1)));
+                data = data(order, :);
+                selectedCurrent = NaN;
+                if ~isempty(had)
+                    selectedCurrent = had(min(obj.selected(k), numel(had)));
+                end
+                obj.Controls.Table(k).Data = data;
+                row = find(cellfun(@readingOf, data(:, 1)) == selectedCurrent, 1);
+                if ~isempty(row)
+                    obj.selected(k) = row;
+                end
+                obj.showSelected(k);
+                obj.redraw(k);
+            end
+        end
+
+        function unitChanged(obj)
+            % The powers in the tables keep their value, shown in the new unit.
+            factor = obj.unitScale(obj.unit) / obj.unitScale();
+            obj.unit = obj.Controls.Unit.Value;
+            for k = 1:2
+                data = obj.Controls.Table(k).Data;
+                for i = 1:size(data, 1)
+                    data{i, 2} = readingOf(data{i, 2}) * factor;
+                end
+                obj.Controls.Table(k).Data = data;
+            end
+            obj.redraw(1:2);
+        end
+
+        function scale = unitScale(obj, unit)
+            % mW per unit of the Power column.
+            if nargin < 2
+                unit = obj.Controls.Unit.Value;
+            end
+            scale = 1;
+            if strcmp(unit, 'uW')
+                scale = 1e-3;
             end
         end
 
@@ -524,10 +599,15 @@ classdef DoricCalibration < handle
                 S = struct('Light', struct('Bundle', bundle.Name, 'Cables', {{bundle.Cables{i}, bundle.Cables{i}}}));
                 dates = {'-', '-'};
                 for k = 1:2
-                    cal = lum.led.loadCalibration(lum.led.lightPath(S, k), obj.folder);
-                    if ~isempty(cal)
-                        dates{k} = cal.Date(1:10);
+                    cal = lum.led.loadCalibration(lum.led.lightPath(S, k), obj.folder, false);
+                    if isempty(cal)
+                        continue
+                    end
+                    dates{k} = sprintf('%s to %g mA', cal.Date(1:10), max(cal.CurrentmA));
+                    if isempty(lum.led.checkCoverage(cal))
                         nDone = nDone + 1;
+                    else
+                        dates{k} = [dates{k} ' (too few, not used)'];
                     end
                 end
                 parts{i} = sprintf('%s: A %s, B %s', bundle.Cables{i}, dates{1}, dates{2});
@@ -541,11 +621,9 @@ classdef DoricCalibration < handle
         end
 
         function redraw(obj, channels)
-            % Irradiance per row, the graphs, and whether the readings can be saved.
-            scale = 1;
-            if strcmp(obj.Controls.Unit.Value, 'uW')
-                scale = 1e-3;
-            end
+            % Irradiance per row, the graphs, whether each channel's readings cover the
+            % LED's range, and whether there is anything new to save.
+            scale = obj.unitScale();
             for k = channels
                 data = obj.Controls.Table(k).Data;
                 for i = 1:size(data, 1)
@@ -557,6 +635,7 @@ classdef DoricCalibration < handle
                 partial.MeasuredLEDChannel = obj.Paths{k}.LEDChannel;
                 partial.CurrentmA = cell2mat(data(:, 1));
                 partial.IrradiancemWmm2 = cell2mat(data(:, 3));
+                obj.showCoverage(k, partial);
                 ax = obj.Controls.Axes(k);
                 lum.led.plotCalibration(ax, partial, obj.theme);
                 ax.Title.String = sprintf('%s cable on channel %s', partial.Cable, partial.Channel);
@@ -572,11 +651,34 @@ classdef DoricCalibration < handle
                     ax.Title.String = sprintf('%s  (dashed: saved %s)', ax.Title.String, old.Date(1:10));
                 end
             end
-            anyReadings = false;
+            anyNew = false;
             for k = 1:2
-                anyReadings = anyReadings || any(~isnan(cellfun(@readingOf, obj.Controls.Table(k).Data(:, 2))));
+                anyNew = anyNew || (obj.dirty(k) ...
+                    && any(~isnan(cellfun(@readingOf, obj.Controls.Table(k).Data(:, 2)))));
             end
-            obj.Controls.Save.Enable = lum.gui.Form.onOff(anyReadings);
+            obj.Controls.Save.Enable = lum.gui.Form.onOff(anyNew);
+        end
+
+        function showCoverage(obj, k, partial)
+            % The cable's area, and whether the readings so far can be saved.
+            path = obj.Paths{k};
+            text = sprintf('%s cable: %d fibers of %g um = %.4g mm2', path.Cable, path.nFibers, ...
+                           1000 * path.FiberDiameter, path.Area);
+            measured = ~isnan(partial.IrradiancemWmm2);
+            colour = obj.theme.Ink;
+            if any(measured)
+                [problem, rules] = lum.led.checkCoverage(struct('CurrentmA', partial.CurrentmA(measured)));
+                if isempty(problem)
+                    text = sprintf('%s  |  %d readings, to %g mA', text, sum(measured), ...
+                                   max(partial.CurrentmA(measured)));
+                else
+                    text = sprintf('%s  |  needs %d readings above 0 mA, up to %g mA or more', text, ...
+                                   rules.MinLitReadings, rules.MinTopCurrentmA);
+                    colour = obj.theme.Bad;
+                end
+            end
+            obj.Controls.PathNote(k).Text = text;
+            obj.Controls.PathNote(k).FontColor = colour;
         end
 
         function folder = calibrationFolder(obj)

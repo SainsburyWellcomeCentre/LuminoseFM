@@ -22,7 +22,10 @@ function G = generate(generator, duration, nTrials)
 %              against a boundary that can move; each is given at several totals of
 %              light, so neither amount alone tells the side. The controls 'A alone' and
 %              'B alone' cross every level with every level, one channel deciding (a
-%              vertical or horizontal boundary). Per trial: amounts drawn anew.
+%              vertical or horizontal boundary). By default each amount is spread over
+%              the window in cycles, both channels starting every cycle, so the mixture
+%              is present throughout the window ('spread'); 'onset' and 'centred' light
+%              each amount in one stretch. Per trial: amounts drawn anew.
 %   count      Which channel flashes more often? Slots holding one flash of A, one of
 %              B, or nothing; a group is a pair of counts. Per trial: a new order of
 %              the flashes (the default).
@@ -275,7 +278,13 @@ labels = cell(1, nGroups);
 evidence = zeros(1, nGroups);
 pLeft = zeros(1, nGroups);
 for k = 1:nGroups
-    states(:, k) = mixtureColumn(aBins(k), bBins(k), nBins, m.layout);
+    [states(:, k), fits] = mixtureColumn(aBins(k), bBins(k), nBins, m);
+    if ~fits
+        error('lum:pattern:generate:cyclesTooShort', ...
+              ['A %g ms, B %g ms cannot be spread over %d cycles: a channel needs at least one '...
+               'bin of light in every cycle. Use fewer cycles or a finer bin.'], ...
+              round(1000 * aBins(k) * bin, 1), round(1000 * bBins(k) * bin, 1), m.cycles);
+    end
     labels{k} = sprintf('A %g : B %g ms', round(1000 * aBins(k) * bin, 1), ...
                         round(1000 * bBins(k) * bin, 1));
     [evidence(k), pLeft(k)] = mixtureEvidence(m, aBins(k), bBins(k), nBins);
@@ -288,6 +297,15 @@ if ismember(m.rule, {'A alone', 'B alone'})
     pLeft = 0.5 * ones(1, nGroups);
     pLeft(deciding > middle) = highPays;
     pLeft(deciding < middle) = 1 - highPays;
+end
+[~, first] = unique([aBins(:), bBins(:)], 'rows', 'stable');
+if numel(first) < nGroups
+    same = setdiff(1:nGroups, first);
+    twin = find(aBins == aBins(same(1)) & bBins == bBins(same(1)), 1);
+    error('lum:pattern:generate:groupsTooClose', ...
+          ['Groups %d and %d come to the same light, %s, in %d bins of %g ms. Use a finer bin '...
+           'or amounts further apart.'], twin, same(1), labels{same(1)}, nBins, ...
+          round(1000 * bin, 2));
 end
 [name, edge] = mixtureAxis(m);
 d = design(states, 1:nGroups, labels, pLeft, name, evidence, edge, false);
@@ -327,17 +345,19 @@ for t = 1:nTrials
         aBins = amountBins(amounts(1), nBins);
         bBins = amountBins(amounts(2), nBins);
         [value, pays] = mixtureEvidence(m, aBins, bBins, nBins);
-        if pays == double(paysLeft)   % Rounded to bins, still on its side
+        [column, fits] = mixtureColumn(aBins, bBins, nBins, m);
+        if pays == double(paysLeft) && fits   % Rounded to bins, still on its side
             accepted = true;
             break
         end
     end
     if ~accepted
         error('lum:pattern:generate:levelsTooClose', ...
-              ['No whole-bin amounts fall on one side of the boundary within the ranges given. '...
-               'Use a finer bin, or values further from the boundary.']);
+              ['No whole-bin amounts fall on one side of the boundary within the ranges given%s. '...
+               'Use a finer bin, or values further from the boundary.'], ...
+              spreadClause(m));
     end
-    states(:, t) = mixtureColumn(aBins, bBins, nBins, m.layout);
+    states(:, t) = column;
     evidence(t) = value;
 end
 [name, edge] = mixtureAxis(m);
@@ -378,13 +398,29 @@ if isempty(match)
 end
 m = struct('rule', match{1});
 switch lower(strtrim(char(g.MixtureLayout)))
+    case 'spread'
+        m.layout = 'spread';
     case 'onset'
         m.layout = 'onset';
     case {'centred', 'centered'}
         m.layout = 'centred';
     otherwise
         error('lum:pattern:generate:badMixtureLayout', ...
-              'The mixture layout must be ''onset'' or ''centred''.');
+              'The mixture layout must be ''spread'', ''onset'' or ''centred''.');
+end
+m.cycles = 1;
+if strcmp(m.layout, 'spread')
+    cycles = g.MixtureCycles;
+    if ~(isscalar(cycles) && isnumeric(cycles) && cycles >= 1 && mod(cycles, 1) == 0)
+        error('lum:pattern:generate:badMixtureCycles', ...
+              'The mixture is spread over a whole number of cycles, 1 or more.');
+    end
+    if cycles > nBins
+        error('lum:pattern:generate:badMixtureCycles', ...
+              'The window has %d bins, fewer than the %d cycles. Use a finer bin or fewer cycles.', ...
+              nBins, cycles);
+    end
+    m.cycles = cycles;
 end
 switch m.rule
     case 'share'
@@ -504,18 +540,51 @@ switch m.rule
 end
 
 
-function column = mixtureColumn(aBins, bBins, nBins, layout)
-% Both channels lit for their amounts, from onset or centred in the window.
+function [column, fits] = mixtureColumn(aBins, bBins, nBins, m)
+% Both channels lit for their amounts: spread over the window in cycles, from onset, or
+% centred. Spread, the window is cut into m.cycles cycles of (near) equal length, each
+% channel's amount is shared out over them in proportion to their length, and in every
+% cycle both channels start together, so the mixture is present throughout the window
+% and the dark is a gap at the end of each cycle. fits is false when a lit channel would
+% have no light in some cycle (too few bins to go round).
 column = zeros(nBins, 1, 'uint8');
-if strcmp(layout, 'centred')
-    litA = floor((nBins - aBins) / 2) + (1:aBins);
-    litB = floor((nBins - bBins) / 2) + (1:bBins);
-else
-    litA = 1:aBins;
-    litB = 1:bBins;
+fits = true;
+switch m.layout
+    case 'spread'
+        widths = allocateBins(ones(1, m.cycles), nBins);
+        starts = [0, cumsum(widths(1:end-1))];
+        litA = spreadBins(aBins, widths, starts);
+        litB = spreadBins(bBins, widths, starts);
+        fits = (aBins == 0 || aBins >= m.cycles) && (bBins == 0 || bBins >= m.cycles);
+    case 'centred'
+        litA = floor((nBins - aBins) / 2) + (1:aBins);
+        litB = floor((nBins - bBins) / 2) + (1:bBins);
+    otherwise
+        litA = 1:aBins;
+        litB = 1:bBins;
 end
 column(litA) = column(litA) + 1;
 column(litB) = column(litB) + 2;
+
+
+function lit = spreadBins(amount, widths, starts)
+% The bins a channel lights when its amount is shared over cycles, from each cycle's start.
+lit = zeros(1, 0);
+if amount <= 0
+    return
+end
+perCycle = allocateBins(widths, amount);
+for k = 1:numel(widths)
+    lit = [lit, starts(k) + (1:perCycle(k))]; %#ok<AGROW>
+end
+
+
+function text = spreadClause(m)
+% A clause for errors about amounts that must also go round the cycles.
+text = '';
+if strcmp(m.layout, 'spread')
+    text = sprintf(' and with light in each of the %d cycles', m.cycles);
+end
 
 
 function level = middleLevel(levels)

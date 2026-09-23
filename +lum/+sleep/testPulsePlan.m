@@ -1,4 +1,4 @@
-function plan = testPulsePlan(testPulses)
+function plan = testPulsePlan(testPulses, recordingMinutes)
 % lum.sleep.testPulsePlan compiles a sleep session's test-pulse schedule into light.
 %
 % Test pulses (D13) are light on channels A and B during a sleep recording, delivered
@@ -20,14 +20,19 @@ function plan = testPulsePlan(testPulses)
 % Timing. All times are integer cycles of the state machine's 100 us clock, so what is
 % planned is what is sent. A probe step of M minutes holds floor(60 M / interval)
 % epochs, each followed by a full inter-epoch interval inside its step; a train step
-% lasts nTrains x TrainInterval. A burst's gate runs from its first pulse to half way
-% through the gap after its last, so PulsePal completes the last pulse and cannot start
-% another.
+% lasts nTrains x TrainInterval. The last step may last until the recording ends
+% (Minutes Inf, the default schedule): it then takes whatever of recordingMinutes the
+% steps before it leave, and the plan lasts exactly the recording. A burst's gate runs
+% from its first pulse to half way through the gap after its last, so PulsePal completes
+% the last pulse and cannot start another.
 %
 % Arguments:
 %   testPulses  S.Sleep.TestPulses (see lum.defaultSettings)
+%   recordingMinutes  S.Sleep.DurationMinutes; needed only when the last step lasts
+%               until the recording ends
 %
 % Returns plan, empty (no steps, Duration 0) when testPulses.Enabled is false:
+%   .UntilEnd         True when the last step lasts until the recording ends
 %   .Steps            1 x nSteps struct: Kind, Channels, Start and Duration (s),
 %                     nEpochs, EpochLength and EpochInterval (s), FirstEpoch (row of
 %                     .Epochs, 0 for none), Carrier (1 x 2, for lum.dev.PulsePal;
@@ -56,6 +61,9 @@ cycle = 1e-4;
 plan = emptyPlan(cycle);
 if ~testPulses.Enabled
     return
+end
+if nargin < 2
+    recordingMinutes = [];
 end
 
 voltage = checkVoltage(testPulses.Voltage);
@@ -102,19 +110,26 @@ for s = 1:nSteps
     steps(s).Start = startCycles * cycle;
     switch kind
         case 'Rest'
-            durationCycles = minutesToCycles(schedule(s).Minutes, s, kind, cycle);
+            durationCycles = stepCycles(schedule(s).Minutes, s, nSteps, kind, cycle, ...
+                                        recordingMinutes, startCycles);
             nEpochs = 0;
         case 'Probe'
-            durationCycles = minutesToCycles(schedule(s).Minutes, s, kind, cycle);
+            durationCycles = stepCycles(schedule(s).Minutes, s, nSteps, kind, cycle, ...
+                                        recordingMinutes, startCycles);
             nEpochs = floor(durationCycles / probe.IntervalCycles);
             if nEpochs < 1
                 fail('stepTooShort', ['Step %d (Probe) lasts %g min, shorter than one inter-epoch '...
-                     'interval of %g s.'], s, schedule(s).Minutes, probe.IntervalCycles * cycle);
+                     'interval of %g s.'], s, durationCycles * cycle / 60, probe.IntervalCycles * cycle);
             end
             shape = probe.Shape;
             intervalCycles = probe.IntervalCycles;
             steps(s).Carrier = probe.Carrier;
         otherwise
+            if isnumeric(schedule(s).Minutes) && isscalar(schedule(s).Minutes) ...
+                    && isinf(schedule(s).Minutes)
+                fail('trainUntilEnd', ['Step %d (%s) is a train, which lasts its trains; only a '...
+                     'probe or rest step can last until the recording ends.'], s, kind);
+            end
             if ~testPulses.PlasticityTrains
                 fail('trainsOff', ['Step %d delivers the train "%s", but plasticity trains are '...
                      'switched off. Switch them on, or remove the step.'], s, kind);
@@ -161,6 +176,8 @@ if ~lit
 end
 
 plan.Steps = steps;
+plan.UntilEnd = isnumeric(schedule(end).Minutes) && isscalar(schedule(end).Minutes) ...
+                && isinf(schedule(end).Minutes);
 plan.DurationCycles = startCycles;
 plan.Duration = startCycles * cycle;
 plan.Segments = vertcat(segmentParts{:});
@@ -185,7 +202,7 @@ function plan = emptyPlan(cycle)
 plan = struct('Steps', struct('Kind', {}, 'Channels', {}, 'Start', {}, 'Duration', {}, ...
                               'nEpochs', {}, 'EpochLength', {}, 'EpochInterval', {}, ...
                               'FirstEpoch', {}, 'Carrier', {}, 'Train', {}), ...
-              'Duration', 0, 'DurationCycles', 0, 'Segments', zeros(0, 5), ...
+              'UntilEnd', false, 'Duration', 0, 'DurationCycles', 0, 'Segments', zeros(0, 5), ...
               'Epochs', zeros(0, 5), 'NextStepEpoch', zeros(0, 1), ...
               'MostSegmentsPerEpoch', 0, 'MostPulsesPerEpoch', 0, 'LongestEpoch', 0, ...
               'ShortestDark', Inf, 'CyclePeriod', cycle);
@@ -304,10 +321,30 @@ catch carrierError
 end
 
 
-function cycles = minutesToCycles(minutes, step, kind, cycle)
-% A probe or rest step's length.
+function cycles = stepCycles(minutes, step, nSteps, kind, cycle, recordingMinutes, startCycles)
+% A probe or rest step's length: its minutes, or, for a last step of Inf minutes, what is
+% left of the recording after the steps before it.
+if isnumeric(minutes) && isscalar(minutes) && isinf(minutes) && minutes > 0
+    if step ~= nSteps
+        fail('untilEndNotLast', ['Step %d (%s) lasts until the recording ends, so it must be the '...
+             'last step.'], step, kind);
+    end
+    if ~(isnumeric(recordingMinutes) && isscalar(recordingMinutes) && isfinite(recordingMinutes) ...
+            && recordingMinutes > 0)
+        fail('noRecordingLength', ['Step %d (%s) lasts until the recording ends, but no '...
+             'recording length was given.'], step, kind);
+    end
+    cycles = round(60 * recordingMinutes / cycle) - startCycles;
+    if cycles <= 0
+        fail('noTimeLeft', ['The steps before the last take %.4g min, and the recording lasts '...
+             '%.4g min: nothing is left for step %d (%s). Lengthen the recording.'], ...
+             startCycles * cycle / 60, recordingMinutes, step, kind);
+    end
+    return
+end
 if ~(isnumeric(minutes) && isscalar(minutes) && isfinite(minutes) && minutes > 0)
-    fail('badMinutes', 'Step %d (%s) must last more than 0 minutes.', step, kind);
+    fail('badMinutes', ['Step %d (%s) must last more than 0 minutes, or Inf (until the '...
+         'recording ends) if it is the last step.'], step, kind);
 end
 cycles = round(60 * minutes / cycle);
 

@@ -55,12 +55,15 @@ box). Permission covers that request only. Close nothing of theirs: if the MATLA
 light, hearing sound, poking, moving a cable. The operator works remotely at times, so run those checks
 the next time they say they are at the rig. That doc also says how to run a headless session on the
 rig: do what `RunProtocol` does, open `_ANLG.dat` and reset the session clock. **Pending now (all need
-eyes at the rig): P4 the first calibration of each cable on each channel (0.9.1); P5 valve
-2's calibration, the centre reward and the punishment noise heard to its end; P6 the End button with
+eyes at the rig): P4 calibrating the 2-to-19 bundle (the 4-to-19 is done: orange A and blue B re-measured
+2026-09-23; green A has a replaced dark point — never replace a lit point without a measurement); P5
+valve 2's calibration, the centre reward and the punishment noise heard to its end; P6 the End button with
 the camera and LED windows open (it froze MATLAB before 0.8.1); P7 the startup line, to see where the
 time goes; P8 the 0.9.0 stimulus families at the fiber tips, the designer in a desktop MATLAB, and
-centre reward again.** (P1–P3 passed on 2026-09-21; the 0.9.0 families' light timers were checked on
-the state machine on 2026-09-22, with virtual pokes written to its serial port.)
+centre reward again; P9 the driver's knob at 1000 mA and every calibration extended to 800–1000 mA.** (P1–P3 passed on 2026-09-21; the 0.9.0 families' light timers were checked on
+the state machine on 2026-09-22, with virtual pokes written to its serial port; on 2026-09-23 the
+spread mixture, alternating sleep probes and the 4-to-19 calibrations ran in behaviour, sleep and ePhys
+sessions. Channel B gives about 58% of A's irradiance on every cable.)
 
 ## Stay inside the working folder
 
@@ -363,8 +366,19 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   the path's channel. Measured two
   cables at a time, the pair on the commutator, from the Doric LED tab's one **Calibrate LED power…**
   button (`lum.gui.DoricCalibration(bundle, {cableA, cableB}, ...)`: a table, On/Off and graph per
-  channel, continuous mode, 0–700 mA in 50 mA steps capped at each channel's limit). Saved to
-  `calibration/`, replaced by the next one of that cable on that channel. `lum.led.validate(S, cals,
+  channel, continuous mode, 0–1000 mA in 100 mA steps (`S.Doric.CalibrationCurrentsmA`) capped at each
+  channel's limit, starting from that cable's saved readings on that channel — loaded with
+  `loadCalibration(path, folder, false)`, whatever their coverage — so only new currents are measured;
+  Fill adds currents and keeps readings). Saved to `calibration/`, replaced by the next one of that cable
+  on that channel. **A calibration is saved and used only when it covers the LED's range**
+  (`lum.led.checkCoverage`: 4 readings above 0 mA, the highest ≥ 400 mA); `saveCalibration` refuses one
+  that does not, and `loadCalibration` treats it as none (the channel in mA, with a warning). One that
+  stops below the limit is used to its highest reading (`currentFor`). **The limit** (`S.Doric.MaxCurrentmA`)
+  is 1000 mA by default since 0.9.3, the LED's rating and DoricLED's hard ceiling
+  (`doric.Channel.DeviceMaxCurrentmA`); DoricLED's own default (700 mA, Doric's recommended current for
+  light held on) is not changed from here — `lum.dev.DoricLED.setUp` sets the session's limit.
+  `lum.mergeSettings` turns a 0.9.2 file's 700 mA into 1000 (a file without
+  `Doric.CalibrationCurrentsmA`). The driver's front knob caps the current independently of USB. `lum.led.validate(S, cals,
   type)` is the LED check every session's validation runs (errors cals-independent; notes only when
   given cals). The DoricLED package is optional: without it, or with `S.Doric.Enabled` off, the driver
   is used as set by hand and currents are NaN.
@@ -387,8 +401,13 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   only between blocks, after `checkConnection`, and checked again at every save; a failure ends
   the session with `StoppedReason`. Open devices through `lum.sleep.deviceSettings`, so a
   session with test pulses is refused without PulsePal. `lum.sleep.validateTestPulses` is the
-  one check the designer, the sleep dialog and the session share. With test pulses on, the
-  recording lasts as long as the schedule; `S.Sleep.DurationMinutes` is kept but unused.
+  one check the designer, the sleep dialog and the session share. The default schedule (0.9.2) is
+  paired probes *Alternate A and B*, 30 s apart, so no epoch lights both channels; *A and B* stays a
+  step's choice, never the default (presets and new steps in the designer alternate too). The last
+  probe or rest step may have Minutes `Inf`: it goes on until the recording ends, and the recording
+  lasts `S.Sleep.DurationMinutes` (`lum.sleep.untilRecordingEnds`; `lum.sleep.testPulsePlan(tp,
+  recordingMinutes)`); the default schedule is one such step. Otherwise, with test pulses on, the
+  recording lasts as long as the schedule.
 - **The training stage shapes the session (`lum.stageDefaults`).** Choosing *Habituation* in the
   setup dialog switches the light pattern off (`S.Session.UseOpto`, `S.GUI.OptoOn`) and the
   stimulus air on for the whole window; choosing *Training* or *Experiment* does the reverse.
@@ -541,8 +560,12 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   derives its groups from its own settings (`nGroups` is the hand-drawn family's alone), gives each
   group a side (`FamilyPLeft`), names its evidence and boundary. Choosing a family (designer, or
   the Stimulus tab's *Family*) applies `lum.pattern.familyDefaults(generator, family, budget,
-  window)`, and **every family's defaults must compile within 4 timers (the emulator) and 15 (the
-  rig) with no warning** — `generateTest` checks it; a new family or default must pass it. Typed
+  window)` (the mixture's cycles depend on all three: `MixtureLayout` `'spread'` shares each amount
+  over `MixtureCycles` cycles, two timers each, so the light lasts the whole window; given the
+  window, it also makes the bin finer, never coarser, when the defaults cannot be drawn in it), and
+  **every family's defaults must compile within 4 timers (the emulator) and 15 (the rig) with no
+  warning**, in the default window and in a coarse one — `generateTest` checks it; a new family or
+  default must pass it. Typed
   P(left) is kept only while the group labels are unchanged (`lum.pattern.typedPLeft`); the dialogs
   compile with the family's contingency and apply a typed one on top. Fractions of the window are
   shared over whole bins (never demand that one setting divides another), and the bin is adjusted to

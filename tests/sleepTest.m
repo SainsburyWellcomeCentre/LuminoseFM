@@ -45,19 +45,28 @@ end
 
 %% Test-pulse plan ------------------------------------------------------------------
 
-function testTheDefaultScheduleIsFourHoursOfPairedProbes(testCase)
-plan = lum.sleep.testPulsePlan(enabledDesign());
+function testTheDefaultScheduleIsAlternatingPairedProbesAllRecordingLong(testCase)
+% A pair on A, 30 s, a pair on B, 30 s, and so on, for as long as the recording (4 h here):
+% no epoch lights both channels.
+plan = lum.sleep.testPulsePlan(enabledDesign(), 240);
+verifyTrue(testCase, plan.UntilEnd);
 verifyEqual(testCase, plan.Duration, 4 * 3600, 'AbsTol', 1e-9);
 verifyEqual(testCase, numel(plan.Steps), 1);
 verifyEqual(testCase, plan.Steps(1).Kind, 'Probe');
-verifyEqual(testCase, plan.Steps(1).nEpochs, 7200, 'One epoch every 2 s');
-verifyEqual(testCase, size(plan.Segments, 1), 7200 * 4, 'A pair of pulses on A and on B');
+verifyEqual(testCase, plan.Steps(1).Channels, 'Alternate A and B');
+verifyEqual(testCase, plan.Steps(1).nEpochs, 480, 'One epoch every 30 s');
+verifyEqual(testCase, size(plan.Segments, 1), 480 * 2, 'A pair of pulses on one channel');
 first = plan.Segments(plan.Segments(:, 5) == 1, :);
-verifyEqual(testCase, first(:, 1)', [0 0 500 500], 'Pulses at 0 and 50 ms, in cycles');
-verifyEqual(testCase, first(:, 2)', [100 100 100 100], '10 ms wide');
-verifyEqual(testCase, first(:, 3)', [1 2 1 2]);
-second = plan.Segments(plan.Segments(:, 5) == 2, 1);
-verifyEqual(testCase, second(1), 20000, 'The next epoch 2 s later');
+verifyEqual(testCase, first(:, 1)', [0 500], 'Pulses at 0 and 50 ms, in cycles');
+verifyEqual(testCase, first(:, 2)', [100 100], '10 ms wide');
+verifyEqual(testCase, first(:, 3)', [1 1], 'The first pair on A');
+second = plan.Segments(plan.Segments(:, 5) == 2, :);
+verifyEqual(testCase, second(1, 1), 300000, 'The next epoch 30 s later');
+verifyEqual(testCase, second(:, 3)', [2 2], 'The second pair on B');
+for e = 1:plan.Steps(1).nEpochs
+    verifyNumElements(testCase, unique(plan.Segments(plan.Segments(:, 5) == e, 3)), 1, ...
+                      sprintf('Epoch %d on one channel', e));
+end
 verifyEqual(testCase, [plan.Steps(1).Carrier.Frequency], [0 0], 'Constant light: the gate is the pulse');
 verifyEqual(testCase, [plan.Steps(1).Carrier.Voltage], [5 5]);
 end
@@ -72,6 +81,7 @@ end
 function testASingleProbeCanAlternateChannels(testCase)
 design = enabledDesign();
 design.Probe.Mode = 'Single';
+design.Probe.InterEpochInterval = 2;
 design.Schedule = struct('Kind', 'Probe', 'Channels', 'Alternate A and B', 'Minutes', 1);
 plan = lum.sleep.testPulsePlan(design);
 verifyEqual(testCase, size(plan.Segments, 1), 30);
@@ -130,7 +140,7 @@ end
 function testAnUnusedTrainDoesNotStopAProbeSession(testCase)
 design = enabledDesign();
 design.Trains(1).PulseWidth = 0.02;   % Impossible at 100 Hz, but trains are off
-verifyEqual(testCase, lum.sleep.testPulsePlan(design).Steps(1).nEpochs, 7200);
+verifyEqual(testCase, lum.sleep.testPulsePlan(design, 240).Steps(1).nEpochs, 480);
 end
 
 %% Blocks ---------------------------------------------------------------------------
@@ -270,8 +280,41 @@ verifyEmpty(testCase, lum.sleep.validate(S, rig));
 rig.Available.Sync = false;
 verifySubstring(testCase, strjoin(lum.sleep.validate(S, rig)), 'no sync pulses');
 S.Sleep.TestPulses.Enabled = true;
+verifySubstring(testCase, strjoin(lum.sleep.validate(S, rig)), ...
+                sprintf('whole recording, %g min', S.Sleep.DurationMinutes));
+S.Sleep.TestPulses.Schedule.Minutes = 30;
 S.Sleep.DurationMinutes = 0;   % Not used: the schedule decides
 verifySubstring(testCase, strjoin(lum.sleep.validate(S, rig)), 'lasts as long as their schedule');
+end
+
+function testALastStepUntilTheEndFillsTheRecording(testCase)
+design = enabledDesign();
+design.PlasticityTrains = true;
+design.Schedule = struct('Kind', {'Probe', 'Theta burst', 'Probe'}, ...
+                         'Channels', 'Alternate A and B', 'Minutes', {10, 0, Inf});
+plan = lum.sleep.testPulsePlan(design, 60);
+verifyEqual(testCase, plan.Duration, 3600, 'AbsTol', 1e-9, 'The plan lasts the recording');
+verifyEqual(testCase, plan.Steps(3).Start + plan.Steps(3).Duration, 3600, 'AbsTol', 1e-9);
+verifyEqual(testCase, plan.Steps(3).nEpochs, floor((3600 - plan.Steps(3).Start) / 30));
+verifyTrue(testCase, lum.sleep.untilRecordingEnds(design));
+lines = lum.sleep.describeTestPulses(design, plan);
+verifySubstring(testCase, lines{end}, 'until the recording ends');
+end
+
+function testAStepUntilTheEndMustBeALastProbeOrRestWithTimeLeft(testCase)
+design = enabledDesign();
+verifyError(testCase, @() lum.sleep.testPulsePlan(design), ...
+            'lum:sleep:testPulsePlan:noRecordingLength');
+design.Schedule = struct('Kind', 'Probe', 'Channels', 'A', 'Minutes', {Inf, 5});
+verifyError(testCase, @() lum.sleep.testPulsePlan(design, 60), ...
+            'lum:sleep:testPulsePlan:untilEndNotLast');
+design.Schedule = struct('Kind', 'Probe', 'Channels', 'A', 'Minutes', {90, Inf});
+verifyError(testCase, @() lum.sleep.testPulsePlan(design, 60), ...
+            'lum:sleep:testPulsePlan:noTimeLeft');
+design.PlasticityTrains = true;
+design.Schedule = struct('Kind', 'Theta burst', 'Channels', 'A', 'Minutes', Inf);
+verifyError(testCase, @() lum.sleep.testPulsePlan(design, 60), ...
+            'lum:sleep:testPulsePlan:trainUntilEnd');
 end
 
 function testValidationRefusesWhatCannotRun(testCase)
@@ -300,7 +343,7 @@ design.Schedule = struct('Kind', {'Probe', 'Theta burst'}, 'Channels', {'A and B
 lines = lum.sleep.describeTestPulses(design);
 verifySubstring(testCase, lines{1}, 'paired 10 ms pulses, 50 ms apart');
 verifySubstring(testCase, lines{2}, '2 step(s)');
-verifySubstring(testCase, lines{3}, '900 epoch(s)');
+verifySubstring(testCase, lines{3}, '60 epoch(s)');
 verifySubstring(testCase, lines{4}, 'Theta burst: 5 train(s) of 10 bursts of 4 pulse(s) (5 ms) at 100 Hz');
 end
 

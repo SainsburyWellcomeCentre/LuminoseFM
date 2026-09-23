@@ -243,6 +243,36 @@ if hasPath(loaded, 'Stimulus.Generator') && isstruct(loaded.Stimulus.Generator) 
     migrated{end+1} = note;
 end
 
+%% Replaced default (version 0.9.2): test pulses one channel at a time, all recording long
+% Up to 0.9.1 the default schedule sent paired probes on A and B together every 2 s for
+% 240 min. A file still holding exactly that schedule was never designed by anyone, so it
+% takes the new default: probes alternating between A and B every 30 s until the
+% recording ends. A schedule that differs in any way is the operator's, and is kept.
+if hasPath(loaded, 'Sleep.TestPulses.Schedule') && hasPath(loaded, 'Sleep.TestPulses.Probe') ...
+        && isstruct(loaded.Sleep.TestPulses.Schedule) && isscalar(loaded.Sleep.TestPulses.Schedule) ...
+        && isequal(loaded.Sleep.TestPulses.Schedule, ...
+                   struct('Kind', 'Probe', 'Channels', 'A and B', 'Minutes', 240)) ...
+        && isfield(loaded.Sleep.TestPulses.Probe, 'InterEpochInterval') ...
+        && isequal(loaded.Sleep.TestPulses.Probe.InterEpochInterval, 2)
+    loaded.Sleep.TestPulses.Schedule = defaults.Sleep.TestPulses.Schedule;
+    loaded.Sleep.TestPulses.Probe.InterEpochInterval = defaults.Sleep.TestPulses.Probe.InterEpochInterval;
+    migrated{end+1} = ['Sleep.TestPulses (the old default schedule, probes on A and B every 2 s for '...
+                       '240 min, became the new one: alternating A and B every 30 s, all recording long)'];
+end
+
+%% Replaced default (version 0.9.3): the LED current limit is the LED's rating
+% Up to 0.9.2 each channel's limit was 700 mA by default, Doric's recommended current for
+% an LED held on; the rating is 1000 mA, and the light here is gated. A file from before
+% 0.9.3 (it has no Doric.CalibrationCurrentsmA) whose limit is still 700 mA on a channel
+% takes 1000 mA there. Any other limit is the operator's, and is kept; so is 700 mA typed
+% again from 0.9.3 on.
+if hasPath(loaded, 'Doric.MaxCurrentmA') && ~hasPath(loaded, 'Doric.CalibrationCurrentsmA') ...
+        && isnumeric(loaded.Doric.MaxCurrentmA) && any(loaded.Doric.MaxCurrentmA(:) == 700)
+    loaded.Doric.MaxCurrentmA(loaded.Doric.MaxCurrentmA == 700) = 1000;
+    migrated{end+1} = ['Doric.MaxCurrentmA (the old default limit, 700 mA, became the new one: '...
+                       '1000 mA, the LED''s rating)'];
+end
+
 %% Retired (version 0.2, and 0.4)
 % The hand-written stimulus table was replaced by the stimulus generator; its rows
 % cannot be converted into generator parameters, so the defaults are used instead.
@@ -314,8 +344,9 @@ switch family
         g.Continuous = false;
     case 'occupancy'
         g = lum.pattern.familyDefaults(g, 'mixture');
+        g.MixtureLayout = 'onset';   % One stretch per channel: two timers on any machine
         keepPLeft = false;
-        what = 'occupancy retired: mixture family at its defaults';
+        what = 'occupancy retired: mixture family at its defaults, lit from onset';
     case 'overlap_order'
         g.Family = 'order';
         g.OrderDesign = 'guarded';

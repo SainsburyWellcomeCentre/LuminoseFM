@@ -6,7 +6,9 @@ function [file, imageFile] = saveCalibration(cal, folder)
 % The calibration goes to lum.led.calibrationFile (variable Calibration), and its graph,
 % current against irradiance, beside it as a .png of the same name. The folder is created
 % if it is missing. Every later session, of any type, with the same cable on the same channel
-% reads it (lum.led.loadCalibration).
+% reads it (lum.led.loadCalibration). Readings that cover too little of the LED's range
+% (lum.led.checkCoverage) are refused ('lum:led:saveCalibration:tooNarrow') and nothing is
+% written, so the earlier calibration stays.
 %
 % Arguments:
 %   cal     From lum.led.makeCalibration
@@ -17,6 +19,11 @@ function [file, imageFile] = saveCalibration(cal, folder)
 %
 % See also: lum.led.makeCalibration, lum.led.loadCalibration, lum.led.plotCalibration
 
+problem = lum.led.checkCoverage(cal);
+if ~isempty(problem)
+    error('lum:led:saveCalibration:tooNarrow', 'The %s cable on channel %s: %s', cal.Cable, ...
+          cal.MeasuredOn, problem);
+end
 if nargin < 2 || isempty(folder)
     folder = lum.led.calibrationFolder();
 end

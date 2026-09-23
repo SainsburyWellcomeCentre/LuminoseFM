@@ -278,6 +278,63 @@ verifyEqual(testCase, lightA, 41:60);
 verifyEqual(testCase, lightB, 46:55);
 end
 
+function testSpreadAmountsLightEveryCycleFromItsStart(testCase)
+% The default placement: 2:1 at total 0.3 over five cycles of 20 bins, both channels
+% starting every cycle, so the mixture lasts the whole window.
+G = lum.pattern.generate(generator('Family', 'mixture', 'MixtureLayout', 'spread', ...
+                                   'MixtureCycles', 5), 1.0, 10);
+lightA = find(bitand(G.States(:, 1), 1))';
+lightB = find(bitand(G.States(:, 1), 2))';
+starts = 0:20:80;
+verifyEqual(testCase, lightA, reshape(starts + (1:4)', 1, []));
+verifyEqual(testCase, lightB, reshape(starts + (1:2)', 1, []));
+verifyEqual(testCase, [G.Descriptors.ASegments(1), G.Descriptors.BSegments(1)], [5 5]);
+verifyEqual(testCase, G.Evidence(1), 2 / 3, 'AbsTol', 1e-12, 'The share is unchanged');
+end
+
+function testTheMixtureDefaultsSpreadWithinTheTimersAndBins(testCase)
+verifyEqual(testCase, lum.pattern.familyDefaults(generator(), 'mixture', 15, 1).MixtureLayout, 'spread');
+verifyEqual(testCase, lum.pattern.familyDefaults(generator(), 'mixture', 15, 1).MixtureCycles, 5);
+verifyEqual(testCase, lum.pattern.familyDefaults(generator(), 'mixture', 4, 1).MixtureCycles, 2);
+verifyEqual(testCase, lum.pattern.familyDefaults(generator(), 'mixture', 15, 0.3).MixtureCycles, 3, ...
+            'The smallest amount, 0.1 of 30 bins, has three bins');
+end
+
+function testChoosingAFamilyFindsABinItsDefaultsFit(testCase)
+% A 0.3 s window in 100 ms bins has three bins: too few for the mixture's groups or five
+% sequence slots. Choosing either family makes the bin finer; a family that fits keeps it.
+coarse = generator('BinDuration', 0.1);
+for family = {lum.pattern.families().Name}
+    for budget = [15 4]
+        g = lum.pattern.familyDefaults(coarse, family{1}, budget, 0.3);
+        where = sprintf('%s, %d timers', family{1}, budget);
+        verifyLessThanOrEqual(testCase, g.BinDuration, 0.1, where);
+        S = lum.defaultSettings;
+        S.Stimulus.Duration = 0.3;
+        S.Stimulus.Generator = g;
+        stimulusSet = lum.pattern.stimulusSet(S, budget, 2);
+        verifyLessThanOrEqual(testCase, max(stimulusSet.nTimers), budget, where);
+    end
+end
+verifyEqual(testCase, lum.pattern.familyDefaults(coarse, 'mixture', 15, 0.3).BinDuration, 0.01);
+verifyEqual(testCase, lum.pattern.familyDefaults(coarse, 'pure', 15, 0.3).BinDuration, 0.1, ...
+            'A bin that works is kept');
+verifyEqual(testCase, lum.pattern.familyDefaults(generator('BinDuration', 0.001), 'mixture', ...
+            15, 0.3).BinDuration, 0.001, 'Never made coarser');
+end
+
+function testAnAmountTooSmallForEveryCycleIsRefused(testCase)
+verifyError(testCase, @() lum.pattern.generate(generator('Family', 'mixture', 'MixtureLayout', ...
+            'spread', 'MixtureCycles', 5), 0.3, 10), 'lum:pattern:generate:cyclesTooShort');
+end
+
+function testMixtureGroupsThatRoundToOnePatternAreRefused(testCase)
+% A 0.3 s window in 100 ms bins has three bins: 2:1 and 1:2 at the low totals both come
+% to one bin of each.
+verifyError(testCase, @() lum.pattern.generate(generator('Family', 'mixture', 'BinDuration', 0.1, ...
+            'MixtureLayout', 'onset'), 0.3, 10), 'lum:pattern:generate:groupsTooClose');
+end
+
 %% Sequence (count) ---------------------------------------------------------------
 
 function testEachTrialHasItsGroupsCountsInANewOrder(testCase)

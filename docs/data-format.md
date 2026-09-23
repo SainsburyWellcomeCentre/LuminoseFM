@@ -218,8 +218,9 @@ sent, start and end time, barcode, `TestPulses`, version, PulsePal and Flex logs
 
   gives the pulses PulsePal put in it.
 - `Session.TestPulses` — `Enabled`, the compiled `Steps` (kind, channels, start, duration, epoch
-  count, and each step's PulsePal carrier and train), the schedule's `Duration`, whether it
-  `Completed`, and a `StoppedReason` when PulsePal stopped answering.
+  count, and each step's PulsePal carrier and train), the schedule's `Duration`, `UntilEnd` (0.9.2:
+  true when its last step went on until the recording ended, so `Duration` is the recording's),
+  whether it `Completed`, and a `StoppedReason` when PulsePal stopped answering.
 
 - `SessionData.CameraTime` — one value per block: seconds on the video's host clock when the
   block's events reached MATLAB (`NaN` without video); `Session.Cameras` as for behaviour.
@@ -382,6 +383,11 @@ the null device shims swallowed is recorded in `Data.Session.DeviceLog`. See
   incorrect choices (`PunishCondition` 3). A noise-only punishment of an incorrect choice, or of an
   early withdrawal that ended the trial, was cut off by the ITI one state machine cycle after it
   started on the rig.
+- **Sessions before 0.9.3** ran with each LED channel's limit at 700 mA unless the operator raised it
+  (`Session.DoricLED.Settings.MaxCurrentmA`), and their calibrations were measured to 700 mA at most,
+  so an irradiance beyond the 700 mA reading ran at 700 mA with a note. From 0.9.3 the limit is
+  1000 mA by default, `Settings.CalibrationCurrentsmA` is recorded, and a calibration is used only
+  with readings at 4 currents above 0 mA up to 400 mA or more (`lum.led.checkCoverage`).
 - **Sessions before 0.9.1** have no `Session.DoricLED.Intensity`, and set the LED at `Settings.CurrentmA`
   whether or not a channel was calibrated; a calibration in them may have been measured on the other
   channel (compare `MeasuredOn` with `LightPaths(k).Channel`), and was used as it was. Sleep test pulses

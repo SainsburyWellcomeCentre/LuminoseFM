@@ -22,17 +22,19 @@ function notes = validate(S, rig)
 
 [notes, S] = lum.sleep.validateClock(S, rig, S.Sleep.Sync, 'Sleep', []);
 
-% With test pulses the recording lasts as long as their schedule; without, as set.
-if S.Sleep.TestPulses.Enabled
-    [plan, testPulseNotes] = lum.sleep.validateTestPulses(S, rig);
-    durationMinutes = plan.Duration / 60;
-    notes = [notes testPulseNotes];
-else
+% The recording lasts as set, unless test pulses are on and their schedule has an end of
+% its own (a last step of so many minutes), when it lasts as long as the schedule.
+if ~S.Sleep.TestPulses.Enabled || lum.sleep.untilRecordingEnds(S.Sleep.TestPulses)
     durationMinutes = S.Sleep.DurationMinutes;
     if ~(isscalar(durationMinutes) && durationMinutes > 0 && durationMinutes <= 24 * 60)
         error('lum:sleep:validate:badDuration', ...
               'The sleep recording must last more than 0 and at most 1440 minutes.');
     end
+end
+if S.Sleep.TestPulses.Enabled
+    [plan, testPulseNotes] = lum.sleep.validateTestPulses(S, rig);
+    durationMinutes = plan.Duration / 60;
+    notes = [notes testPulseNotes];
 end
 notes = [notes lum.sleep.validateClock(S, rig, S.Sleep.Sync, 'Sleep', durationMinutes)];
 if S.Sleep.TestPulses.Enabled

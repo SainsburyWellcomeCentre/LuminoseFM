@@ -185,12 +185,7 @@ else
         bridge = paths.BridgeExe;
     catch
     end
-    calibrated = dir(fullfile(lum.led.calibrationFolder(), 'DoricLED_*.mat'));
-    calibratedText = 'no light path calibrated';
-    if ~isempty(calibrated)
-        calibratedText = sprintf('calibrated (bundle_cable_channel): %s', strjoin(regexprep({calibrated.name}, ...
-                                 '^DoricLED_|\.mat$', ''), ', '));
-    end
+    calibratedText = calibratedPaths();
     if ~report.emulated && (isempty(bridge) || ~isfile(bridge))
         report = addCheck(report, 'Doric LED', 'fail', sprintf(['DoricLED found in %s, but its bridge '...
             'is not built. Run doric.build() once'], folder));
@@ -251,4 +246,42 @@ end
 if options.Strict && report.nFailed > 0
     error('lum:CheckRig:failed', ...
           '%d preflight check(s) failed. See the report above.', report.nFailed);
+end
+
+
+function text = calibratedPaths()
+% Each cable's calibrated channels, as sessions will find them (lum.led.loadCalibration): a
+% 0.7.2-0.9.0 per-cable file counts for the channel it was measured on, marked "(0.9.0)".
+S = lum.defaultSettings();
+parts = {};
+for bundle = lum.fiberBundles()
+    cables = {};
+    for cable = reshape(bundle.Cables, 1, [])
+        S.Light.Bundle = bundle.Name;
+        S.Light.Cables = {cable{1}, cable{1}};
+        channels = {};
+        for k = 1:2
+            path = lum.led.lightPath(S, k);
+            cal = lum.led.loadCalibration(path);
+            if isempty(cal)
+                continue
+            end
+            if isfile(lum.led.calibrationFile(path))
+                channels{end+1} = path.Channel; %#ok<AGROW>
+            else
+                channels{end+1} = [path.Channel ' (0.9.0)']; %#ok<AGROW>
+            end
+        end
+        if ~isempty(channels)
+            cables{end+1} = sprintf('%s on %s', cable{1}, strjoin(channels, ', ')); %#ok<AGROW>
+        end
+    end
+    if ~isempty(cables)
+        parts{end+1} = sprintf('%s: %s', bundle.Name, strjoin(cables, '; ')); %#ok<AGROW>
+    end
+end
+if isempty(parts)
+    text = 'no light path calibrated';
+else
+    text = ['calibrated: ' strjoin(parts, ' | ')];
 end

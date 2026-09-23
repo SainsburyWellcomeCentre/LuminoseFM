@@ -155,7 +155,7 @@ if isEphys
     lightOn = true;
     description = lum.ephys.describe(S, plan);
 else
-    plan = lum.sleep.testPulsePlan(testPulses);
+    plan = lum.sleep.testPulsePlan(testPulses, S.Sleep.DurationMinutes);
     sync = S.Sleep.Sync;
     lightOn = logical(testPulses.Enabled);
     if lightOn
@@ -541,7 +541,8 @@ if strcmp(S.Session.Type, 'EphysCalibration')
                           'Completed', false, 'StoppedReason', '');
 else
     record.TestPulses = struct('Enabled', S.Sleep.TestPulses.Enabled, 'Steps', plan.Steps, ...
-                               'Duration', plan.Duration, 'Completed', false, 'StoppedReason', '');
+                               'Duration', plan.Duration, 'UntilEnd', plan.UntilEnd, ...
+                               'Completed', false, 'StoppedReason', '');
 end
 record.ProtocolVersion = lum.version();
 

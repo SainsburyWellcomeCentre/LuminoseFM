@@ -175,12 +175,15 @@ S.Light.Carrier = struct( ...
 % starts; and CurrentmA where it has none (lum.led.intensity). A sleep session keeps its
 % own (S.Sleep.TestPulses), an ePhys calibration session its own per step (S.Ephys).
 % MaxCurrentmA is the driver's own limit per channel: a current above it is never sent
-% (at most 1000 mA, the LED's rating; doric.Channel).
+% (at most 1000 mA, the LED's rating; doric.Channel). It is 1000 mA by default since 0.9.3;
+% Doric recommends 700 mA for a 1000 mA LED held on, and the light here is gated.
+% CalibrationCurrentsmA are the currents the calibration window's tables start with.
 S.Doric.Enabled = true;             % Control the LED from MATLAB (the DoricLED package)
 S.Doric.Folder = '';                % Where DoricLED was cloned; '' when it is on the MATLAB path
 S.Doric.IrradiancemWmm2 = [8 8];    % Behaviour: irradiance at the fiber tips on A, B, calibrated channels
 S.Doric.CurrentmA = [100 100];      % Behaviour: LED current on A, B where not calibrated, mA
-S.Doric.MaxCurrentmA = [700 700];   % Refuse anything above, mA (Doric's recommended maximum)
+S.Doric.MaxCurrentmA = [1000 1000]; % Refuse anything above, mA (the LED's rating)
+S.Doric.CalibrationCurrentsmA = 0:100:1000;   % The calibration window's starting currents, mA
 S.Doric.ShowWindow = true;          % The LED window during the session
 
 %% Pre-session tier: sound
@@ -247,8 +250,9 @@ S.Sleep.Sync = struct('Mode', lum.SyncMode.JitteredWidth, 'FixedWidth', 0.05, ..
 % Test pulses: light on channels A and B during a sleep recording, to probe the
 % response to it and to change it (lum.sleep.testPulsePlan, D13). As in behaviour, Bpod
 % gates BNC1/BNC2 and PulsePal fills each gate: with constant light for a probe, so the
-% gate is the pulse, and with a train's pulses for a plasticity train. When Enabled,
-% the recording lasts as long as the schedule, and DurationMinutes is not used.
+% gate is the pulse, and with a train's pulses for a plasticity train. By default they go
+% on for the whole recording (DurationMinutes); a schedule whose last step has a length of
+% its own makes the recording last as long as the schedule instead.
 %   Probe     One epoch every InterEpochInterval seconds: a single pulse, or a pair of
 %             pulses InterPulseInterval apart (Mode 'Paired'). Both intervals are
 %             onset to onset; widths and intervals in seconds.
@@ -263,13 +267,17 @@ S.Sleep.Sync = struct('Mode', lum.SyncMode.JitteredWidth, 'FixedWidth', 0.05, ..
 %             TrainInterval seconds apart (onset to onset). Theta burst is the first.
 %   Schedule  Steps run in order from the start of the recording. Kind is 'Probe',
 %             'Rest' or a train's name; Channels one of lum.sleep.stepChoices; Minutes
-%             the length of a probe or rest step (a train step lasts its trains).
+%             the length of a probe or rest step (a train step lasts its trains), or Inf
+%             for a last probe or rest step that goes on until the recording ends
+%             (lum.sleep.untilRecordingEnds), the default. By default probes alternate: a pair on A, 30 s, a pair on B, 30 s, and so on,
+%             so no epoch lights both channels and each evoked response has one source;
+%             'A and B' sends each epoch on both channels at once.
 S.Sleep.TestPulses.Enabled = false;
 S.Sleep.TestPulses.Voltage = [5 5];
 S.Sleep.TestPulses.IrradiancemWmm2 = [2 2];
 S.Sleep.TestPulses.CurrentmA = [100 100];
 S.Sleep.TestPulses.Probe = struct('Mode', 'Paired', 'PulseWidth', 0.010, ...
-                                  'InterPulseInterval', 0.050, 'InterEpochInterval', 2);
+                                  'InterPulseInterval', 0.050, 'InterEpochInterval', 30);
 S.Sleep.TestPulses.PlasticityTrains = false;
 S.Sleep.TestPulses.Trains = struct( ...
     'Name',           {'Theta burst', 'High frequency'}, ...
@@ -280,7 +288,7 @@ S.Sleep.TestPulses.Trains = struct( ...
     'BurstsPerTrain', {10,            1}, ...
     'nTrains',        {5,             4}, ...
     'TrainInterval',  {20,            20});
-S.Sleep.TestPulses.Schedule = struct('Kind', {'Probe'}, 'Channels', {'A and B'}, 'Minutes', {240});
+S.Sleep.TestPulses.Schedule = struct('Kind', {'Probe'}, 'Channels', {'Alternate A and B'}, 'Minutes', {Inf});
 
 %% Pre-session tier: ePhys calibration sessions (D18)
 % Light pulses whose intensity or pairing changes step by step, for the recorded

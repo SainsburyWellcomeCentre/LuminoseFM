@@ -326,6 +326,7 @@ function testSleepPlotsShowTheTestPulsesSent(testCase)
 S = testCase.TestData.S;
 S.Sleep.TestPulses.Enabled = true;
 S.Sleep.TestPulses.PlasticityTrains = true;
+S.Sleep.TestPulses.Probe.InterEpochInterval = 2;
 S.Sleep.TestPulses.Schedule = struct('Kind', {'Probe', 'Theta burst', 'Probe'}, ...
                                      'Channels', {'A and B', 'A', 'B'}, 'Minutes', {1, 0, 1});
 plan = lum.sleep.testPulsePlan(S.Sleep.TestPulses);
@@ -675,13 +676,18 @@ app.refresh();
 verifyTrue(testCase, app.collect().Sleep.HouseLight, 'The house light switch is read back');
 app.controls.HouseLight.Value = false;
 
-% With test pulses the recording lasts as long as their schedule, and the recording's
-% own length comes back when they are switched off.
+% The default test pulses go on for the whole recording, whose length stays editable;
+% one epoch every 30 s over 120 min.
 app.controls.TestPulsesEnabled.Value = true;
 app.refresh();
-verifyEqual(testCase, app.controls.Duration.Value, 240);
-verifyEqual(testCase, app.controls.Duration.Enable, matlab.lang.OnOffSwitchState('off'));
-verifySubstring(testCase, app.status(), 'Test pulses: 7200 epoch(s)');
+verifyEqual(testCase, app.controls.Duration.Value, S.Sleep.DurationMinutes);
+verifyEqual(testCase, app.controls.Duration.Enable, matlab.lang.OnOffSwitchState('on'));
+verifySubstring(testCase, app.status(), 'Test pulses: 240 epoch(s)');
+app.controls.Duration.Value = 60;
+app.controls.Duration.ValueChangedFcn(app.controls.Duration, []);
+verifySubstring(testCase, app.status(), 'Test pulses: 120 epoch(s)', 'They follow the recording''s length');
+app.controls.Duration.Value = S.Sleep.DurationMinutes;
+app.controls.Duration.ValueChangedFcn(app.controls.Duration, []);
 verifySubstring(testCase, app.controls.TestPulseSummary.Text, 'paired 10 ms pulses');
 candidate = app.collect();
 verifyTrue(testCase, candidate.Sleep.TestPulses.Enabled);
@@ -735,7 +741,7 @@ verifySubstring(testCase, c.CalibrationNote(1).Text, 'not calibrated on channel 
 
 % A calibration saved for channel A's path turns its intensity into mW/mm2.
 path = lum.led.lightPath(candidate, 1);
-cal = lum.led.makeCalibration(path, [0 200], [0 2], 'mW');
+cal = lum.led.makeCalibration(path, 0:100:500, 0:5, 'mW');
 lum.led.saveCalibration(cal, folder);
 app.refresh();
 verifySubstring(testCase, c.CalibrationNote(1).Text, 'orange cable on channel A, calibrated');
@@ -772,43 +778,71 @@ mkdir(folder);
 removeFolder = onCleanup(@() rmdir(folder, 's'));
 saved = {};
 w = lum.gui.DoricCalibration('4-to-19', {'orange', 'blue'}, 'Folder', folder, 'Visible', 'off', ...
-                             'MaxCurrentmA', [300 700], 'OnSaved', @(cal) assignSaved(cal));
+                             'MaxCurrentmA', [500 1000], 'OnSaved', @(cal) assignSaved(cal));
 cleanup = onCleanup(@() w.close());
 verifyEqual(testCase, w.Controls.On(1).Enable, matlab.lang.OnOffSwitchState('off'), ...
             'No driver: the currents are set by hand');
 verifyEqual(testCase, w.Controls.Save.Enable, matlab.lang.OnOffSwitchState('off'), 'No readings yet');
-verifyEqual(testCase, cell2mat(w.Controls.Table(2).Data(:, 1))', 0:50:700, 'The default currents');
-verifyEqual(testCase, cell2mat(w.Controls.Table(1).Data(:, 1))', 0:50:300, 'Never above the limit');
+verifyEqual(testCase, cell2mat(w.Controls.Table(2).Data(:, 1))', 0:100:1000, 'The default currents');
+verifyEqual(testCase, cell2mat(w.Controls.Table(1).Data(:, 1))', 0:100:500, 'Never above the limit');
 verifyEqual(testCase, {w.Paths{1}.Cable, w.Paths{2}.Cable}, {'orange', 'blue'});
 verifySubstring(testCase, w.Controls.BundleNote.Text, 'black: A -, B -');
 
 w.Controls.Unit.Value = 'uW';
+w.Controls.Unit.ValueChangedFcn(w.Controls.Unit, []);
 w.setPower(2, 1, 0);
-w.setPower(2, 3, 800);
-w.setPower(2, 5, 1500);
+w.setPower(2, 2, 800);
+w.setPower(2, 3, 1500);
 verifyEqual(testCase, w.Controls.Save.Enable, matlab.lang.OnOffSwitchState('on'));
 data = w.Controls.Table(2).Data;
-verifyEqual(testCase, data{3, 3}, 0.8 / w.Paths{2}.Area, 'AbsTol', 0.005, 'uW to mW/mm2, shown to 0.01');
+verifyEqual(testCase, data{2, 3}, 0.8 / w.Paths{2}.Area, 'AbsTol', 0.005, 'uW to mW/mm2, shown to 0.01');
+verifySubstring(testCase, w.Controls.PathNote(2).Text, 'needs 4 readings');
+verifyFalse(testCase, w.save(), 'Readings to 200 mA only cover too little');
+verifySubstring(testCase, w.Controls.Status.Text, 'Not saved');
+verifyEmpty(testCase, saved);
+w.setPower(2, 4, 2200);
+w.setPower(2, 5, 2900);
+verifySubstring(testCase, w.Controls.PathNote(2).Text, '5 readings, to 400 mA');
 verifyTrue(testCase, w.save(), 'Channel A has no readings and is skipped');
 verifyNumElements(testCase, saved, 1);
 loaded = lum.led.loadCalibration(w.Paths{2}, folder);
-verifyEqual(testCase, loaded.CurrentmA, [0; 100; 200]);
+verifyEqual(testCase, loaded.CurrentmA, (0:100:400)');
 verifyEqual(testCase, loaded.PowerUnit, 'uW');
 verifyEqual(testCase, loaded.MeasuredOn, 'B');
 verifySubstring(testCase, w.Controls.BundleNote.Text, 'blue: A -, B 20');
+verifyFalse(testCase, w.save(), 'Nothing new since');
 
 % The next pair: black on A and green on B, with fresh tables.
 w.setCables('4-to-19', {'black', 'green'});
 verifyEqual(testCase, {w.Paths{1}.Cable, w.Paths{2}.Cable}, {'black', 'green'});
 verifyTrue(testCase, all(isnan(cellfun(@double, w.Controls.Table(2).Data(:, 2)))));
-w.setPower(1, 1, 0);
-w.setPower(1, 2, 1000);
-w.setPower(2, 1, 0);
-w.setPower(2, 2, 2000);
+for row = 1:5
+    w.setPower(1, row, 1000 * (row - 1));
+end
+for row = 1:6
+    w.setPower(2, row, 2000 * (row - 1));
+end
 verifyTrue(testCase, w.save());
 verifyNumElements(testCase, saved, 3);
 verifyNotEmpty(testCase, lum.led.loadCalibration(w.Paths{1}, folder));
 verifySubstring(testCase, w.Controls.BundleNote.Text, 'black: ');
+
+% Blue back on B: its saved readings are shown, in the unit chosen, and kept by Fill.
+w.setCables('4-to-19', {'orange', 'blue'});
+data = w.Controls.Table(2).Data;
+verifyEqual(testCase, cellfun(@double, data(1:5, 2))', [0 800 1500 2200 2900], 'AbsTol', 1e-9);
+verifyTrue(testCase, all(isnan(cellfun(@double, data(6:end, 2)))), 'Rows to measure');
+verifyEqual(testCase, w.Controls.Save.Enable, matlab.lang.OnOffSwitchState('off'), 'Nothing new');
+w.Controls.Unit.Value = 'mW';
+w.Controls.Unit.ValueChangedFcn(w.Controls.Unit, []);
+verifyEqual(testCase, w.Controls.Table(2).Data{2, 2}, 0.8, 'AbsTol', 1e-12, 'The unit converts, not re-reads');
+w.Controls.From.Value = 450;
+w.Controls.To.Value = 450;
+w.fill();
+currents = cell2mat(w.Controls.Table(2).Data(:, 1))';
+verifyEqual(testCase, currents, [0:100:400 450 500:100:1000], 'Fill adds a current');
+verifyEqual(testCase, w.Controls.Table(2).Data{5, 2}, 2.9, 'AbsTol', 1e-12, 'and keeps the readings');
+verifyEqual(testCase, cell2mat(w.Controls.Table(1).Data(:, 1))', [0:100:400 450 500], 'And to A''s');
 
 w.setCables('4-to-19', {'green', 'green'});
 w.setPower(1, 2, 1000);
@@ -818,6 +852,33 @@ verifySubstring(testCase, w.Controls.Status.Text, 'same cable');
     function assignSaved(cal)
         saved{end+1} = cal;
     end
+end
+
+function testTheCalibrationWindowAddsToAnOlderCalibration(testCase)
+% A calibration to 700 mA in 50 mA steps: its readings are shown, and 800-1000 mA are
+% left to measure; the calibration keeps working to 700 mA until they are.
+assumeUIFigures(testCase);
+folder = tempname;
+mkdir(folder);
+removeFolder = onCleanup(@() rmdir(folder, 's'));
+S = struct('Light', struct('Bundle', '2-to-19', 'Cables', {{'blue', 'green'}}));
+path = lum.led.lightPath(S, 1);
+old = lum.led.makeCalibration(path, 0:50:700, (0:50:700) / 100, 'mW');
+lum.led.saveCalibration(old, folder);
+w = lum.gui.DoricCalibration('2-to-19', {'blue', 'green'}, 'Folder', folder, 'Visible', 'off');
+cleanup = onCleanup(@() w.close());
+data = w.Controls.Table(1).Data;
+verifyEqual(testCase, cell2mat(data(:, 1))', [0:50:700 800 900 1000]);
+verifyEqual(testCase, cellfun(@double, data(1:15, 2)), (0:50:700)' / 100, 'AbsTol', 1e-12);
+verifyTrue(testCase, all(isnan(cellfun(@double, data(16:18, 2)))));
+verifySubstring(testCase, w.Controls.PathNote(1).Text, '15 readings, to 700 mA');
+verifySubstring(testCase, w.Controls.BundleNote.Text, 'to 700 mA');
+w.setPower(1, 16, 8);
+w.setPower(1, 17, 9);
+verifyTrue(testCase, w.save());
+loaded = lum.led.loadCalibration(path, folder);
+verifyEqual(testCase, loaded.CurrentmA', [0:50:700 800 900]);
+verifyEqual(testCase, loaded.PowermW(end), 9);
 end
 
 function testTheCalibrationWindowLightsEachChannelContinuously(testCase)
@@ -840,11 +901,11 @@ w.select(2, 3);
 w.lightOn(2);
 settings = transport.callsOf('SETTINGS');
 verifyEqual(testCase, char(settings(end).Args.Settings.Mode), 'CW');
-verifyEqual(testCase, settings(end).Args.Settings.CurrentmA, 100);
-verifySubstring(testCase, w.Controls.Light(2).Text, 'On, continuous, 100 mA');
+verifyEqual(testCase, settings(end).Args.Settings.CurrentmA, 200);
+verifySubstring(testCase, w.Controls.Light(2).Text, 'On, continuous, 200 mA');
 w.next(2);
 settings = transport.callsOf('SETTINGS');
-verifyEqual(testCase, settings(end).Args.Settings.CurrentmA, 150, 'A lit channel follows the row');
+verifyEqual(testCase, settings(end).Args.Settings.CurrentmA, 300, 'A lit channel follows the row');
 verifySubstring(testCase, w.Controls.Light(1).Text, 'Off', 'Channel A was never lit');
 transport.clearCalls();
 w.switchOff(2);
@@ -888,7 +949,7 @@ candidate = app.collect();
 verifyEqual(testCase, candidate.Session.Type, 'EphysCalibration');
 verifyEqual(testCase, candidate.Ephys.PairedPulse.Intervals, S.Ephys.PairedPulse.Intervals, 'AbsTol', 1e-12);
 verifySubstring(testCase, app.status(), 'Ready to start', 'Not calibrated: 0 mA to the limit by default');
-verifySubstring(testCase, app.controls.Summary.Text, 'Input-output: 8 levels, A 0-700 mA');
+verifySubstring(testCase, app.controls.Summary.Text, 'Input-output: 8 levels, A 0-1000 mA');
 app.fields.IOMax{1}.setCurrent(300);
 app.refresh();
 candidate = app.collect();
@@ -996,12 +1057,15 @@ S = testCase.TestData.S;
 cleanup = onCleanup(@() closeIfOpen(app.Figure));
 verifyEqual(testCase, app.collect().Sleep.TestPulses, S.Sleep.TestPulses);
 verifySubstring(testCase, app.status(), 'Ready');
-verifyEqual(testCase, app.controls.StepTable.Data{1, 5}, 7200, 'Epochs are counted per step');
+verifyEqual(testCase, app.controls.StepTable.Data{1, 5}, 240, ...
+            'Epochs are counted per step, over the whole recording (120 min)');
 
 app.preset('Probe, theta burst, probe');
 design = app.collect().Sleep.TestPulses;
 verifyTrue(testCase, design.PlasticityTrains, 'A preset with a train switches trains on');
 verifyEqual(testCase, {design.Schedule.Kind}, {'Probe', 'Theta burst', 'Probe'});
+verifyEqual(testCase, unique({design.Schedule.Channels}), {'Alternate A and B'}, ...
+            'Presets send one channel at a time');
 verifySubstring(testCase, app.status(), 'Ready');
 
 app.controls.TrainsEnabled.Value = false;

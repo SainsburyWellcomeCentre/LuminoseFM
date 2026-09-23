@@ -69,7 +69,7 @@ end
 function testACalibrationStaysOnTheChannelItWasMeasuredOn(testCase)
 folder = testCase.TestData.folder;
 S = lum.defaultSettings;   % 2-to-19: blue on A, green on B
-cal = lum.led.makeCalibration(lum.led.lightPath(S, 1), [0 100], [0 1], 'mW');
+cal = lum.led.makeCalibration(lum.led.lightPath(S, 1), 0:100:500, 0:5, 'mW');
 verifyEqual(testCase, {cal.MeasuredOn, cal.MeasuredLEDChannel, cal.Cable}, {'A', 1, 'blue'});
 lum.led.saveCalibration(cal, folder);
 cals = lum.led.calibrations(S, folder);
@@ -86,18 +86,18 @@ folder = testCase.TestData.folder;
 S = lum.defaultSettings;
 S.Light.Bundle = '4-to-19';
 S.Light.Cables = {'orange', 'blue'};
-onA = lum.led.makeCalibration(lum.led.lightPath(S, 1), [0 100], [0 1], 'mW');
+onA = lum.led.makeCalibration(lum.led.lightPath(S, 1), 0:100:500, 0:5, 'mW');
 lum.led.saveCalibration(onA, folder);
 S.Light.Cables = {'blue', 'orange'};
-onB = lum.led.makeCalibration(lum.led.lightPath(S, 2), [0 100], [0 2], 'mW');
+onB = lum.led.makeCalibration(lum.led.lightPath(S, 2), 0:100:500, 2 * (0:5), 'mW');
 lum.led.saveCalibration(onB, folder);
 verifyNumElements(testCase, dir(fullfile(folder, '*.mat')), 2);
 cals = lum.led.calibrations(S, folder);
 verifyEqual(testCase, {cals{2}.Cable, cals{2}.MeasuredOn}, {'orange', 'B'});
-verifyEqual(testCase, cals{2}.PowermW, [0; 2]);
+verifyEqual(testCase, cals{2}.PowermW, 2 * (0:5)');
 S.Light.Cables = {'orange', 'blue'};
 cals = lum.led.calibrations(S, folder);
-verifyEqual(testCase, cals{1}.PowermW, [0; 1], 'Orange on A has its own');
+verifyEqual(testCase, cals{1}.PowermW, (0:5)', 'Orange on A has its own');
 end
 
 function testAPerCableFileIsReadOnTheChannelItWasMeasuredOn(testCase)
@@ -106,7 +106,7 @@ folder = testCase.TestData.folder;
 S = lum.defaultSettings;
 S.Light.Bundle = '4-to-19';
 S.Light.Cables = {'orange', 'blue'};
-Calibration = lum.led.makeCalibration(lum.led.lightPath(S, 1), [0 100], [0 1], 'mW');
+Calibration = lum.led.makeCalibration(lum.led.lightPath(S, 1), 0:100:500, 0:5, 'mW');
 save(fullfile(folder, 'DoricLED_4-to-19_orange.mat'), 'Calibration');
 cals = lum.led.calibrations(S, folder);
 verifyEqual(testCase, cals{1}.MeasuredOn, 'A');
@@ -174,19 +174,53 @@ function testASavedCalibrationIsReadBackAndReplacedByTheNext(testCase)
 folder = testCase.TestData.folder;
 path = fourToNineteen(1);
 verifyEmpty(testCase, lum.led.loadCalibration(path, folder), 'Nothing before the first');
-first = lum.led.makeCalibration(path, [0 100], [0 1], 'mW', 'Notes', 'first');
+first = lum.led.makeCalibration(path, 0:100:500, 0:5, 'mW', 'Notes', 'first');
 [file, image] = lum.led.saveCalibration(first, folder);
 verifyTrue(testCase, isfile(file));
 verifyTrue(testCase, isempty(image) || isfile(image), 'The graph beside it, when it can be drawn');
 verifyEqual(testCase, lum.led.loadCalibration(path, folder).Notes, 'first');
-second = lum.led.makeCalibration(path, [0 100 200], [0 2 3], 'mW', 'Notes', 'second');
+second = lum.led.makeCalibration(path, 0:100:1000, 0:10, 'mW', 'Notes', 'second');
 lum.led.saveCalibration(second, folder);
 loaded = lum.led.loadCalibration(path, folder);
 verifyEqual(testCase, loaded.Notes, 'second', 'Recalibrating overwrites');
-verifyEqual(testCase, loaded.CurrentmA, [0; 100; 200]);
+verifyEqual(testCase, loaded.CurrentmA, (0:100:1000)');
 verifyNumElements(testCase, dir(fullfile(folder, '*.mat')), 1);
 other = fourToNineteen(2);
 verifyEmpty(testCase, lum.led.loadCalibration(other, folder), 'The blue cable is another cable');
+end
+
+function testACalibrationMustCoverTheLEDsRange(testCase)
+% A few low readings, or too few readings, are neither saved nor used.
+folder = testCase.TestData.folder;
+path = fourToNineteen(1);
+[~, rules] = lum.led.checkCoverage();
+verifyEqual(testCase, [rules.MinLitReadings rules.MinTopCurrentmA], [4 400]);
+low = lum.led.makeCalibration(path, [0 50 100], [0 0.5 1], 'mW');
+verifySubstring(testCase, lum.led.checkCoverage(low), 'the highest 100 mA');
+sparse = lum.led.makeCalibration(path, [0 500 1000], [0 5 9], 'mW');
+verifyNotEmpty(testCase, lum.led.checkCoverage(sparse), 'Two readings above 0 mA');
+verifyEmpty(testCase, lum.led.checkCoverage(lum.led.makeCalibration(path, 0:100:400, 0:4, 'mW')));
+verifyError(testCase, @() lum.led.saveCalibration(low, folder), 'lum:led:saveCalibration:tooNarrow');
+verifyEmpty(testCase, dir(fullfile(folder, '*.mat')), 'Nothing written');
+Calibration = low;   % A file written some other way
+save(lum.led.calibrationFile(path, folder), 'Calibration');
+cal = verifyWarning(testCase, @() lum.led.loadCalibration(path, folder), 'lum:led:loadCalibration:unreadable');
+verifyEmpty(testCase, cal, 'Not used: the channel is in mA');
+verifyEqual(testCase, lum.led.loadCalibration(path, folder, false).CurrentmA, [0; 50; 100], ...
+            'The calibration window still shows it, to be added to');
+end
+
+function testACalibrationTo700mAWorksWithA1000mALimit(testCase)
+% Readings to 700 mA stay in use when the limit is 1000: the most is the 700 mA reading.
+path = fourToNineteen(1);
+cal = lum.led.makeCalibration(path, 0:50:700, (0:50:700) / 100 * path.Area, 'mW');   % 1 mW/mm2 per 100 mA
+[mA, reached, note] = lum.led.currentFor(cal, 5, 1000);
+verifyEqual(testCase, {mA, note}, {500, ''});
+verifyEqual(testCase, reached, 5, 'AbsTol', 1e-9);
+[mA, reached, note] = lum.led.currentFor(cal, 9, 1000);
+verifyEqual(testCase, mA, 700, 'Never beyond the readings');
+verifyEqual(testCase, reached, 7, 'AbsTol', 1e-9);
+verifySubstring(testCase, note, 'at 700 mA');
 end
 
 function testADamagedFileCountsAsNoCalibration(testCase)
@@ -210,7 +244,7 @@ function testLEDSettingsAreChecked(testCase)
 S = lum.defaultSettings;
 verifyEmpty(testCase, lum.led.validate(S));
 bad = S;
-bad.Doric.CurrentmA = [800 100];
+bad.Doric.CurrentmA = [1100 100];
 verifyError(testCase, @() lum.led.validate(bad), 'lum:led:validate:overLimit');
 bad = S;
 bad.Doric.MaxCurrentmA = [1200 700];
@@ -222,14 +256,14 @@ bad = S;
 bad.Doric.IrradiancemWmm2 = [-1 8];
 verifyError(testCase, @() lum.led.validate(bad), 'lum:led:validate:badIrradiance');
 bad = S;
-bad.Sleep.TestPulses.CurrentmA = [800 100];
+bad.Sleep.TestPulses.CurrentmA = [1100 100];
 verifyEmpty(testCase, lum.led.validate(bad, {}, 'Behaviour'), 'Behaviour does not read the sleep intensity');
 verifyError(testCase, @() lum.led.validate(bad, {}, 'Sleep'), 'lum:led:validate:overLimit');
 bad = S;
 bad.Light.Bundle = '4-to-19';
 bad.Light.Cables = {'blue', 'blue'};
 verifyError(testCase, @() lum.led.validate(bad), 'lum:led:validate:sameCable');
-verifyError(testCase, @() lum.validateSettings(setField(S, 'Doric', 'CurrentmA', [900 0]), RigConfig), ...
+verifyError(testCase, @() lum.validateSettings(setField(S, 'Doric', 'CurrentmA', [1100 0]), RigConfig), ...
             'lum:led:validate:overLimit', 'A behaviour session runs the same check');
 end
 
@@ -272,6 +306,18 @@ run = lum.led.intensity(S, {[], []}, 'Sleep');
 verifyEqual(testCase, run.CurrentmA, S.Sleep.TestPulses.CurrentmA);
 verifyEqual(testCase, run.ReachedmWmm2, [NaN NaN]);
 verifyNumElements(testCase, lum.led.validate(S, {[], []}, 'Sleep'), 2, 'One note per channel, no error');
+end
+
+function testACalibrationThatIsLitAtZeroMilliampsIsNoted(testCase)
+% Three 0.9.0 files on the rig read 0.67-1.25 mW/mm2 with the LED off: the meter was not
+% zeroed, and low irradiances got too much current.
+S = fourToNineteenSettings();
+path = lum.led.lightPath(S, 1);
+zeroed = lum.led.makeCalibration(path, [0 100 700], [0.001 1 7] * path.Area, 'mW');
+offset = lum.led.makeCalibration(path, [0 100 700], [0.67 1 7] * path.Area, 'mW');
+verifyFalse(testCase, any(contains(lum.led.validate(S, {zeroed, []}, 'Behaviour'), 'not zeroed')));
+notes = lum.led.validate(S, {offset, []}, 'Behaviour');
+verifyTrue(testCase, any(contains(notes, 'Channel A') & contains(notes, 'not zeroed')));
 end
 
 function testCurrentForStaysWithinTheCalibrationAndTheLimit(testCase)

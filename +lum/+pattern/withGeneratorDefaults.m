@@ -36,7 +36,12 @@ function generator = withGeneratorDefaults(generator)
 %   MixtureDifferenceTotals [0.3 0.5 0.7 0.9]  difference: total light each is given at
 %   MixtureLevels       [0.1 0.2 0.4 0.8]  alone rules: amounts a channel can be lit for,
 %                               as fractions of the window
-%   MixtureLayout       'onset' 'onset' (both lit from stimulus onset) or 'centred'
+%   MixtureLayout       'spread' 'spread' (each amount shared over MixtureCycles cycles,
+%                               both channels starting every cycle, so the mixture is
+%                               present throughout the window), 'onset' (both lit in one
+%                               stretch from stimulus onset) or 'centred'
+%   MixtureCycles       5       spread: cycles in the window; each costs a global timer
+%                               per channel
 %
 % Sequence ('count'):
 %   CountSlots          5       Slots in the window, one flash (or nothing) each

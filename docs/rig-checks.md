@@ -10,19 +10,31 @@ and move each one to *Done* with its result and session names.
 
 ## Pending — needs the operator at the rig
 
-### P4. First calibration of each cable on each channel (0.9.1)
+### P4. Calibrate the 2-to-19 bundle (0.9.1)
 
-Calibrate each cable in use on each channel it will be used on (Doric LED tab, **Calibrate LED
-power…**, two cables at a time, one on each channel) with a power meter at its tip, set to 465 nm:
-blue on A and green on B on the 2-to-19 bundle (and swapped, if they will be); on the 4-to-19, each of
-black, blue, orange and green on the channels it will use. From 0.9.1 a calibration is per cable and
-channel; the three per-cable files in `calibration/` from 2026-09-23 (4-to-19 blue measured on B,
-green and orange on A) are still used on those channels only. Check on the way that **On** and **Off**
-switch only their own channel, that a lit channel follows **Next**, and that closing the window
-switches both off. Then check the tab shows mW/mm² with the current beside it (8 mW/mm² in
-behaviour, 2 in the sleep dialog), that a behaviour session's console line prints the irradiance, and
-that a channel asked for more than it gives (for example 12 mW/mm² on blue, which reached 10.6 at
-700 mA) runs at its most with a note.
+The 4-to-19 bundle is calibrated on both channels for every cable (2026-09-23, below). The 2-to-19
+bundle has no calibration yet (blue on A, green on B by default): calibrate it from the Doric LED tab,
+**Calibrate LED power…**, with the meter zeroed with the LED off, set to 465 nm. Green on A (4-to-19)
+still has its 0.9.0 lit points with a replaced dark point; re-measure it when convenient. From 0.9.3
+the window offers 0–1000 mA in 100 mA steps (P9).
+
+Check on the way that **On** and **Off** switch only their own channel, that a lit channel follows
+**Next**, and that closing the window switches both off; that the Doric LED tab shows mW/mm² with the
+current beside it (8 mW/mm² in behaviour, 2 in the sleep dialog); and see the light at the tips at
+those currents.
+
+### P9. The LED to 1000 mA, and calibrations extended to it (0.9.3)
+
+1. Turn the driver's front knob to 1000 mA on both channels: it caps the current whatever USB asks, so
+   with it lower the limit of 1000 mA gives less light than the calibration says.
+2. Open **Calibrate LED power…** with each 4-to-19 pair (orange A / blue B, then black A / green B,
+   then the swapped pairs): each table must show the saved 0–700 mA readings with 800, 900 and
+   1000 mA empty. Read those three and save; the graph must go on rising (a flat top means the knob is
+   limiting). The dashed saved curve and the new points must meet at 700 mA.
+3. Hold a channel at 1000 mA for the length of a calibration and check the LED head is not hot to the
+   touch. Doric recommends 700 mA for light held on for long; sessions gate the light.
+4. A behaviour session asking for more than the 700 mA reading (for example 20 mW/mm² on A) before
+   step 2 runs at 700 mA with a note; after it, at the current that gives 20.
 
 ### P5. Centre reward and punishments (0.8.0)
 
@@ -69,6 +81,62 @@ splits it. Record it here; it decides what to speed up next.
    calibration, P5).
 
 ## Done
+
+### 2026-09-23 — orange on A and blue on B re-measured, operator at the rig with the power meter
+
+The 0.9.0 per-cable files for three light paths read light with the LED off (0.67–1.25 mW/mm² at 0 mA),
+and two had a lit point out of line with the other cables on their channel: orange on A at 50 mA
+(0.030 mW, where the other A cables read 2.24–2.65 mW/mm²) and blue on B at 100 mA (3.14 mW/mm², the
+other B cables 2.10–2.65). Green on A had only the dark point off: it was replaced by the mean dark
+reading of the re-measured A cables (1.25 → 0.04 mW/mm²; `DoricLED_4-to-19_green_A.mat`, noted in
+the file); its lit points are as measured. Orange on A and blue on B were measured again in full: the
+agent set each current in continuous mode through `lum.dev.DoricLED.lightOn` (one channel lit, the
+other off), the operator read the meter (zeroed, 465 nm) and typed each value, and the agent switched
+both channels off and released the driver at the end.
+
+| mA | 0 | 50 | 100 | 150 | 200 | 250 | 300 | 350 | 400 | 450 | 500 | 550 | 600 | 650 | 700 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| orange on A, mW | 0.002 | 0.093 | 0.164 | 0.222 | 0.267 | 0.311 | 0.364 | 0.430 | 0.462 | 0.513 | 0.54 | 0.592 | 0.626 | 0.667 | 0.703 |
+| blue on B, mW | 0.002 | 0.0645 | 0.0956 | 0.135 | 0.165 | 0.198 | 0.221 | 0.249 | 0.271 | 0.292 | 0.316 | 0.337 | 0.362 | 0.379 | 0.404 |
+
+Both rise at every step; 50 mA on orange A (2.37 mW/mm²) and 100 mA on blue B (2.43) now sit with the
+other cables on their channels, and each cable's B/A ratio is 0.52–0.73, as for the others. The
+defaults now run at: sleep 2 mW/mm² → orange A 42 mA (was 69), blue B 73 mA (was 67); behaviour
+8 mW/mm² → 253 mA (was 235) and 496 mA (was 457). Saved as `DoricLED_4-to-19_orange_A.mat` and
+`..._blue_B.mat`; the 0.9.0 per-cable files are kept but no longer used for these paths.
+
+### 2026-09-23 — 0.9.2, the 4-to-19 calibrations, the spread mixture and alternating sleep probes, no animal, run by an agent with the operator's permission
+
+Bpod r2+ on COM3 (16 global timers), PulsePal firmware v21 on COM9, the Doric driver in Device mode
+("LED Driver", Doric port 4), HiFi1 on COM8, Flex1 analog and Flex2 sync. No video (checked before).
+Bundle 4-to-19, orange on A and blue on B (the defaults). Session files in `%TEMP%\LuminoseFM_rigcheck`,
+not the data folder.
+
+**The calibrations** (`calibration/`, read offline). All eight cable/channel pairs of the 4-to-19
+bundle resolve to a calibration: black on A and B, blue on A, green on B and orange on B from 0.9.1
+files; blue on B, green on A and orange on A from the 0.9.0 per-cable files, each measured on that
+channel. Every curve rises with current, and irradiance is power over the cable's area (4 or 5 fibers
+of 100 µm). **Channel B gives about 58% of channel A for every cable**: 10.5–10.6 mW/mm² at 700 mA on
+B, 17.5–18.6 on A. The cables agree with each other on each channel, so the difference is the LED
+channel or the commutator, not the cables. B needs 457–520 mA for 8 mW/mm², and the ePhys curve's top
+(12 mW/mm²) is out of reach on B (it runs at 10.6, with a note). The three 0.9.0 files had an offset
+at 0 mA, since corrected, and two have a suspect lit point: P4. The table below is as the sessions
+ran, before the correction.
+
+| Cable | A: mA for 2 / 8 mW/mm², most at 700 mA | B: mA for 2 / 8 mW/mm², most at 700 mA |
+|-------|:---:|:---:|
+| black | 38 / 233, 17.5 | 70 / 504, 10.5 |
+| blue | 44 / 236, 18.6 | 67 / 457, 10.6 (0.9.0 file, offset) |
+| green | 25 / 227, 18.3 (0.9.0 file, offset) | 94 / 511, 10.5 |
+| orange | 69 / 235, 17.9 (0.9.0 file, offset) | 85 / 520, 10.5 |
+
+| Check | Result |
+|-------|--------|
+| `CheckRig` | 11 of 11 ok |
+| `TestDoricLED('Currents', [50 250], 'Count', 2)` | every command acknowledged, 12 of 12 gates (A, B, both at each current). Light not watched |
+| Behaviour session `FakeSubject_LuminoseFM_20260923_132857`: mixture at its new defaults (spread over 5 cycles, 10 timers), Experiment stage, 6 trials, virtual pokes | the console printed *LED channel A 235 mA = 8 mW/mm2, channel B 457 mA = 8 mW/mm2*; `LEDCurrentA` 235 and `LEDCurrentB` 457 on every trial, `Intensity.ReachedmWmm2` [8.00 8.00]. **All 60 light segments (10 per trial) had a timer start and end at the planned times, within 0.10 ms.** Ready 26.4 s after launch, 16.2 s of it waiting for the Doric driver |
+| Sleep session `FakeSubject_LuminoseFM_20260923_133000`: the new default test pulses (paired probes alternating A and B, 30 s), shortened to 2 min | LED A 69 mA = 2.02 mW/mm², B 67 mA = 2.01 (P4 for A). 8 of 8 gates: pairs on A, B, A, B, 50 ms apart, 10 ms each, never both channels in one epoch; epochs 30.24, 30.19 and 30.05 s apart, each interval longer by the time between the ~10 s blocks it spans (D13) |
+| ePhys calibration session `FakeSubject_LuminoseFM_20260923_133226`: A and B, input-output in 4 levels, pairs 20 and 50 ms | 32 of 32 gates, completed. The LED stepped A 0, 110, 247, 398 mA and B 0, 184, 393, 700 mA (B's top level at its most, 10.6 mW/mm², with a note), then 235 / 457 mA for the pairs, between blocks; every gate's recorded current is its step's. The lowest level reads 0.67 mW/mm² at 0 mA because of the 0.9.0 orange and blue offsets (P4) |
 
 ### 2026-09-22 — 0.9.0 stimulus families on the state machine, no animal, run by an agent with the operator's permission
 

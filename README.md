@@ -239,7 +239,7 @@ family, with a preview of every trial.
 | Family | The animal tells | Defaults | Also |
 |--------|------------------|----------|------|
 | **Pure channel: A or B** | which channel is lit | A for the whole window pays left, B pays right | several lit fractions, so that duration varies too; one channel only |
-| **Mixture: more A or more B** | how much of the mixture is A | both channels lit, as mixture ratios 2:1 (pays left) and 1:2 (pays right), each at three totals of light (0.3, 0.6 and 1.2 of the window), so that neither channel's amount alone tells the side | A's share judged against another boundary (is A more than 60% of the mixture?), a psychometric set of ratios (80:20 60:40 40:60 20:80), or *A minus B* instead of the share. *A alone decides* or *B alone decides*, the control: one channel's amount decides and the other is a distractor. New amounts every trial |
+| **Mixture: more A or more B** | how much of the mixture is A | both channels lit, as mixture ratios 2:1 (pays left) and 1:2 (pays right), each at three totals of light (0.3, 0.6 and 1.2 of the window), so that neither channel's amount alone tells the side. Each amount is spread over the window in cycles (5 on the rig), both channels starting every cycle, so the mixture lasts the whole window instead of ending early and leaving the rest dark | A's share judged against another boundary (is A more than 60% of the mixture?), a psychometric set of ratios (80:20 60:40 40:60 20:80), or *A minus B* instead of the share. *Placement* from onset or centred, in one stretch per channel. *A alone decides* or *B alone decides*, the control: one channel's amount decides and the other is a distractor. New amounts every trial |
 | **Sequence: more A or more B flashes** | which channel flashes more often | the window cut into five slots (three in the emulator, which has fewer timers), each holding one flash of A or of B; every split from 5 A to 5 B, in a new order every trial | leave slots empty (*both channels needed*), so that counting one channel is not enough |
 | **Order: A first or B first** | which channel comes first | A alone, then both, then B pays left; B alone, then both, then A pays right | the *guarded cycle*, where only the timing of one channel against the other tells |
 | **Motifs: words of A and B** | which word it is | the eight three-letter words of A and B, four paying each side, split so that no simple rule tells them apart: each word has to be learnt | your own words; X lights both channels, - leaves a letter dark |
@@ -405,7 +405,7 @@ Both designers also open on their own, away from the rig, and return the setting
 
 ```matlab
 S = lum.gui.StimulusDesigner();    % sized to the connected machine's timers
-S = lum.gui.TestPulseDesigner();   % defaults: paired-pulse probes on A and B for 4 hours
+S = lum.gui.TestPulseDesigner();   % defaults: paired-pulse probes alternating A and B, all recording long
 ```
 
 ---
@@ -493,7 +493,7 @@ Light on channels A and B during the recording, to probe the bulb's response to 
 that response. It goes out exactly as a behaviour stimulus does: Bpod drives BNC1 and BNC2, and
 PulsePal, in gated mode, fills each gate.
 
-- A **probe** is one *epoch* every *inter-epoch interval* (2 s by default): a single pulse, or a
+- A **probe** is one *epoch* every *inter-epoch interval* (30 s by default): a single pulse, or a
   pair of pulses an *inter-pulse interval* apart (50 ms), each 10 ms of constant light. Both
   intervals are onset to onset.
 - **Plasticity trains**, once switched on, are named definitions: bursts of pulses at a pulse
@@ -503,8 +503,15 @@ PulsePal, in gated mode, fills each gate.
   100 Hz, 4 trains 20 s apart. Any other can be added.
 - The **schedule** is a list of steps run in order from the start of the recording: a probe or rest
   for so many minutes, or a train (which lasts its trains), on A and B together, on one of them, or
-  alternating between them epoch by epoch. The default is paired-pulse probes on A and B for
-  4 hours. **The recording lasts as long as the schedule.**
+  alternating between them epoch by epoch. The last probe or rest step can go on **until the
+  recording ends** (Minutes `Inf` in the designer's table). The default is one such step of
+  paired-pulse probes, alternating: a pair on A, 30 s, a pair on B, 30 s, and so on, for as long as
+  the recording lasts (the sleep dialog's *Duration*, 120 min by default: 120 pairs on each channel).
+  No epoch lights both channels, so each evoked response has one source. Choose *A and B* in a step's
+  Channels to send each epoch on both at once. The designer's presets and new steps alternate too,
+  and a new step goes in before a last step that runs to the end.
+  **When the last step has a length of its own, the recording lasts as long as the schedule**, and
+  *Duration* is greyed out.
 - How bright the light is, the LED current, is set per channel on the sleep dialog's **Doric LED**
   tab (§9); the designer's voltages are PulsePal's TTL level into the driver (5 V).
 
@@ -597,8 +604,10 @@ their LED current while PulsePal's output into them is high.
 - **Fiber bundle** — the bundle on the animal, and the cable, by colour, on each channel: blue on A and
   green on B by default on the 2-to-19 bundle, orange on A and blue on B on the 4-to-19. If you swap
   the cables at the commutator, swap them here too. **Calibrate LED power…** measures the cables (below).
-- **Intensity** — per channel: the intensity, the **limit** in mA (700 by default, at most 1000, the
-  LED's rating; the LED is never set above it), the light path (cable, fibers, area) and the
+- **Intensity** — per channel: the intensity, the **limit** in mA (1000 by default, the LED's rating
+  and the most the driver takes in continuous mode; the LED is never set above it. Doric recommends
+  700 mA for light held on for long. The driver's front knob caps the current too, whatever the
+  software asks, so turn it to 1000 mA to use it all), the light path (cable, fibers, area) and the
   calibration. On a channel whose cable is calibrated on that channel the intensity is irradiance at
   the fiber tips, in mW/mm², and the field shows the current that gives it; the session sets that
   current as it starts. By default **8 mW/mm²** on both channels in behaviour and **2 mW/mm²** for
@@ -620,17 +629,32 @@ the 4-to-19 two (for example orange and blue, then black and green: plug the nex
 commutator and choose it). The line under the cables says which of the bundle's cables are calibrated
 on A and on B, and when.
 
-1. Hold the power meter at a cable's tip (set to 465 nm). Keep the fibers away from any animal: the
-   light is continuous (the driver's continuous mode).
-2. Choose the meter's unit (**mW** or **uW**). Each channel has a table of currents, 0–700 mA in 50 mA
-   steps, never above that channel's limit; change the range and **Fill** to replace both.
+1. Hold the power meter at a cable's tip (set to 465 nm) and zero it with the LED off. Keep the
+   fibers away from any animal: the light is continuous (the driver's continuous mode). A calibration
+   that reads more than 0.3 mW/mm² at 0 mA gives low irradiances too much current, and every
+   session using it says so.
+2. Choose the meter's unit (**mW** or **uW**). Each channel has a table of currents, 0–1000 mA in
+   100 mA steps (`S.Doric.CalibrationCurrentsmA`), never above that channel's limit. A cable already
+   calibrated on that channel starts with its saved readings and currents, so only the empty rows need
+   measuring: a calibration to 700 mA shows its readings with 800, 900 and 1000 mA left to read.
+   **Fill** adds the From–To series to both tables and keeps every reading (From = To adds one
+   current); a row's mA can be typed over. Changing the unit converts the powers already there. Rows
+   left without a power are not part of the calibration.
 3. Select a row of a channel and press its **On**; type the power read; press **Next**. A lit channel
    follows the selected row, so **Next** lights the next current. **Off** switches that channel off.
    Without a connected driver, set each current on the driver by hand.
 4. Each channel's graph (current against mW/mm²) fills in as you type, with that cable's saved
-   calibration dashed behind it. **Save calibrations** writes each channel that has readings.
-   Choosing another cable drops that channel's unsaved readings, after asking. Closing the window
-   switches both channels off.
+   calibration dashed behind it. The line above each table says whether its readings can be saved: a
+   calibration needs readings at 4 currents above 0 mA at least, the highest 400 mA or more
+   (`lum.led.checkCoverage`), because a few low readings (0, 50, 100 mA) would cap every session at
+   that channel's dimmest light. **Save calibrations** writes each channel with new readings. Choosing
+   another cable drops that channel's unsaved readings, after asking. Closing the window switches both
+   channels off.
+
+A calibration is used up to its highest reading: with readings to 700 mA and a 1000 mA limit, a
+session that asks for more than the 700 mA reading gives runs at 700 mA, and says so, until the
+cable is measured further. A saved calibration with too few readings is not used (the channel is then
+in mA, with a warning) but is still shown in the window to be added to.
 
 A calibration belongs to a cable **on a channel**: the light leaving a cable depends on the LED and
 the commutator channel feeding it, so the orange cable on A and the orange cable on B are two

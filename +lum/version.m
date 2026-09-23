@@ -57,11 +57,19 @@ function text = version()
 % channel (the orange cable on A and on B are two calibrations), asks for the light's
 % intensity in mW/mm2 on a calibrated channel (S.Doric.IrradiancemWmm2 8, sleep test pulses 2,
 % ePhys pairs 8 and curve 0-12, or the channel's most) and in mA on one that is not, and
-% records what each channel started at (Session.DoricLED.Intensity).
+% records what each channel started at (Session.DoricLED.Intensity). 0.9.2 spreads the
+% mixture's amounts over the window in cycles by default (MixtureLayout 'spread',
+% MixtureCycles), refuses mixture groups that round to the same light, makes a family's
+% defaults choose a bin they fit, and makes sleep probes alternate between A and B, 30 s
+% apart, for as long as the recording lasts, by default. 0.9.3 raises each LED channel's
+% limit to 1000 mA, the LED's rating (S.Doric.MaxCurrentmA; a 0.9.2 file's 700 mA is
+% converted), calibrates 0-1000 mA in 100 mA steps, starting from the readings already
+% saved, and uses a calibration only when its readings cover the LED's range
+% (lum.led.checkCoverage).
 %
 % See also: LuminoseFM
 
-release = '0.9.1';
+release = '0.9.3';
 text = release;
 
 try

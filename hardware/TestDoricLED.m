@@ -31,7 +31,7 @@ function report = TestDoricLED(varargin)
 % Options (name/value):
 %   Currents  LED current per set, mA, same on both channels (default 50); each at most
 %             MaxCurrent
-%   MaxCurrent  The channels' limit, mA (default 700, Doric's recommended maximum)
+%   MaxCurrent  The channels' limit, mA (default 1000, the LED's rating)
 %   Count     Flashes per channel and per set (default 3)
 %   On, Off   Seconds of light, and of dark after it (default 0.5, 0.5)
 %   Folder    The DoricLED folder, when it is not on the MATLAB path (default '')
@@ -51,7 +51,7 @@ global BpodSystem %#ok<GVMIS> % Imported to read the machine and run it
 p = inputParser;
 p.FunctionName = 'TestDoricLED';
 addParameter(p, 'Currents', 50, @(x) isnumeric(x) && ~isempty(x) && all(x >= 0) && all(x == round(x)));
-addParameter(p, 'MaxCurrent', 700, @(x) isnumeric(x) && isscalar(x) && x > 0 && x <= 1000);
+addParameter(p, 'MaxCurrent', 1000, @(x) isnumeric(x) && isscalar(x) && x > 0 && x <= 1000);
 addParameter(p, 'Count', 3, @(x) isnumeric(x) && isscalar(x) && x >= 1);
 addParameter(p, 'On', 0.5, @(x) isnumeric(x) && isscalar(x) && x >= 0.01);
 addParameter(p, 'Off', 0.5, @(x) isnumeric(x) && isscalar(x) && x >= 0.01);

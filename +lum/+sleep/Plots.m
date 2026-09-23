@@ -99,7 +99,7 @@ classdef Plots < handle
             obj.theme = t;
             plan = p.Results.Plan;
             if isempty(plan)
-                plan = lum.sleep.testPulsePlan(S.Sleep.TestPulses);
+                plan = lum.sleep.testPulsePlan(S.Sleep.TestPulses, S.Sleep.DurationMinutes);
             end
             obj.plan = plan;
             obj.hasLight = ~isempty(plan.Steps);

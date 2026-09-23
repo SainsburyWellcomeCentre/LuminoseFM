@@ -50,7 +50,7 @@ testPulses = S.Sleep.TestPulses;
 choices = lum.sleep.stepChoices(testPulses);
 trainColumns = {'Name', 'PulseFrequency', 'PulseWidth', 'PulsesPerBurst', 'BurstFrequency', ...
                 'BurstsPerTrain', 'nTrains', 'TrainInterval'};
-presets = {'Start from a preset...', 'Paired-pulse probes, 4 h', 'Probe, theta burst, probe', ...
+presets = {'Start from a preset...', 'Paired-pulse probes, whole recording', 'Probe, theta burst, probe', ...
            'Probe, high frequency, probe'};
 selectedStep = 1;
 selectedTrain = 0;
@@ -119,10 +119,13 @@ box = uipanel(right, 'Title', 'Schedule: steps run in order from the start of th
               'FontWeight', 'bold', 'BackgroundColor', t.Panel, 'ForegroundColor', t.Accent);
 grid = uigridlayout(box, [1 1], 'Padding', [10 8 10 8], 'BackgroundColor', t.Panel);
 controls.StepTable = uitable(grid, 'Data', stepRows(testPulses.Schedule), ...
-    'ColumnName', {'Step', 'Channels', 'Minutes', 'Starts at (min)', 'Epochs'}, ...
+    'ColumnName', {'Step', 'Channels', 'Minutes (Inf: to the end)', 'Starts at (min)', 'Epochs'}, ...
     'ColumnFormat', {choices.Kinds, choices.Channels, 'numeric', 'numeric', 'numeric'}, ...
     'ColumnEditable', [true true true false false], 'RowName', 'numbered', ...
-    'CellEditCallback', @(~, ~) refresh(), 'CellSelectionCallback', @(~, event) onStepSelected(event));
+    'CellEditCallback', @(~, ~) refresh(), 'CellSelectionCallback', @(~, event) onStepSelected(event), ...
+    'Tooltip', ['Steps run in order from the start of the recording. Minutes Inf on the last probe '...
+                'or rest step: it goes on until the recording ends, so the recording lasts the '...
+                'sleep dialog''s duration. Any other last step ends the recording with it.']);
 buttons = uigridlayout(right, [1 6], 'ColumnWidth', {100, 110, 90, 100, '1x', 260}, 'Padding', 0, ...
                        'ColumnSpacing', 8, 'BackgroundColor', t.Background);
 uibutton(buttons, 'Text', 'Add step', 'ButtonPushedFcn', @(~, ~) addStep());
@@ -284,9 +287,10 @@ end
         % Replace the schedule with a common one; trains it needs are added and switched on.
         rows = {};
         switch name
-            case 'Paired-pulse probes, 4 h'
+            case 'Paired-pulse probes, whole recording'
                 controls.ProbeMode.Value = 'Paired';
-                rows = {'Probe', 'A and B', 240, 0, 0};
+                controls.InterEpochInterval.Value = lum.defaultSettings().Sleep.TestPulses.Probe.InterEpochInterval;
+                rows = {'Probe', 'Alternate A and B', Inf, 0, 0};
             case {'Probe, theta burst, probe', 'Probe, high frequency, probe'}
                 trainName = 'Theta burst';
                 if contains(name, 'high frequency')
@@ -294,8 +298,8 @@ end
                 end
                 ensureTrain(trainName);
                 controls.TrainsEnabled.Value = true;
-                rows = {'Probe', 'A and B', 30, 0, 0; trainName, 'A and B', 0, 0, 0; ...
-                        'Probe', 'A and B', 210, 0, 0};
+                rows = {'Probe', 'Alternate A and B', 30, 0, 0; trainName, 'Alternate A and B', 0, 0, 0; ...
+                        'Probe', 'Alternate A and B', Inf, 0, 0};
         end
         controls.Preset.Value = presets{1};
         if ~isempty(rows)
@@ -318,7 +322,10 @@ end
     function addStep()
         rows = controls.StepTable.Data;
         at = min(max(selectedStep, 0), size(rows, 1));
-        rows = [rows(1:at, :); {'Probe', 'A and B', 30, 0, 0}; rows(at + 1:end, :)];
+        if at == size(rows, 1) && at > 0 && isnumeric(rows{end, 3}) && isinf(rows{end, 3})
+            at = at - 1;   % A step that goes on to the end of the recording stays last
+        end
+        rows = [rows(1:at, :); {'Probe', 'Alternate A and B', 30, 0, 0}; rows(at + 1:end, :)];
         controls.StepTable.Data = rows;
         selectedStep = at + 1;
         refresh();

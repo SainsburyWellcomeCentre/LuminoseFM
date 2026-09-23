@@ -360,6 +360,23 @@ verifyEqual(testCase, S.Sleep.DurationMinutes, 90);
 verifyTrue(testCase, any(strcmp(added, 'Sleep.TestPulses')));
 end
 
+function testTheOldDefaultTestPulseScheduleTakesTheNewOne(testCase)
+% Up to 0.9.1: probes on A and B together every 2 s for 240 min. Only that exact schedule
+% is replaced; a designed one is kept.
+defaults = lum.defaultSettings;
+loaded = defaults;
+loaded.Sleep.TestPulses.Probe.InterEpochInterval = 2;
+loaded.Sleep.TestPulses.Schedule = struct('Kind', 'Probe', 'Channels', 'A and B', 'Minutes', 240);
+[S, added] = lum.mergeSettings(defaults, loaded);
+verifyEqual(testCase, S.Sleep.TestPulses.Schedule, defaults.Sleep.TestPulses.Schedule);
+verifyEqual(testCase, S.Sleep.TestPulses.Probe.InterEpochInterval, 30);
+verifyTrue(testCase, any(contains(added, 'old default schedule')));
+loaded.Sleep.TestPulses.Schedule.Minutes = 180;
+S = lum.mergeSettings(defaults, loaded);
+verifyEqual(testCase, S.Sleep.TestPulses.Schedule.Minutes, 180, 'A designed schedule is kept');
+verifyEqual(testCase, S.Sleep.TestPulses.Probe.InterEpochInterval, 2);
+end
+
 function testASleepSectionIsFilledIntoOldFiles(testCase)
 loaded = rmfield(lum.defaultSettings, 'Sleep');
 loaded.Session = rmfield(loaded.Session, 'Type');
@@ -368,6 +385,20 @@ S = lum.mergeSettings(lum.defaultSettings, loaded);
 verifyEqual(testCase, S.Sleep, lum.defaultSettings().Sleep);
 verifyEqual(testCase, S.Session.Type, 'Behaviour');
 verifyEqual(testCase, S.Sync.Barcode.SleepMarkerWidth, 0.2);
+end
+
+function testTheOldDefaultLEDLimitBecomesTheLEDsRating(testCase)
+% Up to 0.9.2 the limit was 700 mA by default; files from then take 1000 mA where it was.
+loaded = lum.defaultSettings;
+loaded.Doric = rmfield(loaded.Doric, 'CalibrationCurrentsmA');
+loaded.Doric.MaxCurrentmA = [700 500];
+[S, added] = lum.mergeSettings(lum.defaultSettings, loaded);
+verifyEqual(testCase, S.Doric.MaxCurrentmA, [1000 500], 'A limit the operator chose is kept');
+verifyEqual(testCase, S.Doric.CalibrationCurrentsmA, 0:100:1000);
+verifyTrue(testCase, any(startsWith(added, 'Doric.MaxCurrentmA')));
+again = lum.defaultSettings;
+again.Doric.MaxCurrentmA = [700 700];   % Typed from 0.9.3 on
+verifyEqual(testCase, lum.mergeSettings(lum.defaultSettings, again).Doric.MaxCurrentmA, [700 700]);
 end
 
 function testOnlyTimedComponentsCostTimers(testCase)

@@ -145,13 +145,14 @@ What it covers:
   played as the animal (`startMouse`): the side reward, the centre reward when valve 2 is calibrated
   (and none, with a warning, when it is not, as on the development machine), `CentreHoldTime`, and
   automatic shaping starting the hold at `HoldStart`.
-- `settingsTest` also covers where the subject comes from (`lum.launchSubject`) and the house light's
-  move out of the runtime tier.
+- `settingsTest` also covers where the subject comes from (`lum.launchSubject`), the house light's
+  move out of the runtime tier, and a 0.9.2 file's 700 mA LED limit becoming 1000 mA.
 - `barcodeTest` also samples fitted barcodes frame by frame at 25–150 Hz, at every phase and with
   the camera 5 % slow, and decodes every one (`lum.sync.fitToCameras`).
 - `ledTest` — light paths and fiber areas (cables by colour, swapped between channels), calibrations
   (units, refusals, saving and replacing, one per cable and channel, a cable keeping two calibrations,
-  a 0.9.0 per-cable file read only on its channel, a damaged file), conversions between mA and mW/mm²,
+  a 0.9.0 per-cable file read only on its channel, a damaged file, readings too few or too low to be
+  saved or used, a calibration to 700 mA used under a 1000 mA limit), conversions between mA and mW/mm²,
   the session intensity (defaults 8 and 2 mW/mm², an irradiance into mA within the limit and the
   channel's reach, an uncalibrated bundle in mA, a change from the LED window kept), the LED settings
   checks, and the session record.
@@ -165,8 +166,10 @@ What it covers:
   EphysCalibration barcode and its fitting to the cameras. `ephysSessionTest` runs a whole ePhys
   calibration session under `Bpod('EMU')` and checks each gate's current against its step.
 - `windowsTest` also covers the Doric LED tab (light path, calibration turning mA into mW/mm², a
-  limit stopping Start), the calibration window (two cables at a time: default currents, each
-  channel's limit, saving per cable, the next pair, one cable on both channels refused; and on
+  limit stopping Start), the calibration window (two cables at a time: default currents 0–1000 mA,
+  each channel's limit, readings too few to save, saving per cable and only what changed, saved
+  readings shown again, Fill adding a current, the unit converting, a 0–700 mA calibration shown with
+  800–1000 mA to measure, the next pair, one cable on both channels refused; and on
   DoricLED's simulated driver, continuous light that follows the selected row and Off), the LED
   window and the ePhys calibration dialog.
 - `lintTest` — keeps the repository at zero MATLAB Code Analyzer messages.

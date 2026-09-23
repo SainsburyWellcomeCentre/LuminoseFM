@@ -141,6 +141,23 @@ names.
 | — | `GUIMeta.<name>.Help` for every runtime parameter; help line in the setup and runtime windows |
 | — | **▶ Play** buttons for the session's sounds in the setup dialog (`lum.testSounds`) |
 
+### 0.9.2 → 0.9.3 — the LED to its rating, calibrations added to
+
+| 0.9.2 | 0.9.3 |
+|-------|-------|
+| each LED channel's limit 700 mA by default (`S.Doric.MaxCurrentmA`), Doric's recommended current for an LED held on | **1000 mA**, the LED's rating and the driver's continuous-mode maximum (the DoricLED package's hard ceiling, unchanged). A settings file holding 700 mA on a channel takes 1000 mA there; any other limit is kept. The driver's front knob must allow 1000 mA too |
+| the calibration window started every table at 0–700 mA in 50 mA steps, empty; Fill replaced the currents and cleared the readings | 0–1000 mA in 100 mA steps (`S.Doric.CalibrationCurrentsmA`), with the cable's saved readings on that channel filled in and its saved currents added, so only the empty rows are measured; Fill adds currents and keeps readings; changing the unit converts the powers; Save writes only channels with new readings |
+| any two readings made a calibration | a calibration is saved and used only with readings at 4 currents above 0 mA, up to 400 mA or more (`lum.led.checkCoverage`); a saved one with fewer is not used (the channel runs in mA, with a warning), but the window shows it to be added to. A calibration to 700 mA is used to 700 mA under a 1000 mA limit |
+
+### 0.9.1 → 0.9.2 — the mixture spread over the window, sleep probes one channel at a time
+
+| 0.9.1 | 0.9.2 |
+|-------|-------|
+| the mixture lit each amount in one stretch from stimulus onset (`MixtureLayout` `'onset'`), so the end of the window was always dark, and at the lowest total the light was over within 20% of it | spread over the window in cycles (`'spread'`, new field `MixtureCycles`: 5 on the rig, 2 in the emulator, fewer when the window has too few bins), both channels starting every cycle; `'onset'` and `'centred'` remain. Amounts, rules and ceilings of amounts are unchanged. Settings files keep the placement they have; choosing the family again loads the new defaults |
+| mixture groups that rounded to the same light at a coarse bin ran as duplicates, paying either side | refused, naming the two groups (`lum:pattern:generate:groupsTooClose`) |
+| sleep test pulses: paired probes on A and B together, every 2 s, for 240 min; the recording lasted as long as the schedule and `S.Sleep.DurationMinutes` was unused | paired probes **alternating** A and B, every 30 s (`S.Sleep.TestPulses.Probe.InterEpochInterval` 30, schedule channels *Alternate A and B*), so no epoch lights both channels, **for as long as the recording** (last step Minutes `Inf`: until the recording ends, which lasts `S.Sleep.DurationMinutes` again; `Session.TestPulses.UntilEnd`). The designer's presets and new steps alternate too. *A and B* is still a step's choice. A settings file holding exactly the old default schedule takes the new one; any other schedule is kept |
+| choosing a family kept the bin, so a coarse bin (100 ms in a 0.3 s window) could leave its defaults refused | choosing a family makes the bin finer (10, 5, 2 or 1 ms) when its defaults cannot be drawn in the one set, never coarser (`lum.pattern.familyDefaults`) |
+
 ### 0.9.0 → 0.9.1 — LED calibrations per channel, intensity in mW/mm²
 
 | 0.9.0 | 0.9.1 |

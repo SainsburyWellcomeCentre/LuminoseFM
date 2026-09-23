@@ -5,14 +5,17 @@ function notes = validate(S, cals, type)
 %   notes = lum.led.validate(S, cals)
 %   notes = lum.led.validate(S, cals, 'Sleep')
 %
-% S.Doric: two limits within the LED's 1000 mA rating; the session type's intensity
+% S.Doric: two limits within the LED's 1000 mA rating; the calibration window's currents
+% within it too; the session type's intensity
 % (lum.led.intensitySetting): two irradiances, 0 or more, and two whole currents, 0 or
 % more, each within its limit; and a light path for each channel on two different cables
 % (lum.led.lightPath). None of this depends on a calibration, so lum.validateSettings,
 % lum.sleep.validate and lum.ephys.validate run it without one. Given the channels'
 % calibrations, it also says what each channel will run at where that is not what was
 % asked (lum.led.intensity): an irradiance out of the channel's reach, or a channel with
-% no calibration, which runs at the current in mA. Neither stops a session.
+% no calibration, which runs at the current in mA. It also notes a calibration that reads
+% more than DarkLimit mW/mm2 with the LED at 0 mA: the power meter was not zeroed, so the
+% current for a low irradiance comes out too high. None of these stops a session.
 %
 % Arguments:
 %   S     Settings struct; reads S.Doric, S.Light and the type's intensity
@@ -37,6 +40,13 @@ end
 limits = double(d.MaxCurrentmA);
 if numel(limits) ~= 2 || any(~isfinite(limits)) || any(limits < 0) || any(limits > 1000)
     fail('badLimit', 'Each channel''s current limit must be between 0 and 1000 mA, the LED''s rating.');
+end
+if isfield(d, 'CalibrationCurrentsmA')
+    start = double(d.CalibrationCurrentsmA);
+    if isempty(start) || any(~isfinite(start(:))) || any(start(:) < 0) || any(start(:) > 1000)
+        fail('badCalibrationCurrents', ['The calibration window''s currents must be between 0 and '...
+             '1000 mA.']);
+    end
 end
 [irradiance, currents] = lum.led.intensitySetting(S, type);
 if ~strcmp(type, 'EphysCalibration')
@@ -63,6 +73,19 @@ if nargin < 2 || isempty(cals) || ~d.Enabled
 end
 run = lum.led.intensity(S, cals, type);
 notes = run.Notes;
+darkLimit = 0.3;   % mW/mm2; calibrations made with the meter zeroed read <= 0.16 on the rig
+for k = 1:min(2, numel(cals))
+    cal = cals{k};
+    if isempty(cal) || ~isfield(cal, 'CurrentmA') || ~isfield(cal, 'IrradiancemWmm2')
+        continue
+    end
+    dark = cal.IrradiancemWmm2(cal.CurrentmA == 0);
+    if ~isempty(dark) && dark(1) > darkLimit
+        notes{end+1} = sprintf(['Channel %s: the %s cable''s calibration (%s) reads %.2f mW/mm2 '...
+            'with the LED at 0 mA, so the power meter was probably not zeroed and low irradiances '...
+            'get too much current. Calibrate it again.'], labels(k), cal.Cable, cal.Date, dark(1)); %#ok<AGROW>
+    end
+end
 
 
 function fail(id, varargin)

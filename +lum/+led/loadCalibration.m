@@ -1,25 +1,32 @@
-function cal = loadCalibration(path, folder)
+function cal = loadCalibration(path, folder, checkCoverage)
 % lum.led.loadCalibration reads the calibration of a light path, or [] when there is none.
 %
 %   cal = lum.led.loadCalibration(lum.led.lightPath(S, k))
+%   cal = lum.led.loadCalibration(path, folder, false)   % whatever its coverage
 %
 % The calibration of the path's cable measured on the path's channel
 % (lum.led.calibrationFile). When there is none, a per-cable file from 0.7.2-0.9.0
 % (DoricLED_<bundle>_<cable>.mat) is used if it was measured on this channel, and not
 % otherwise. No calibration is not an error: the channel's intensity is then in mA.
 %
-% A file that cannot be read, or that belongs to another cable or channel, counts as none,
-% with a warning ('lum:led:loadCalibration:unreadable'), so a damaged file never stops a
-% session; the channel is then in mA until it is calibrated again.
+% A file that cannot be read, that belongs to another cable or channel, or whose readings
+% cover too little of the LED's range (lum.led.checkCoverage), counts as none, with a
+% warning ('lum:led:loadCalibration:unreadable'), so a damaged file never stops a session;
+% the channel is then in mA until it is calibrated again.
 %
 % Arguments:
-%   path    From lum.led.lightPath
-%   folder  Optional; default lum.led.calibrationFolder
+%   path           From lum.led.lightPath
+%   folder         Optional; default lum.led.calibrationFolder
+%   checkCoverage  Optional, default true. false returns the saved readings however few,
+%                  and without a warning: the calibration window shows them to be added to
 %
 % See also: lum.led.saveCalibration, lum.led.calibrations, lum.led.irradiance
 
 if nargin < 2 || isempty(folder)
     folder = lum.led.calibrationFolder();
+end
+if nargin < 3
+    checkCoverage = true;
 end
 cal = [];
 file = lum.led.calibrationFile(path, folder);
@@ -44,8 +51,17 @@ try
         end
         error('lum:led:loadCalibration:otherPath', 'it was measured on channel %s', candidate.MeasuredOn);
     end
+    if checkCoverage
+        problem = lum.led.checkCoverage(candidate);
+        if ~isempty(problem)
+            error('lum:led:loadCalibration:tooNarrow', '%s', problem);
+        end
+    end
     cal = candidate;
 catch readError
+    if ~checkCoverage
+        return
+    end
     warning('lum:led:loadCalibration:unreadable', ...
             ['The LED calibration %s could not be used (%s); the %s cable on channel %s is in mA '...
              'until it is calibrated again.'], file, readError.message, path.Cable, path.Channel);
