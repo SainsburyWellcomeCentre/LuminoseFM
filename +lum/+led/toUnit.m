@@ -4,9 +4,9 @@ function [value, unit] = toUnit(cal, currentmA)
 %   [value, unit] = lum.led.toUnit(cal, mA)
 %
 % With a calibration, value is the irradiance in mW/mm2 (NaN outside the range measured)
-% and unit 'mW/mm2'; without one, value is the current and unit 'mA'. Settings keep the
-% current (S.Doric.CurrentmA), so a new calibration changes what the windows show, never
-% what is stored.
+% and unit 'mW/mm2'; without one, value is the current and unit 'mA'. Used to show a
+% current that was sent (the ePhys preview, the LED window); what a session asks for is
+% lum.led.intensity's.
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %

@@ -136,6 +136,10 @@ catch validationError
     BpodSystem.Status.BeingUsed = 0;
     rethrow(validationError);
 end
+ledIntensity = lum.led.intensity(S, cals);  % mW/mm2 into mA, per channel; 0 mA for ePhys
+if ~isEphys && S.Sleep.TestPulses.Enabled && S.Doric.Enabled
+    notes = [notes ledIntensity.Notes];
+end
 for i = 1:numel(notes)
     fprintf('LuminoseFM: note: %s\n', notes{i});
 end
@@ -172,7 +176,8 @@ cycle = plan.CyclePeriod;
 % lum.dev.openHouseLight). Bpod runs the protocol file with no try/catch of its own,
 % so the console is released here before the error is shown.
 try
-    devices = lum.dev.open(rig, lum.sleep.deviceSettings(S), 'DoricLED', doricLED);
+    devices = lum.dev.open(rig, lum.sleep.deviceSettings(S), 'DoricLED', doricLED, ...
+                           'LEDCurrentmA', ledIntensity.CurrentmA);
 catch openError
     releaseLED(doricLED);
     BpodSystem.Status.BeingUsed = 0;
@@ -368,7 +373,7 @@ try
                                                    'Cameras', {devices.cameras.log()}, ...
                                                    'HouseLight', {devices.houseLight.log()}, ...
                                                    'DoricLED', {devices.doricLED.log()});
-        BpodSystem.Data.Session.DoricLED = lum.led.sessionRecord(S, devices.doricLED, cals);
+        BpodSystem.Data.Session.DoricLED = lum.led.sessionRecord(S, devices.doricLED, cals, ledIntensity);
         BpodSystem.Data.Session.Cameras = devices.cameras.sessionRecord();
         BpodSystem.Data.Session.EndTime = char(datetime('now'), 'yyyy-MM-dd HH:mm:ss');
         if isEphys
@@ -400,8 +405,8 @@ if ~headless
             S.Sleep.HouseLight = devices.houseLight.On;
         end
     end
-    if ~isEphys && devices.doricLED.isControlled() && all(~isnan(devices.doricLED.CurrentmA))
-        S.Doric.CurrentmA = devices.doricLED.CurrentmA;
+    if ~isEphys && devices.doricLED.isControlled()
+        S = lum.led.keepIntensity(S, 'Sleep', cals, ledIntensity.CurrentmA, devices.doricLED.CurrentmA);
     end
     S.Sync = typedSync;             % What was typed, not what was fitted to the cameras
     S.Sleep.Sync = typedSleepSync;

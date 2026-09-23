@@ -24,10 +24,15 @@ for i = 1:2
         continue
     end
     currents = vertcat(steps.CurrentmA);
+    irradiance = vertcat(steps.IrradiancemWmm2);
     parts = {};
     for k = find(any(~isnan(currents), 1))
         values = unique(currents(:, k))';
         parts{end+1} = sprintf('%s %s mA', char('A' + k - 1), rangeText(values)); %#ok<AGROW>
+        if all(~isnan(irradiance(:, k)))
+            reached = unique(round(irradiance(:, k), 2))';
+            parts{end} = sprintf('%s (%s mW/mm2)', parts{end}, rangeText(reached));
+        end
     end
     if i == 1
         lines{end+1} = sprintf('Input-output: %d levels, %s', numel(steps), strjoin(parts, ', ')); %#ok<AGROW>

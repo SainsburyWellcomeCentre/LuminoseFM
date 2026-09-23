@@ -12,20 +12,24 @@ classdef DoricSetup < handle
     %                     4-to-19: orange on A and blue on B), and Calibrate LED
     %                     power..., which measures the cables two at a time, one on each
     %                     channel (lum.gui.DoricCalibration)
-    %   Intensity         per channel: the LED current (mW/mm2 when the cable on it is
-    %                     calibrated, mA when not), its limit in mA and the cable's
-    %                     calibration
+    %   Intensity         per channel: the session type's intensity (mW/mm2 when the cable
+    %                     on it is calibrated on that channel, mA when not; the current it
+    %                     runs at), its limit in mA and the calibration
     %   LED window        whether the session opens the LED window (lum.gui.DoricWindow)
     %
     % The tab shows the protocol's lum.dev.DoricLED, which connects in the background
-    % while the dialog is open. A calibration belongs to the cable, not the channel (the two
-    % LED channels are taken to give equal power at equal current). One saved here is used
-    % at once, by this dialog and by every later session of any type with that cable on
-    % either channel.
+    % while the dialog is open. A calibration belongs to a cable on a channel: the orange
+    % cable on A and on B are two calibrations. One saved here is used at once, by this
+    % dialog and by every later session of any type with that cable on that channel.
+    %
+    % The 'Intensity' option names the session type whose intensity the tab edits
+    % (lum.led.intensitySetting): 'Behaviour' (default) or 'Sleep'. With
+    % 'EphysCalibration' the intensity fields are greyed out: each step sets its own, on the
+    % ePhys calibration tab.
     %
     % Usage, inside a dialog:
-    %   doric = lum.gui.DoricSetup(tab, S, t, @refresh, led);
-    %   S = doric.read(S);              % in collect: S.Doric, S.Light.Bundle and Cables
+    %   doric = lum.gui.DoricSetup(tab, S, t, @refresh, led, 'Intensity', 'Sleep');
+    %   S = doric.read(S);              % in collect: S.Doric, the intensity, S.Light
     %   doric.update(S);                % in the appearance update
     %   note = doric.problem(S);        % '' or a note for the status line
     %   cals = doric.calibrations();    % 1 x 2 cell, the light paths' calibrations
@@ -47,13 +51,16 @@ classdef DoricSetup < handle
         listener = []
         calibrationFolder = ''
         calibrationWindow = []
+        intensityType = 'Behaviour'
     end
 
     methods
         function obj = DoricSetup(parent, S, t, onEdit, led, varargin)
             p = inputParser;
             addParameter(p, 'CalibrationFolder', '');
+            addParameter(p, 'Intensity', 'Behaviour');
             parse(p, varargin{:});
+            obj.intensityType = char(p.Results.Intensity);
             obj.onEdit = onEdit;
             obj.theme = t;
             obj.LED = led;
@@ -74,7 +81,9 @@ classdef DoricSetup < handle
             S.Doric.Enabled = c.Enabled.Value;
             S.Doric.Folder = strtrim(c.Folder.Value);
             S.Doric.ShowWindow = c.ShowWindow.Value;
-            S.Doric.CurrentmA = [obj.intensity{1}.currentmA(), obj.intensity{2}.currentmA()];
+            S = lum.led.intensitySetting(S, obj.intensityType, ...
+                    [obj.intensity{1}.irradiance(), obj.intensity{2}.irradiance()], ...
+                    [obj.intensity{1}.currentmA(), obj.intensity{2}.currentmA()]);
             S.Doric.MaxCurrentmA = [c.MaxCurrent(1).Value, c.MaxCurrent(2).Value];
             S.Light.Bundle = c.Bundle.Value;
             S.Light.Cables = {c.CableA.Value, c.CableB.Value};
@@ -87,18 +96,21 @@ classdef DoricSetup < handle
             obj.lightPathChanged(S);
             on = S.Doric.Enabled;
             lum.gui.Form.setEnable({c.Folder, c.Browse, c.ShowWindow, c.MaxCurrent(1), c.MaxCurrent(2)}, on);
+            editsIntensity = ~strcmp(obj.intensityType, 'EphysCalibration');
             for k = 1:2
-                obj.intensity{k}.setEnable(on);
+                obj.intensity{k}.setEnable(on && editsIntensity);
+                obj.intensity{k}.setLimit(S.Doric.MaxCurrentmA(k));
                 path = obj.paths{k};
                 c.PathNote(k).Text = sprintf('%s cable, %d fibers of %g um: %.4g mm2', path.Cable, ...
                                              path.nFibers, 1000 * path.FiberDiameter, path.Area);
                 cal = obj.cals{k};
                 if isempty(cal)
-                    c.CalibrationNote(k).Text = 'Not calibrated: intensity in mA.';
+                    c.CalibrationNote(k).Text = sprintf(['The %s cable is not calibrated on channel %s: '...
+                        'intensity in mA.'], path.Cable, path.Channel);
                     c.CalibrationNote(k).FontColor = obj.theme.Muted;
                 else
-                    c.CalibrationNote(k).Text = sprintf(['%s cable calibrated %s on channel %s, '...
-                        '%g-%g mA = %.3g-%.3g mW/mm2.'], cal.Cable, cal.Date, cal.MeasuredOn, ...
+                    c.CalibrationNote(k).Text = sprintf(['%s cable on channel %s, calibrated %s: '...
+                        '%g-%g mA = %.3g-%.3g mW/mm2.'], cal.Cable, cal.MeasuredOn, cal.Date, ...
                         cal.CurrentmA(1), cal.CurrentmA(end), cal.IrradiancemWmm2(1), ...
                         cal.IrradiancemWmm2(end));
                     c.CalibrationNote(k).FontColor = obj.theme.Good;
@@ -209,8 +221,8 @@ classdef DoricSetup < handle
                 'ButtonPushedFcn', @(~, ~) obj.calibrate(), ...
                 'Tooltip', ['Measure the power leaving the cables with a power meter, two at a time: '...
                             'the pair on the commutator, one on each channel, lit continuously at '...
-                            '0 to 700 mA. Saving replaces a cable''s earlier calibration; it is used on '...
-                            'either channel.']);
+                            '0 to 700 mA. Each is the calibration of that cable on that channel; saving '...
+                            'replaces the earlier one.']);
             fillCables(obj.Controls, bundles, S.Light.Cables);
             obj.Controls.Bundle.ValueChangedFcn = @(~, ~) obj.bundleChanged();
             obj.Controls.CableA.ValueChangedFcn = @(~, ~) obj.onEdit();
@@ -223,10 +235,11 @@ classdef DoricSetup < handle
                 'into it is high. The current is changed only between trials (the LED window), '...
                 'sleep blocks or ePhys steps.\n\nCalibrating measures the power leaving a cable '...
                 'at several currents, two cables at a time, each lit by the channel it is on. Irradiance is that power over the '...
-                'area of the cable''s fibers (100 um each). The calibration belongs to the cable, not '...
-                'the channel: the two LED channels are taken to give equal power at equal current, '...
-                'so a cable moved to the other channel keeps its calibration. Once a cable is '...
-                'calibrated, every session type shows and takes its intensity in mW/mm2.']), t);
+                'area of the cable''s fibers (100 um each). A calibration belongs to a cable on a '...
+                'channel: the same cable on the other channel is lit through another LED and '...
+                'commutator channel, so it needs a calibration of its own. On a calibrated channel '...
+                'every session type takes its intensity in mW/mm2 and sets the current that gives '...
+                'it; on one that is not, in mA.']), t);
 
             % Intensity, per channel.
             box = uipanel(grid, 'Title', 'Intensity', 'FontWeight', 'bold', ...
@@ -235,6 +248,13 @@ classdef DoricSetup < handle
                                 'RowSpacing', 12, 'BackgroundColor', t.Panel);
             colours = {t.ChannelA, t.ChannelB};
             names = {'Channel A  (LED channel 1)', 'Channel B  (LED channel 2)'};
+            [irradiance, currents] = lum.led.intensitySetting(S, obj.intensityType);
+            if strcmp(obj.intensityType, 'EphysCalibration')
+                [irradiance, currents] = lum.led.intensitySetting(S, 'Behaviour');
+                box.Title = 'Intensity (set per step on the ePhys calibration tab)';
+            elseif strcmp(obj.intensityType, 'Sleep')
+                box.Title = 'Intensity of the test pulses';
+            end
             for k = 1:2
                 form = uigridlayout(rows, [5 3], 'ColumnWidth', {170, 120, '1x'}, ...
                                     'RowHeight', {24, 26, 26, 24, 44}, 'Padding', 0, ...
@@ -242,9 +262,11 @@ classdef DoricSetup < handle
                 heading = uilabel(form, 'Text', names{k}, 'FontWeight', 'bold', 'FontColor', colours{k});
                 heading.Layout.Column = [1 3];
                 lum.gui.Form.label(form, 'Intensity', t);
-                obj.intensity{k} = lum.gui.IntensityField(form, S.Doric.CurrentmA(k), @() obj.onEdit(), ...
-                    'Tooltip', ['The LED current while this channel is gated: irradiance at the fiber '...
-                                'tips in mW/mm2 when the light path is calibrated, mA when not.']);
+                obj.intensity{k} = lum.gui.IntensityField(form, currents(k), @() obj.onEdit(), ...
+                    'Irradiance', irradiance(k), 'LimitmA', S.Doric.MaxCurrentmA(k), ...
+                    'Tooltip', ['How bright this channel is while gated: irradiance at the fiber tips '...
+                                'in mW/mm2 when its cable is calibrated on this channel (the session sets '...
+                                'the current that gives it), the LED current in mA when not.']);
                 lum.gui.Form.label(form, 'Limit (mA)', t);
                 obj.Controls.MaxCurrent(k) = uieditfield(form, 'numeric', 'Value', S.Doric.MaxCurrentmA(k), ...
                     'Limits', [0 1000], 'RoundFractionalValues', 'on', 'ValueChangedFcn', @(~, ~) obj.onEdit(), ...

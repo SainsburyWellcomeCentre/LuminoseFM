@@ -27,7 +27,7 @@ classdef DoricLED < lum.dev.Device
     % Usage:
     %   led = lum.dev.openDoricLED(emulated, S);   % connecting starts at once
     %   led.ensureReady();                         % session start: wait, or error
-    %   led.setUp(S.Doric.CurrentmA, S.Doric.MaxCurrentmA);
+    %   led.setUp(lum.led.intensity(S, cals).CurrentmA, S.Doric.MaxCurrentmA);
     %   mA = led.applyPending();                   % prepare window, every trial
     %   record = led.record();                     % teardown, before close
     %   led.close();                               % light off, driver released

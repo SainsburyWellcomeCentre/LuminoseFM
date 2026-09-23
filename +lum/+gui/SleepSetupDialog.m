@@ -164,7 +164,7 @@ lum.gui.Form.note(grid, ['Light goes out through PulsePal, programmed as for beh
 cameras = lum.gui.CameraSetup(cameraTab, S.Camera, t, @refresh, 'Subject', S.Meta.Subject);
 controls.Tabs.Cameras = cameraTab;
 doric = lum.gui.DoricSetup(doricTab, S, t, @refresh, p.Results.DoricLED, ...
-                           'CalibrationFolder', p.Results.CalibrationFolder);
+                           'CalibrationFolder', p.Results.CalibrationFolder, 'Intensity', 'Sleep');
 controls.Tabs.Doric = doricTab;
 
 controls.Help = uilabel(outer, 'Text', '', 'WordWrap', 'on', 'FontSize', 11, ...
@@ -278,15 +278,16 @@ end
         if candidate.Sleep.TestPulses.Enabled
             cals = doric.calibrations();
             try
-                notes = [notes lum.led.validate(candidate, cals)];
+                notes = [notes lum.led.validate(candidate, cals, 'Sleep')];
             catch ledError
                 setStatus(ledError.message, false);
                 return
             end
             if candidate.Doric.Enabled
+                run = lum.led.intensity(candidate, cals, 'Sleep');
                 message = sprintf('%s  LED: A %s, B %s.', message, ...
-                                  lum.led.describe(cals{1}, candidate.Doric.CurrentmA(1)), ...
-                                  lum.led.describe(cals{2}, candidate.Doric.CurrentmA(2)));
+                                  lum.led.describe(cals{1}, run.CurrentmA(1)), ...
+                                  lum.led.describe(cals{2}, run.CurrentmA(2)));
             end
             doricNote = doric.problem(candidate);
             if ~isempty(doricNote)

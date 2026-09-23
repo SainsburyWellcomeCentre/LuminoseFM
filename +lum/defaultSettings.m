@@ -9,8 +9,8 @@ function S = defaultSettings()
 %   the setup dialog (or the sleep or ePhys calibration setup dialog), frozen for the
 %   session, and stored once in the data file. Changing any of these mid-session would
 %   make the session's data uninterpretable, so nothing in the runtime window can touch
-%   them. The one exception is the LED current (S.Doric.CurrentmA), which the LED window
-%   changes between trials and each trial records (D17).
+%   them. The one exception is the LED intensity (S.Doric.IrradiancemWmm2 or CurrentmA),
+%   which the LED window changes between trials and each trial records (D17).
 %
 %   S.Session.Type says which kind of session the settings were last used for,
 %   'Behaviour', 'Sleep' or 'EphysCalibration' (D11, D18); the chooser shown at launch
@@ -166,17 +166,20 @@ S.Light.Carrier = struct( ...
 % The two-channel Doric LED driver (LEDFLS_465_465): LED channel 1 lights channel A and
 % channel 2 lights B. With Enabled, the session connects to it through the DoricLED
 % package (Folder, or the MATLAB path when '') and puts both channels in external TTL
-% mode at CurrentmA, so each lights while PulsePal's output into it is high. Without
-% the package, or with Enabled off, the driver is used as it was set by hand (its own
-% front panel or Doric Neuroscience Studio), which must then be external TTL mode.
-% CurrentmA is always stored in mA. Where a channel's light path has a calibration
-% (lum.led.loadCalibration), the windows show and accept irradiance in mW/mm2 instead
-% and convert it with that calibration. MaxCurrentmA is the driver's own limit per
-% channel: a request above it is refused, never reduced (at most 1000 mA, the LED's
-% rating; doric.Channel).
+% mode, so each lights while PulsePal's output into it is high. Without the package, or
+% with Enabled off, the driver is used as it was set by hand (its own front panel or
+% Doric Neuroscience Studio), which must then be external TTL mode.
+% A behaviour session's intensity per channel is IrradiancemWmm2 where the channel's light
+% path (the cable on it, measured on that channel) has a calibration
+% (lum.led.loadCalibration), turned into the LED current that gives it as the session
+% starts; and CurrentmA where it has none (lum.led.intensity). A sleep session keeps its
+% own (S.Sleep.TestPulses), an ePhys calibration session its own per step (S.Ephys).
+% MaxCurrentmA is the driver's own limit per channel: a current above it is never sent
+% (at most 1000 mA, the LED's rating; doric.Channel).
 S.Doric.Enabled = true;             % Control the LED from MATLAB (the DoricLED package)
 S.Doric.Folder = '';                % Where DoricLED was cloned; '' when it is on the MATLAB path
-S.Doric.CurrentmA = [100 100];      % LED current while channel A, B is gated, mA
+S.Doric.IrradiancemWmm2 = [8 8];    % Behaviour: irradiance at the fiber tips on A, B, calibrated channels
+S.Doric.CurrentmA = [100 100];      % Behaviour: LED current on A, B where not calibrated, mA
 S.Doric.MaxCurrentmA = [700 700];   % Refuse anything above, mA (Doric's recommended maximum)
 S.Doric.ShowWindow = true;          % The LED window during the session
 
@@ -250,7 +253,10 @@ S.Sleep.Sync = struct('Mode', lum.SyncMode.JitteredWidth, 'FixedWidth', 0.05, ..
 %             pulses InterPulseInterval apart (Mode 'Paired'). Both intervals are
 %             onset to onset; widths and intervals in seconds.
 %   Voltage   PulsePal's output into the Doric driver's TTL input, channel A then B,
-%             volts; the light's intensity is the LED current, S.Doric.CurrentmA
+%             volts
+%   IrradiancemWmm2, CurrentmA  The test pulses' intensity on A and B, as behaviour's
+%             S.Doric.IrradiancemWmm2 and CurrentmA: irradiance on a calibrated channel,
+%             mA on one that is not (lum.led.intensity)
 %   Trains    Named plasticity trains, used by name in the schedule, and only when
 %             PlasticityTrains is on: bursts of PulsesPerBurst pulses at
 %             PulseFrequency, BurstsPerTrain bursts at BurstFrequency, nTrains trains
@@ -260,6 +266,8 @@ S.Sleep.Sync = struct('Mode', lum.SyncMode.JitteredWidth, 'FixedWidth', 0.05, ..
 %             the length of a probe or rest step (a train step lasts its trains).
 S.Sleep.TestPulses.Enabled = false;
 S.Sleep.TestPulses.Voltage = [5 5];
+S.Sleep.TestPulses.IrradiancemWmm2 = [2 2];
+S.Sleep.TestPulses.CurrentmA = [100 100];
 S.Sleep.TestPulses.Probe = struct('Mode', 'Paired', 'PulseWidth', 0.010, ...
                                   'InterPulseInterval', 0.050, 'InterEpochInterval', 2);
 S.Sleep.TestPulses.PlasticityTrains = false;
@@ -276,14 +284,18 @@ S.Sleep.TestPulses.Schedule = struct('Kind', {'Probe'}, 'Channels', {'A and B'},
 
 %% Pre-session tier: ePhys calibration sessions (D18)
 % Light pulses whose intensity or pairing changes step by step, for the recorded
-% response: an input-output curve (pulses from MinmA to MaxmA in nLevels steps) and a
-% paired-pulse ratio (pairs at CurrentmA, one step per inter-pulse interval, onset to
-% onset). Every step sends Repeats epochs, one every InterEpochInterval seconds, on
-% Channels ('A', 'B' or 'A and B', each channel at its own current). The LED current
-% changes between steps (lum.ephys.plan), so the session needs S.Doric.Enabled.
-% Intensities are stored in mA per channel, A then B; with a calibration the levels are
-% spaced evenly in irradiance rather than in current. MaxmA has no default: the
-% operator gives the top of the curve. Order 'Shuffled' runs the steps of each protocol
+% response: an input-output curve (nLevels steps from the lowest intensity to the
+% highest) and a paired-pulse ratio (pairs at one intensity, one step per inter-pulse
+% interval, onset to onset). Every step sends Repeats epochs, one every InterEpochInterval
+% seconds, on Channels ('A', 'B' or 'A and B', each channel at its own intensity). The LED
+% current changes between steps (lum.ephys.plan), so the session needs S.Doric.Enabled.
+% Intensities are per channel, A then B, as in behaviour: in mW/mm2 on a channel whose
+% light path is calibrated (MinIrradiancemWmm2 to MaxIrradiancemWmm2, levels spaced evenly
+% in irradiance; PairedPulse.IrradiancemWmm2), in mA on one that is not (MinmA to MaxmA,
+% spaced in mA; PairedPulse.CurrentmA). An irradiance above what the channel gives runs
+% at the most it gives (lum.led.currentFor), and MaxmA NaN is the channel's current
+% limit, so the curve by default goes from 0 to 12 mW/mm2 or the channel's most, if
+% less. Order 'Shuffled' runs the steps of each protocol
 % in an order drawn from Seed. Sync pulses and the house light work as in sleep
 % sessions; the session barcode has the ePhys marker (S.Sync.Barcode.EphysMarkerWidth).
 S.Ephys.Channels = 'A';
@@ -293,8 +305,10 @@ S.Ephys.Repeats = 10;               % Epochs per step
 S.Ephys.Order = 'Ascending';        % 'Ascending', 'Descending' or 'Shuffled'
 S.Ephys.Seed = 1;
 S.Ephys.Voltage = [5 5];            % PulsePal's output into the driver's TTL input, volts
-S.Ephys.InputOutput = struct('Enabled', true, 'MinmA', [0 0], 'MaxmA', [NaN NaN], 'nLevels', 8);
-S.Ephys.PairedPulse = struct('Enabled', true, 'CurrentmA', [100 100], ...
+S.Ephys.InputOutput = struct('Enabled', true, 'MinIrradiancemWmm2', [0 0], ...
+                             'MaxIrradiancemWmm2', [12 12], 'MinmA', [0 0], 'MaxmA', [NaN NaN], ...
+                             'nLevels', 8);
+S.Ephys.PairedPulse = struct('Enabled', true, 'IrradiancemWmm2', [8 8], 'CurrentmA', [100 100], ...
                              'Intervals', [0.02 0.03 0.05 0.075 0.1 0.2 0.3 0.5]);
 S.Ephys.HouseLight = false;
 S.Ephys.Sync = struct('Mode', lum.SyncMode.JitteredWidth, 'FixedWidth', 0.05, ...

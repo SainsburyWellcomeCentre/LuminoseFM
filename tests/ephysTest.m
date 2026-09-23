@@ -78,6 +78,7 @@ S.Ephys.PairedPulse.Enabled = false;
 path = lum.led.lightPath(S, 1);
 % Irradiance rising faster at first: even irradiance is uneven current.
 cal = lum.led.makeCalibration(path, [0 100 200], [0 3 4], 'mW');
+S.Ephys.InputOutput.MaxIrradiancemWmm2 = [NaN 12];   % The most channel A gives
 plan = lum.ephys.plan(S, {cal, []});
 currents = vertcat(plan.Steps.CurrentmA);
 irradiance = lum.led.irradiance(cal, currents(:, 1));
@@ -85,15 +86,42 @@ irradiance = lum.led.irradiance(cal, currents(:, 1));
 verifyEqual(testCase, diff(irradiance)', repmat(irradiance(end) / 4, 1, 4), 'RelTol', 0.05);
 verifyLessThan(testCase, currents(2, 1), 50, 'A quarter of the irradiance is under a quarter of the current');
 verifyEqual(testCase, vertcat(plan.Steps.IrradiancemWmm2), [irradiance, NaN(5, 1)], 'RelTol', 1e-9);
-S.Ephys.InputOutput.MaxmA = [300 NaN];
-verifyError(testCase, @() lum.ephys.plan(S, {cal, []}), 'lum:ephys:plan:outsideCalibration');
+verifyEqual(testCase, currents(end, 1), 200, 'The top of the calibration');
+end
+
+function testTheDefaultCurveRunsToTwelveOrTheChannelsMost(testCase)
+S = ephysSettings();
+S.Ephys.InputOutput = lum.defaultSettings().Ephys.InputOutput;   % 0-12 mW/mm2
+S.Ephys.InputOutput.nLevels = 5;
+S.Ephys.Channels = 'A and B';
+S.Ephys.PairedPulse.Enabled = false;
+area = lum.led.lightPath(S, 1).Area;
+bright = lum.led.makeCalibration(lum.led.lightPath(S, 1), [0 700], [0 14] * area, 'mW');
+dim = lum.led.makeCalibration(lum.led.lightPath(S, 2), [0 700], [0 7] * lum.led.lightPath(S, 2).Area, 'mW');
+[plan, notes] = lum.ephys.plan(S, {bright, dim});
+irradiance = vertcat(plan.Steps.IrradiancemWmm2);
+verifyEqual(testCase, irradiance(end, 1), 12, 'AbsTol', 0.02, 'A reaches 12');
+verifyEqual(testCase, irradiance(end, 2), 7, 'AbsTol', 1e-9, 'B stops at the most it gives');
+verifyEqual(testCase, plan.Steps(end).CurrentmA(2), 700);
+verifyTrue(testCase, any(contains(notes, 'Input-output curve: Channel B')));
+[plan, notes] = lum.ephys.plan(S, {[], []});
+currents = vertcat(plan.Steps.CurrentmA);
+verifyEqual(testCase, currents(end, :), S.Doric.MaxCurrentmA, 'Uncalibrated: 0 mA to the limit');
+verifyNumElements(testCase, notes, 2, 'Each channel says it is in mA');
+end
+
+function testCalibratedPairsAreAtEightMilliwatts(testCase)
+S = ephysSettings();
+S.Ephys.InputOutput.Enabled = false;
+path = lum.led.lightPath(S, 1);
+cal = lum.led.makeCalibration(path, [0 700], [0 14] * path.Area, 'mW');
+plan = lum.ephys.plan(S, {cal, []});
+verifyEqual(testCase, plan.Steps(1).CurrentmA(1), 400, '8 of 14 mW/mm2 at 700 mA');
+verifyEqual(testCase, plan.Steps(1).IrradiancemWmm2(1), 8, 'AbsTol', 1e-9);
 end
 
 function testWhatCannotRunIsRefused(testCase)
 S = ephysSettings();
-bad = S;
-bad.Ephys.InputOutput.MaxmA = [NaN NaN];
-verifyError(testCase, @() lum.ephys.plan(bad), 'lum:ephys:plan:noMaximum');
 bad = S;
 bad.Ephys.InputOutput.MaxmA = [800 NaN];
 verifyError(testCase, @() lum.ephys.plan(bad), 'lum:ephys:plan:overLimit');

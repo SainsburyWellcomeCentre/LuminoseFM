@@ -731,17 +731,22 @@ c.Bundle.ValueChangedFcn(c.Bundle, []);
 candidate = app.collect();
 verifyEqual(testCase, candidate.Light.Cables, {'orange', 'blue'}, 'The 4-to-19 defaults');
 verifySubstring(testCase, c.PathNote(1).Text, 'orange cable, 5 fibers');
-verifySubstring(testCase, c.CalibrationNote(1).Text, 'Not calibrated');
+verifySubstring(testCase, c.CalibrationNote(1).Text, 'not calibrated on channel A');
 
 % A calibration saved for channel A's path turns its intensity into mW/mm2.
 path = lum.led.lightPath(candidate, 1);
 cal = lum.led.makeCalibration(path, [0 200], [0 2], 'mW');
 lum.led.saveCalibration(cal, folder);
 app.refresh();
-verifySubstring(testCase, c.CalibrationNote(1).Text, 'orange cable calibrated');
+verifySubstring(testCase, c.CalibrationNote(1).Text, 'orange cable on channel A, calibrated');
+verifySubstring(testCase, c.CalibrationNote(2).Text, 'not calibrated on channel B');
 verifySubstring(testCase, app.status(), 'Ready to start');
 candidate = app.collect();
-verifyEqual(testCase, candidate.Doric.CurrentmA, S.Doric.CurrentmA, 'The current itself is unchanged');
+verifyEqual(testCase, candidate.Doric.IrradiancemWmm2, [8 8], 'Behaviour asks for 8 mW/mm2');
+verifyEqual(testCase, candidate.Doric.CurrentmA, S.Doric.CurrentmA, 'The mA for B is unchanged');
+run = lum.led.intensity(candidate, lum.led.calibrations(candidate, folder), 'Behaviour');
+verifyEqual(testCase, run.CurrentmA(1), lum.led.current(cal, 8), 'A runs at the mA that give 8');
+verifyEqual(testCase, run.CurrentmA(2), 100, 'B, not calibrated, at its mA');
 c.MaxCurrent(1).Value = 50;
 app.refresh();
 verifySubstring(testCase, app.status(), 'above its limit', 'A current over its limit stops Start');
@@ -753,7 +758,10 @@ S = testCase.TestData.S;
 [~, ~, app] = lum.gui.SleepSetupDialog(S, testCase.TestData.rig, 'Wait', false, 'Visible', 'off');
 cleanup = onCleanup(@() closeIfOpen(app.Figure));
 verifyEqual(testCase, app.controls.Tabs.Doric.Title, 'Doric LED');
-verifyEqual(testCase, app.collect().Doric, S.Doric);
+candidate = app.collect();
+verifyEqual(testCase, candidate.Doric, S.Doric);
+verifyEqual(testCase, candidate.Sleep.TestPulses.IrradiancemWmm2, [2 2], ...
+            'The tab edits the test pulses'' own intensity');
 end
 
 function testTheCalibrationWindowSavesWhatWasRead(testCase)
@@ -772,7 +780,7 @@ verifyEqual(testCase, w.Controls.Save.Enable, matlab.lang.OnOffSwitchState('off'
 verifyEqual(testCase, cell2mat(w.Controls.Table(2).Data(:, 1))', 0:50:700, 'The default currents');
 verifyEqual(testCase, cell2mat(w.Controls.Table(1).Data(:, 1))', 0:50:300, 'Never above the limit');
 verifyEqual(testCase, {w.Paths{1}.Cable, w.Paths{2}.Cable}, {'orange', 'blue'});
-verifySubstring(testCase, w.Controls.BundleNote.Text, 'black: not yet');
+verifySubstring(testCase, w.Controls.BundleNote.Text, 'black: A -, B -');
 
 w.Controls.Unit.Value = 'uW';
 w.setPower(2, 1, 0);
@@ -787,7 +795,7 @@ loaded = lum.led.loadCalibration(w.Paths{2}, folder);
 verifyEqual(testCase, loaded.CurrentmA, [0; 100; 200]);
 verifyEqual(testCase, loaded.PowerUnit, 'uW');
 verifyEqual(testCase, loaded.MeasuredOn, 'B');
-verifySubstring(testCase, w.Controls.BundleNote.Text, 'blue: ');
+verifySubstring(testCase, w.Controls.BundleNote.Text, 'blue: A -, B 20');
 
 % The next pair: black on A and green on B, with fresh tables.
 w.setCables('4-to-19', {'black', 'green'});
@@ -866,22 +874,28 @@ verifyFalse(testCase, contains(w.Controls.Running(2).Text, 'waiting'));
 verifySubstring(testCase, w.Controls.Running(2).Text, '150 mA');
 end
 
-function testTheEphysDialogReadsBackAndRefusesACurveWithoutItsTop(testCase)
+function testTheEphysDialogReadsBackItsIntensities(testCase)
 assumeUIFigures(testCase);
+folder = tempname;
+mkdir(folder);
+removeFolder = onCleanup(@() rmdir(folder, 's'));
 S = testCase.TestData.S;
-[~, accepted, app] = lum.gui.EphysSetupDialog(S, testCase.TestData.rig, 'Wait', false, 'Visible', 'off');
+[~, accepted, app] = lum.gui.EphysSetupDialog(S, testCase.TestData.rig, 'Wait', false, 'Visible', 'off', ...
+                                              'CalibrationFolder', folder);
 cleanup = onCleanup(@() closeIfOpen(app.Figure));
 verifyFalse(testCase, accepted);
 candidate = app.collect();
 verifyEqual(testCase, candidate.Session.Type, 'EphysCalibration');
 verifyEqual(testCase, candidate.Ephys.PairedPulse.Intervals, S.Ephys.PairedPulse.Intervals, 'AbsTol', 1e-12);
-verifySubstring(testCase, app.status(), 'highest intensity', 'The curve''s top has no default');
+verifySubstring(testCase, app.status(), 'Ready to start', 'Not calibrated: 0 mA to the limit by default');
+verifySubstring(testCase, app.controls.Summary.Text, 'Input-output: 8 levels, A 0-700 mA');
 app.fields.IOMax{1}.setCurrent(300);
 app.refresh();
-verifySubstring(testCase, app.status(), 'Ready to start');
 candidate = app.collect();
 verifyEqual(testCase, candidate.Ephys.InputOutput.MaxmA(1), 300);
-verifySubstring(testCase, app.controls.Summary.Text, 'Input-output: 8 levels');
+verifySubstring(testCase, app.controls.Summary.Text, 'A 0-300 mA');
+verifyEqual(testCase, candidate.Ephys.InputOutput.MaxIrradiancemWmm2, [12 12], 'Kept for a calibration');
+verifyEqual(testCase, candidate.Ephys.PairedPulse.IrradiancemWmm2, [8 8]);
 end
 
 function testTheStimulusDesignerKeepsTheDesignItWasGiven(testCase)

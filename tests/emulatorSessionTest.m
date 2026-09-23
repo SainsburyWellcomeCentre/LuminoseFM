@@ -70,13 +70,15 @@ verifyLength(testCase, sessionData.TrialSettings, sessionData.nTrials);
 end
 
 function testEachTrialRecordsTheLEDCurrentItRanAt(testCase)
-% The emulator's LED is the DoricLED package's simulated driver, set up at the settings'
-% currents; with no change asked for, every trial ran at them. Without the package the
-% LED is set by hand and the currents are unknown (NaN).
+% The emulator's LED is the DoricLED package's simulated driver, set up at the currents
+% the session's intensity gives (lum.led.intensity); with no change asked for, every trial
+% ran at them. Without the package the LED is set by hand and the currents are unknown (NaN).
 sessionData = testCase.TestData.sessionData;
 record = sessionData.Session.DoricLED;
+verifyEqual(testCase, record.Intensity.Type, 'Behaviour');
+verifyEqual(testCase, record.Intensity.IrradiancemWmm2, record.Settings.IrradiancemWmm2);
 if record.Controlled
-    expected = record.Settings.CurrentmA;
+    expected = record.Intensity.CurrentmA;
     verifyEqual(testCase, record.Mode, 'Simulated');
     verifyTrue(testCase, any(contains(sessionData.Session.DeviceLog.DoricLED, 'external TTL mode')));
 else

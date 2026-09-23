@@ -186,9 +186,9 @@ else
     catch
     end
     calibrated = dir(fullfile(lum.led.calibrationFolder(), 'DoricLED_*.mat'));
-    calibratedText = 'no cable calibrated';
+    calibratedText = 'no light path calibrated';
     if ~isempty(calibrated)
-        calibratedText = sprintf('cables calibrated: %s', strjoin(regexprep({calibrated.name}, ...
+        calibratedText = sprintf('calibrated (bundle_cable_channel): %s', strjoin(regexprep({calibrated.name}, ...
                                  '^DoricLED_|\.mat$', ''), ', '));
     end
     if ~report.emulated && (isempty(bridge) || ~isfile(bridge))

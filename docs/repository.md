@@ -150,13 +150,17 @@ What it covers:
 - `barcodeTest` also samples fitted barcodes frame by frame at 25–150 Hz, at every phase and with
   the camera 5 % slow, and decodes every one (`lum.sync.fitToCameras`).
 - `ledTest` — light paths and fiber areas (cables by colour, swapped between channels), calibrations
-  (units, refusals, saving and replacing, one per cable that follows it to the other channel, a damaged
-  file), conversions between mA and mW/mm², the LED settings checks, and the session record.
+  (units, refusals, saving and replacing, one per cable and channel, a cable keeping two calibrations,
+  a 0.9.0 per-cable file read only on its channel, a damaged file), conversions between mA and mW/mm²,
+  the session intensity (defaults 8 and 2 mW/mm², an irradiance into mA within the limit and the
+  channel's reach, an uncalibrated bundle in mA, a change from the LED window kept), the LED settings
+  checks, and the session record.
 - `doricTest` — the Doric LED shim on DoricLED's simulated driver: the emulator's mode, manual mode,
   setting both channels up in external TTL mode, a request sent only at the next prepare window, an
   ePhys step's currents, calibration light, closing; the LED opened alone as the protocol launches;
   and `TestDoricLED` end to end under `Bpod('EMU')` (skipped without the package).
-- `ephysTest` — the ePhys calibration schedule (levels even in mA or, calibrated, in irradiance;
+- `ephysTest` — the ePhys calibration schedule (levels even in mA or, calibrated, in irradiance; the
+  default curve to 12 mW/mm² or the channel's most, to the limit when not calibrated; pairs at 8 mW/mm²;
   paired-pulse intervals; order; refusals), its validation with its own sync pulses, the
   EphysCalibration barcode and its fitting to the cameras. `ephysSessionTest` runs a whole ePhys
   calibration session under `Bpod('EMU')` and checks each gate's current against its step.

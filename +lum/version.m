@@ -53,11 +53,15 @@ function text = version()
 % of the light, or A minus B, against a boundary that can move); every stimulus set records
 % how well one cue alone could do (StimulusSet.Shortcuts), and SweepName/SweepValues are gone.
 % The same release lets the operator give the centre reward again, in any stage, for a set
-% number of trials (S.GUI.CentreRewardAgain).
+% number of trials (S.GUI.CentreRewardAgain). 0.9.1 keys LED calibrations by cable and
+% channel (the orange cable on A and on B are two calibrations), asks for the light's
+% intensity in mW/mm2 on a calibrated channel (S.Doric.IrradiancemWmm2 8, sleep test pulses 2,
+% ePhys pairs 8 and curve 0-12, or the channel's most) and in mA on one that is not, and
+% records what each channel started at (Session.DoricLED.Intensity).
 %
 % See also: LuminoseFM
 
-release = '0.9.0';
+release = '0.9.1';
 text = release;
 
 try

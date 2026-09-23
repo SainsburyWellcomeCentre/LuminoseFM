@@ -5,8 +5,10 @@ classdef DoricCalibration < handle
     % two cables of the bundle at once, one on each optical channel, so the window
     % calibrates a pair: choose the bundle and the cable on A and on B (the 2-to-19 has
     % one pair, blue and green; the 4-to-19 needs two, for example orange and blue, then
-    % black and green). The line under the choice says which of the bundle's cables are
-    % calibrated already.
+    % black and green). A calibration is of a cable on a channel, so a cable used on both
+    % channels is calibrated on each: swap the pair at the commutator and calibrate again.
+    % The line under the choice says which of the bundle's cables are calibrated on which
+    % channel already.
     %
     % Each channel has its own table of currents, 0 to 700 mA in steps of 50 by default
     % (Fill makes another series, never above the channel's limit), its own On and Off,
@@ -19,9 +21,9 @@ classdef DoricCalibration < handle
     % calibration dashed behind it when there is one.
     %
     % Save calibrations writes each channel whose readings make a calibration
-    % (lum.led.saveCalibration), replacing any earlier one of that cable; every session
-    % type uses it from then on, on either channel (the two LED channels are taken to
-    % give equal power at equal current). Choosing another cable drops that channel's
+    % (lum.led.saveCalibration), replacing any earlier one of that cable on that channel;
+    % every session type uses it from then on, with that cable on that channel. Choosing
+    % another cable drops that channel's
     % unsaved readings, after asking. Closing the window switches both channels off; the
     % session puts them back in external TTL mode.
     %
@@ -310,8 +312,8 @@ classdef DoricCalibration < handle
             obj.Controls.Status = uilabel(footer, 'Text', '', 'WordWrap', 'on', 'FontSize', 11);
             obj.Controls.Save = uibutton(footer, 'Text', 'Save calibrations', 'FontWeight', 'bold', ...
                 'BackgroundColor', t.Accent, 'FontColor', [1 1 1], 'ButtonPushedFcn', @(~, ~) obj.save(), ...
-                'Tooltip', ['Save each channel''s readings as its cable''s calibration, replacing any '...
-                            'earlier one. A calibration is used on either channel.']);
+                'Tooltip', ['Save each channel''s readings as the calibration of its cable on that '...
+                            'channel, replacing any earlier one.']);
             uibutton(footer, 'Text', 'Close', 'ButtonPushedFcn', @(~, ~) obj.close(), ...
                      'Tooltip', 'Switch both channels off and close.');
             obj.fillCableLists(obj.cables);
@@ -513,23 +515,25 @@ classdef DoricCalibration < handle
         end
 
         function showBundle(obj)
-            % Which of the bundle's cables have a calibration, and from when.
+            % Which of the bundle's cables have a calibration on each channel, and from when.
             bundles = lum.fiberBundles();
             bundle = bundles(strcmp({bundles.Name}, obj.bundleName));
             parts = cell(1, numel(bundle.Cables));
             nDone = 0;
             for i = 1:numel(bundle.Cables)
                 S = struct('Light', struct('Bundle', bundle.Name, 'Cables', {{bundle.Cables{i}, bundle.Cables{i}}}));
-                cal = lum.led.loadCalibration(lum.led.lightPath(S, 1), obj.folder);
-                if isempty(cal)
-                    parts{i} = sprintf('%s: not yet', bundle.Cables{i});
-                else
-                    parts{i} = sprintf('%s: %s', bundle.Cables{i}, cal.Date(1:10));
-                    nDone = nDone + 1;
+                dates = {'-', '-'};
+                for k = 1:2
+                    cal = lum.led.loadCalibration(lum.led.lightPath(S, k), obj.folder);
+                    if ~isempty(cal)
+                        dates{k} = cal.Date(1:10);
+                        nDone = nDone + 1;
+                    end
                 end
+                parts{i} = sprintf('%s: A %s, B %s', bundle.Cables{i}, dates{1}, dates{2});
             end
             obj.Controls.BundleNote.Text = strjoin(parts, '   |   ');
-            if nDone == numel(bundle.Cables)
+            if nDone == 2 * numel(bundle.Cables)
                 obj.Controls.BundleNote.FontColor = obj.theme.Good;
             else
                 obj.Controls.BundleNote.FontColor = obj.theme.Muted;

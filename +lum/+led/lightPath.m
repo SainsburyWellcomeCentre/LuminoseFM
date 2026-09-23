@@ -5,9 +5,9 @@ function path = lightPath(S, k)
 % docs/hardware.md). Each drives one cable of the fiber bundle on the animal
 % (S.Light.Bundle, S.Light.Cables, lum.fiberBundles), and that cable ends in Spots
 % fibers of CoreDiameter each. An LED calibration measures the power leaving that cable
-% and divides it by the fibers' total area, so it belongs to the cable, whichever channel
-% it is on: the two LED channels are taken to give equal power at equal current
-% (lum.led.calibrationFile).
+% and divides it by the fibers' total area. It belongs to the cable on this channel: the
+% same cable on the other channel is lit by another LED through another commutator
+% channel, and has a calibration of its own (lum.led.calibrationFile).
 %
 % Arguments:
 %   S  Settings struct; reads S.Light.Bundle and S.Light.Cables

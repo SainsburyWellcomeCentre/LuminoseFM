@@ -23,7 +23,7 @@ platform did not resolve the symlink, read `CLAUDE.md`.
 | SpinCam | `../../SpinCam` — the lab's camera package, its own repository (read its `CLAUDE.md` before touching the camera path). On this machine's saved MATLAB path; sessions name it by `S.Camera.SpinCamFolder`. Engine 1.2.0; `spincam.version()` still returns 1.1.0 (SpinCam's to bump, not ours) |
 | Spinnaker SDK | `C:\Program Files\Teledyne\Spinnaker` 4.2.0.83, .NET assemblies incl. `SpinVideoNET` in `bin64\vs2015`. SpinCam compiles its engine against them with Windows' `csc.exe` (.NET Framework 4.8) |
 | DoricLED | `../../DoricLED` — the Doric LED package (`doric.*`), its own project with its own `CLAUDE.md`; on this machine's saved MATLAB path; sessions name it by `S.Doric.Folder` when it is not. Its bridge `bin/doric_bridge.exe` runs `DoricSystem.dll` out of process. The driver is "LED Driver" on Doric port 4 (a rotary joint on port 3 is skipped by name). Never modify it from here |
-| LED calibrations | `calibration/` at the repo root: one `DoricLED_<bundle>_<cable>.mat` (+ `.png`) per cable, used on either channel; rig-local, git-ignored |
+| LED calibrations | `calibration/` at the repo root: one `DoricLED_<bundle>_<cable>_<A|B>.mat` (+ `.png`) per cable and channel; a per-cable `DoricLED_<bundle>_<cable>.mat` (0.7.2–0.9.0) is still read for the channel it was measured on; rig-local, git-ignored |
 | GUI inspiration | `../../luminose_hf` (head-fixed Luminose protocols) — structure only, not its colours |
 | Bpod `ProtocolFolder` | `C:\Users\harrislab\Documents\MATLAB\HarrisLabBpodProtocols\` |
 | Bpod `DataFolder` | `D:\luminoseData\` = `/mnt/d/luminoseData` — session data live **outside** the repo |
@@ -55,7 +55,7 @@ box). Permission covers that request only. Close nothing of theirs: if the MATLA
 light, hearing sound, poking, moving a cable. The operator works remotely at times, so run those checks
 the next time they say they are at the rig. That doc also says how to run a headless session on the
 rig: do what `RunProtocol` does, open `_ANLG.dat` and reset the session clock. **Pending now (all need
-eyes at the rig): P4 the first calibration of each cable (with the 0.8.1 two-cable window); P5 valve
+eyes at the rig): P4 the first calibration of each cable on each channel (0.9.1); P5 valve
 2's calibration, the centre reward and the punishment noise heard to its end; P6 the End button with
 the camera and LED windows open (it froze MATLAB before 0.8.1); P7 the startup line, to see where the
 time goes; P8 the 0.9.0 stimulus families at the fiber tips, the designer in a desktop MATLAB, and
@@ -158,8 +158,9 @@ stops the session part way through as though the End button had been pressed.
   `Protocol`, `Label`, `CurrentmA`, `IrradiancemWmm2`, `InterPulseInterval`; `Completed`,
   `StoppedReason`) in place of `TestPulses`.
 - Every session stores `Data.Session.DoricLED` (`lum.led.sessionRecord`: `Controlled`, `Mode`,
-  `Settings`, `LightPaths`, `Calibrations` as used, `Device` with every current sent in `Changes`)
-  and `DeviceLog.DoricLED`. LED currents are stored in mA everywhere; irradiance is derived.
+  `Settings`, `LightPaths`, `Calibrations` as used, `Intensity` (0.9.1, `lum.led.intensity`: asked for
+  and started at), `Device` with every current sent in `Changes`) and `DeviceLog.DoricLED`. LED
+  currents sent are stored in mA everywhere; irradiance is derived from them and the calibration.
 - Flex analog stream: Bpod writes `..._ANLG.dat` beside the session file; merged at teardown
   with `AddFlexIOAnalogData` through `lum.dev.Flex.mergeAnalogData`, which then re-anchors it with
   `lum.dev.Flex.alignAnalog`: the stream starts with the barcode's run, which Bpod counts as a
@@ -306,10 +307,10 @@ doc that does not:
 | view | a camera's name and file prefix: `sideview`, `topview` | camera name, cam1 |
 | camera clock | SpinCam's host clock: `HostTime_s`, `_events.csv`, `Data.CameraTime` | video time |
 | house light | the white light in the box, on PulsePal OUT3, looped back into BNC input 1 (`S.Session.HouseLight`, `S.Sleep.HouseLight`, `S.Ephys.HouseLight`, `Data.HouseLight`, `Session.HouseLight`) | room light, port 5 light |
-| LED current | the Doric driver's current on LED ch1 (A) or ch2 (B), mA: how bright a gated channel is (`S.Doric.CurrentmA`, `Data.LEDCurrentA/B`, `LightSegments.CurrentmA`) | LED power, voltage, intensity (as a stored value) |
+| LED current | the Doric driver's current on LED ch1 (A) or ch2 (B), mA: how bright a gated channel is (`Data.LEDCurrentA/B`, `LightSegments.CurrentmA`; asked for as `S.Doric.CurrentmA` on an uncalibrated channel) | LED power, voltage, intensity (as a stored value) |
 | light path | one optical channel and the bundle cable on it (`lum.led.lightPath`) | fiber (alone) |
-| irradiance | power at the fiber tips over their area, mW/mm², shown in place of mA once the cable is calibrated | power density, intensity (as a stored value) |
-| LED calibration | power meter readings at several currents for one cable, used on either channel (`lum.led`, `calibration/`) | power curve, channel calibration |
+| irradiance | power at the fiber tips over their area, mW/mm²: what a session asks for on a calibrated light path (`S.Doric.IrradiancemWmm2`, `S.Sleep.TestPulses.IrradiancemWmm2`, `S.Ephys`) | power density, intensity (as a stored value) |
+| LED calibration | power meter readings at several currents for one cable on one channel (`lum.led`, `calibration/`) | power curve |
 | LED window | the session window that shows and changes each channel's LED current (`lum.gui.DoricWindow`) | runtime window (that is the parameters') |
 | ePhys calibration | the third session type, `'EphysCalibration'` (`S.Ephys`, D18) | calibration session, ephys mode |
 | input-output curve, paired-pulse ratio | the two ePhys calibration protocols (`S.Ephys.InputOutput`, `S.Ephys.PairedPulse`) | IO sweep, PPR (in operator text) |
@@ -341,22 +342,38 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   session) on the rig when it fails. **Every return path releases it** (`releaseLED`), and both
   teardowns close it first (`closeDevices`). Currents change only in the prepare window
   (`applyPending(trial)`, which returns what the next trial runs at) or between blocks
-  (`applyPending(block)`; ePhys `setCurrents(step.CurrentmA)`, blocking). Settings and data hold mA;
-  windows show mW/mm² for a channel whose cable is calibrated, through `lum.gui.IntensityField`. A
-  calibration is per **cable** (bundle and colour), not per channel (`lum.led.calibrationFile`): the
-  two LED channels are taken to give equal power at equal current, so a cable swapped to the other
-  channel keeps its calibration. It records the channel it was measured on (`MeasuredOn`). Measured two
+  (`applyPending(block)`; ePhys `setCurrents(step.CurrentmA)`, blocking). Nothing is sent per trial
+  otherwise: a change is one non-blocking command per channel (~0.8 ms MATLAB-side, 5–9 ms to the
+  driver's acknowledgement), with no light gated.
+  **Intensity (0.9.1).** Each session type keeps its intensity per channel in two forms, read and
+  written only through `lum.led.intensitySetting(S, type)`: irradiance for a calibrated channel and mA
+  for one that is not — behaviour `S.Doric.IrradiancemWmm2` [8 8] / `S.Doric.CurrentmA`, sleep
+  `S.Sleep.TestPulses.IrradiancemWmm2` [2 2] / `.CurrentmA`; ePhys has its own per protocol
+  (`S.Ephys.InputOutput.Min/MaxIrradiancemWmm2` [0 0]/[12 12] with `MinmA`/`MaxmA`, NaN = the limit;
+  `S.Ephys.PairedPulse.IrradiancemWmm2` [8 8] with `CurrentmA`). `lum.led.intensity(S, cals, type)`
+  resolves the start currents (passed to `lum.dev.open` as `'LEDCurrentmA'`) through
+  `lum.led.currentFor`, which never exceeds the limit and runs an out-of-reach irradiance at the
+  channel's most with a note — never refuse a session for it, and never refuse one for a missing
+  calibration: that channel runs in mA. Both teardowns write LED-window changes back with
+  `lum.led.keepIntensity`. `lum.gui.IntensityField` holds both forms and shows the one that applies;
+  `DoricSetup` takes `'Intensity'` (`'Behaviour'`, `'Sleep'`, `'EphysCalibration'` greys it out).
+  A calibration is per **cable and channel** (`lum.led.calibrationFile`): the orange cable on A and on B
+  are two calibrations, because the light leaving a cable depends on the LED and commutator channel
+  feeding it. `loadCalibration` falls back to a 0.7.2–0.9.0 per-cable file only when its `MeasuredOn` is
+  the path's channel. Measured two
   cables at a time, the pair on the commutator, from the Doric LED tab's one **Calibrate LED power…**
   button (`lum.gui.DoricCalibration(bundle, {cableA, cableB}, ...)`: a table, On/Off and graph per
   channel, continuous mode, 0–700 mA in 50 mA steps capped at each channel's limit). Saved to
-  `calibration/`, replaced by the next one of that cable. `lum.led.validate(S)` is the LED
-  check every session's validation runs (errors cals-independent; notes only when given cals).
-  The DoricLED package is optional: without it, or with `S.Doric.Enabled` off, the driver is used as
-  set by hand and currents are NaN.
+  `calibration/`, replaced by the next one of that cable on that channel. `lum.led.validate(S, cals,
+  type)` is the LED check every session's validation runs (errors cals-independent; notes only when
+  given cals). The DoricLED package is optional: without it, or with `S.Doric.Enabled` off, the driver
+  is used as set by hand and currents are NaN.
 - **ePhys calibration (D18).** `lum.ephys.plan` compiles each step (an input-output level or a
   paired-pulse interval) through `lum.sleep.testPulsePlan` as a probe step and joins them into one
   plan of the same shape, adding per step `Protocol`, `Label`, `CurrentmA`, `IrradiancemWmm2`,
-  `InterPulseInterval`. `lum.ephys.validate` requires `S.Doric.Enabled` and uses the checks shared
+  `InterPulseInterval`, and returns notes (an irradiance out of reach, a channel in mA). Levels and
+  pairs are in mW/mm² on a calibrated channel, in mA otherwise (see Intensity above); the curve's top
+  defaults to 12 mW/mm² or the channel's most. `lum.ephys.validate` requires `S.Doric.Enabled` and uses the checks shared
   with sleep (`lum.sleep.validateClock`, `lum.sleep.checkTimeline`). `lum.sleep.run` runs it with
   `S.Ephys.Sync`, `S.Ephys.HouseLight`, `lum.gui.EphysSetupDialog` and barcode kind
   `'EphysCalibration'` (`S.Sync.Barcode.EphysMarkerWidth`, 300 ms; `lum.sync.markerWidth`).
@@ -653,7 +670,7 @@ where it can be tested with no hardware.
 | `hardware/TestSyncLine.m` | Drive the sync TTL outside a session, from states and from a global timer |
 | `hardware/TestHouseLight.m` | Switch the house light through PulsePal outside a session and check each switch reaches BNC input 1 |
 | `hardware/TestDoricLED.m` | Light A, then B, then both, through Bpod BNC → PulsePal → Doric driver, at one or more currents |
-| `+lum/+led/` | Light paths (`lightPath`), calibrations (`makeCalibration`, `saveCalibration`, `loadCalibration`, `calibrations`, `calibrationFile`, `calibrationFolder`, `plotCalibration`), conversions (`irradiance`, `current`, `toUnit`, `fromUnit`, `describe`), `validate`, `sessionRecord` |
+| `+lum/+led/` | Light paths (`lightPath`), calibrations per cable and channel (`makeCalibration`, `saveCalibration`, `loadCalibration`, `calibrations`, `calibrationFile`, `calibrationFolder`, `plotCalibration`), conversions (`irradiance`, `current`, `currentFor`, `toUnit`, `fromUnit`, `describe`), session intensity (`intensitySetting`, `intensity`, `keepIntensity`), `validate`, `sessionRecord` |
 | `+lum/+ephys/` | ePhys calibration: `plan`, `validate`, `describe` |
 | `+lum/defaultSettings.m`, `mergeSettings.m` | The two-tier settings struct; old settings files converted (renames, reshapes, retirements) |
 | `+lum/validateSettings.m` | Everything that must hold before a session starts; returns the stimulus set |

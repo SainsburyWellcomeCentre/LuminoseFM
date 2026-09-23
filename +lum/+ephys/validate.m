@@ -30,10 +30,11 @@ if ~S.Doric.Enabled
           ['An ePhys calibration session changes the LED current step by step, so the LED must be '...
            'controlled from MATLAB. Tick "Control the LED from MATLAB" on the Doric LED tab.']);
 end
-notes = lum.led.validate(S, cals);
+notes = lum.led.validate(S, cals, 'EphysCalibration');
 [clockNotes, S] = lum.sleep.validateClock(S, rig, S.Ephys.Sync, 'EphysCalibration', []);
 notes = [notes clockNotes];
-plan = lum.ephys.plan(S, cals);
+[plan, planNotes] = lum.ephys.plan(S, cals);
+notes = [notes planNotes];
 lum.sleep.checkTimeline(plan, S.Ephys.Sync, rig);
 notes = [notes lum.sleep.validateClock(S, rig, S.Ephys.Sync, 'EphysCalibration', plan.Duration / 60)];
 if S.Ephys.Voltage(1) < 3 || S.Ephys.Voltage(2) < 3

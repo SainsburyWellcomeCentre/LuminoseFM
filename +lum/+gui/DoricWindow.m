@@ -71,7 +71,7 @@ classdef DoricWindow < handle
         function apply(obj, k)
             % apply(k) asks for the current typed for channel k.
             try
-                obj.led.request(k, obj.fields{k}.currentmA());
+                obj.led.request(k, obj.fields{k}.runmA());
             catch requestError
                 uialert(obj.Figure, requestError.message, 'LED current');
             end
@@ -126,8 +126,14 @@ classdef DoricWindow < handle
                 if ~isnan(obj.led.CurrentmA(k))
                     start = obj.led.CurrentmA(k);
                 end
+                limit = S.Doric.MaxCurrentmA(k);
+                if ~isnan(obj.led.MaxCurrentmA(k))
+                    limit = obj.led.MaxCurrentmA(k);
+                end
                 obj.fields{k} = lum.gui.IntensityField(grid, start, @() [], ...
-                    'Tooltip', 'The new intensity, sent before the next trial (or sleep block).');
+                    'Irradiance', lum.led.irradiance(obj.cals{k}, start), 'LimitmA', limit, ...
+                    'Tooltip', ['The new intensity, sent before the next trial (or sleep block): mW/mm2 '...
+                                'when this channel''s cable is calibrated on it, mA when not.']);
                 obj.fields{k}.setCalibration(obj.cals{k});
                 channel = k;
                 obj.Controls.Apply(k) = uibutton(grid, 'Text', 'Apply', ...
@@ -138,7 +144,8 @@ classdef DoricWindow < handle
             end
             if obj.editable
                 note = ['A new intensity is sent between trials (or sleep blocks), never while light is '...
-                        'gated, and each trial records the current it ran at.'];
+                        'gated, and each trial records the current it ran at. The session''s next '...
+                        'start keeps it.'];
             elseif obj.led.isControlled()
                 note = 'The ePhys calibration schedule sets the current, step by step.';
             else

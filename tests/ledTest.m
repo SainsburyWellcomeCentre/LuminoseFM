@@ -51,22 +51,22 @@ verifyError(testCase, @() lum.led.lightPath(S, 1), 'lum:led:lightPath:unknownCab
 verifyError(testCase, @() lum.led.lightPath(S, 3), 'lum:led:lightPath:badChannel');
 end
 
-function testTheCalibrationFileNamesTheCableNotTheChannel(testCase)
+function testTheCalibrationFileNamesTheCableAndTheChannel(testCase)
 S = lum.defaultSettings;
 S.Light.Bundle = '4-to-19';
 S.Light.Cables = {'orange', 'blue'};
 [~, name] = fileparts(lum.led.calibrationFile(lum.led.lightPath(S, 1), testCase.TestData.folder));
-verifyEqual(testCase, name, 'DoricLED_4-to-19_orange');
+verifyEqual(testCase, name, 'DoricLED_4-to-19_orange_A');
 S.Light.Cables = {'blue', 'orange'};
 [~, onB] = fileparts(lum.led.calibrationFile(lum.led.lightPath(S, 2), testCase.TestData.folder));
-verifyEqual(testCase, onB, name, 'The same file on channel B');
+verifyEqual(testCase, onB, 'DoricLED_4-to-19_orange_B', 'Another file on channel B');
 S.Light.Bundle = '2-to-19';
 S.Light.Cables = {'blue', 'green'};
 [~, name] = fileparts(lum.led.calibrationFile(lum.led.lightPath(S, 2), testCase.TestData.folder));
-verifyEqual(testCase, name, 'DoricLED_2-to-19_green');
+verifyEqual(testCase, name, 'DoricLED_2-to-19_green_B');
 end
 
-function testACalibrationFollowsItsCableToTheOtherChannel(testCase)
+function testACalibrationStaysOnTheChannelItWasMeasuredOn(testCase)
 folder = testCase.TestData.folder;
 S = lum.defaultSettings;   % 2-to-19: blue on A, green on B
 cal = lum.led.makeCalibration(lum.led.lightPath(S, 1), [0 100], [0 1], 'mW');
@@ -78,8 +78,41 @@ verifyEmpty(testCase, cals{2}, 'Green is not calibrated');
 S.Light.Cables = {'green', 'blue'};   % The cables swapped at the commutator
 cals = lum.led.calibrations(S, folder);
 verifyEmpty(testCase, cals{1});
-verifyEqual(testCase, {cals{2}.Cable, cals{2}.MeasuredOn}, {'blue', 'A'}, ...
-            'Blue keeps its calibration on channel B');
+verifyEmpty(testCase, cals{2}, 'Blue on B is not blue on A');
+end
+
+function testOneCableOnEachChannelKeepsTwoCalibrations(testCase)
+folder = testCase.TestData.folder;
+S = lum.defaultSettings;
+S.Light.Bundle = '4-to-19';
+S.Light.Cables = {'orange', 'blue'};
+onA = lum.led.makeCalibration(lum.led.lightPath(S, 1), [0 100], [0 1], 'mW');
+lum.led.saveCalibration(onA, folder);
+S.Light.Cables = {'blue', 'orange'};
+onB = lum.led.makeCalibration(lum.led.lightPath(S, 2), [0 100], [0 2], 'mW');
+lum.led.saveCalibration(onB, folder);
+verifyNumElements(testCase, dir(fullfile(folder, '*.mat')), 2);
+cals = lum.led.calibrations(S, folder);
+verifyEqual(testCase, {cals{2}.Cable, cals{2}.MeasuredOn}, {'orange', 'B'});
+verifyEqual(testCase, cals{2}.PowermW, [0; 2]);
+S.Light.Cables = {'orange', 'blue'};
+cals = lum.led.calibrations(S, folder);
+verifyEqual(testCase, cals{1}.PowermW, [0; 1], 'Orange on A has its own');
+end
+
+function testAPerCableFileIsReadOnTheChannelItWasMeasuredOn(testCase)
+% 0.7.2-0.9.0 named calibrations per cable, whichever channel.
+folder = testCase.TestData.folder;
+S = lum.defaultSettings;
+S.Light.Bundle = '4-to-19';
+S.Light.Cables = {'orange', 'blue'};
+Calibration = lum.led.makeCalibration(lum.led.lightPath(S, 1), [0 100], [0 1], 'mW');
+save(fullfile(folder, 'DoricLED_4-to-19_orange.mat'), 'Calibration');
+cals = lum.led.calibrations(S, folder);
+verifyEqual(testCase, cals{1}.MeasuredOn, 'A');
+S.Light.Cables = {'blue', 'orange'};
+cals = lum.led.calibrations(S, folder);
+verifyEmpty(testCase, cals{2}, 'Measured on A, so not used on B');
 end
 
 %% Calibrations ---------------------------------------------------------------------
@@ -186,6 +219,13 @@ bad = S;
 bad.Doric.CurrentmA = [10.5 100];
 verifyError(testCase, @() lum.led.validate(bad), 'lum:led:validate:badCurrent');
 bad = S;
+bad.Doric.IrradiancemWmm2 = [-1 8];
+verifyError(testCase, @() lum.led.validate(bad), 'lum:led:validate:badIrradiance');
+bad = S;
+bad.Sleep.TestPulses.CurrentmA = [800 100];
+verifyEmpty(testCase, lum.led.validate(bad, {}, 'Behaviour'), 'Behaviour does not read the sleep intensity');
+verifyError(testCase, @() lum.led.validate(bad, {}, 'Sleep'), 'lum:led:validate:overLimit');
+bad = S;
 bad.Light.Bundle = '4-to-19';
 bad.Light.Cables = {'blue', 'blue'};
 verifyError(testCase, @() lum.led.validate(bad), 'lum:led:validate:sameCable');
@@ -193,14 +233,77 @@ verifyError(testCase, @() lum.validateSettings(setField(S, 'Doric', 'CurrentmA',
             'lum:led:validate:overLimit', 'A behaviour session runs the same check');
 end
 
-function testACurrentOutsideItsCalibrationIsNoted(testCase)
+function testTheDefaultIntensitiesAreEightAndTwoMilliwatts(testCase)
 S = lum.defaultSettings;
-S.Light.Bundle = '4-to-19';
-cal = lum.led.makeCalibration(lum.led.lightPath(S, 1), [0 50], [0 1], 'mW');
-S.Doric.CurrentmA = [100 100];
-notes = lum.led.validate(S, {cal, []});
-verifyNumElements(testCase, notes, 1);
-verifyTrue(testCase, contains(notes{1}, 'outside its calibration'));
+verifyEqual(testCase, lum.led.intensitySetting(S, 'Behaviour'), [8 8]);
+verifyEqual(testCase, lum.led.intensitySetting(S, 'Sleep'), [2 2]);
+verifyEqual(testCase, S.Ephys.PairedPulse.IrradiancemWmm2, [8 8]);
+verifyEqual(testCase, [S.Ephys.InputOutput.MinIrradiancemWmm2; S.Ephys.InputOutput.MaxIrradiancemWmm2], ...
+            [0 0; 12 12]);
+S = lum.led.intensitySetting(S, 'Sleep', [3 NaN], [NaN 50]);
+[irradiance, currents] = lum.led.intensitySetting(S, 'Sleep');
+verifyEqual(testCase, {irradiance, currents}, {[3 2], [100 50]}, 'NaN leaves a value as it was');
+verifyEqual(testCase, lum.led.intensitySetting(S, 'Behaviour'), [8 8], 'Behaviour keeps its own');
+end
+
+function testAnIrradianceBecomesTheCurrentThatGivesIt(testCase)
+S = fourToNineteenSettings();
+path = lum.led.lightPath(S, 1);
+cal = lum.led.makeCalibration(path, [0 100 700], [0 1 7] * path.Area, 'mW');  % 1 mW/mm2 per 100 mA
+run = lum.led.intensity(S, {cal, []}, 'Behaviour');
+verifyEqual(testCase, run.CurrentmA(1), 700, 'The most A gives is 7 at 700 mA: 8 is out of reach');
+verifyEqual(testCase, run.ReachedmWmm2(1), 7, 'AbsTol', 1e-9);
+verifyTrue(testCase, any(contains(run.Notes, 'more than the orange cable gives')));
+S = lum.led.intensitySetting(S, 'Behaviour', [5 5], [NaN NaN]);
+run = lum.led.intensity(S, {cal, []}, 'Behaviour');
+verifyEqual(testCase, run.CurrentmA, [500 100], 'B has no calibration: its mA');
+verifyEqual(testCase, run.Calibrated, [true false]);
+verifyEqual(testCase, numel(run.Notes), 1);
+verifyTrue(testCase, contains(run.Notes{1}, 'not calibrated on channel B'));
+S.Doric.MaxCurrentmA = [300 700];
+run = lum.led.intensity(S, {cal, []}, 'Behaviour');
+verifyEqual(testCase, run.CurrentmA(1), 300, 'Never above the limit');
+verifyEqual(testCase, lum.led.intensity(S, {cal, []}, 'EphysCalibration').CurrentmA, [0 0]);
+end
+
+function testAnUncalibratedBundleRunsInMilliamps(testCase)
+S = lum.defaultSettings;   % 2-to-19, never calibrated here
+run = lum.led.intensity(S, {[], []}, 'Sleep');
+verifyEqual(testCase, run.CurrentmA, S.Sleep.TestPulses.CurrentmA);
+verifyEqual(testCase, run.ReachedmWmm2, [NaN NaN]);
+verifyNumElements(testCase, lum.led.validate(S, {[], []}, 'Sleep'), 2, 'One note per channel, no error');
+end
+
+function testCurrentForStaysWithinTheCalibrationAndTheLimit(testCase)
+S = fourToNineteenSettings();
+path = lum.led.lightPath(S, 1);
+cal = lum.led.makeCalibration(path, [0 100 700], [0.5 1 7] * path.Area, 'mW');
+[mA, reached, note] = lum.led.currentFor(cal, 4, 700);
+verifyEqual(testCase, {mA, note}, {400, ''});
+verifyEqual(testCase, reached, 4, 'AbsTol', 1e-9);
+[mA, ~, note] = lum.led.currentFor(cal, NaN, 700);
+verifyEqual(testCase, {mA, note}, {700, ''}, 'NaN asks for the most');
+[mA, ~, note] = lum.led.currentFor(cal, 0, 700);
+verifyEqual(testCase, {mA, note}, {0, ''}, 'Nothing asked: the lowest current, no note');
+[mA, ~, note] = lum.led.currentFor(cal, 0.2, 700);
+verifyEqual(testCase, mA, 0);
+verifyTrue(testCase, contains(note, 'below'));
+[mA, reached] = lum.led.currentFor(cal, 12, 250);
+verifyEqual(testCase, mA, 250);
+verifyEqual(testCase, reached, 2.5, 'AbsTol', 1e-9);
+end
+
+function testAChangeFromTheLEDWindowIsKeptForTheNextSession(testCase)
+S = fourToNineteenSettings();
+path = lum.led.lightPath(S, 1);
+cal = lum.led.makeCalibration(path, [0 700], [0 7] * path.Area, 'mW');
+kept = lum.led.keepIntensity(S, 'Behaviour', {cal, []}, [700 100], [700 100]);
+verifyEqual(testCase, kept.Doric.IrradiancemWmm2, [8 8], 'Unchanged: what was asked stays');
+kept = lum.led.keepIntensity(S, 'Behaviour', {cal, []}, [700 100], [350 150]);
+verifyEqual(testCase, kept.Doric.IrradiancemWmm2, [3.5 8]);
+verifyEqual(testCase, kept.Doric.CurrentmA, [100 150]);
+kept = lum.led.keepIntensity(S, 'EphysCalibration', {cal, []}, [0 0], [350 150]);
+verifyEqual(testCase, kept, S);
 end
 
 function testTheLEDIsRecordedOncePerSession(testCase)
@@ -215,6 +318,12 @@ verifyEqual(testCase, record.Settings, S.Doric);
 verifyEqual(testCase, record.Device.CurrentmA, [NaN NaN]);
 end
 
+
+function S = fourToNineteenSettings()
+S = lum.defaultSettings;
+S.Light.Bundle = '4-to-19';
+S.Light.Cables = {'orange', 'blue'};
+end
 
 function path = fourToNineteen(k)
 % Channel k's light path with orange on A and blue on B.

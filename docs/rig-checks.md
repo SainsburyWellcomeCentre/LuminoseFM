@@ -10,16 +10,19 @@ and move each one to *Done* with its result and session names.
 
 ## Pending — needs the operator at the rig
 
-### P4. First calibration of each cable
+### P4. First calibration of each cable on each channel (0.9.1)
 
-Calibrate each cable in use once (Doric LED tab, **Calibrate LED power…**, two cables at a time, one on
-each channel) with a power meter at its tip, set to 465 nm: blue and green on the 2-to-19 bundle; on
-the 4-to-19, each of black, blue, orange and green that will be used, as two pairs. Check on the way
-that **On** and **Off** switch only their own channel, that a lit channel follows **Next**, and that
-closing the window switches both off (0.8.1 window). A calibration belongs to the cable and holds on either
-channel, which assumes the two LED channels give equal power at equal current: to check that, read
-both of the driver's outputs directly (bundle off) at the same current. Then check the tab shows
-mW/mm² and the sessions print irradiance.
+Calibrate each cable in use on each channel it will be used on (Doric LED tab, **Calibrate LED
+power…**, two cables at a time, one on each channel) with a power meter at its tip, set to 465 nm:
+blue on A and green on B on the 2-to-19 bundle (and swapped, if they will be); on the 4-to-19, each of
+black, blue, orange and green on the channels it will use. From 0.9.1 a calibration is per cable and
+channel; the three per-cable files in `calibration/` from 2026-09-23 (4-to-19 blue measured on B,
+green and orange on A) are still used on those channels only. Check on the way that **On** and **Off**
+switch only their own channel, that a lit channel follows **Next**, and that closing the window
+switches both off. Then check the tab shows mW/mm² with the current beside it (8 mW/mm² in
+behaviour, 2 in the sleep dialog), that a behaviour session's console line prints the irradiance, and
+that a channel asked for more than it gives (for example 12 mW/mm² on blue, which reached 10.6 at
+700 mA) runs at its most with a note.
 
 ### P5. Centre reward and punishments (0.8.0)
 

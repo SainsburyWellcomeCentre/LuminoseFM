@@ -16,6 +16,9 @@ function devices = open(rig, S, varargin)
 %               use it (the Doric LED tab, calibration). Returns .emulated and .doricLED.
 %   'DoricLED'  That lum.dev.DoricLED, for the session to use rather than open another.
 %               The caller keeps it: a refusal here does not close it.
+%   'LEDCurrentmA'  The currents A and B start at, mA: lum.led.intensity's CurrentmA,
+%               the session type's intensity through the calibrations. Default
+%               S.Doric.CurrentmA.
 %
 % Returns a struct with fields:
 %   .emulated  True when Bpod is running as an emulator
@@ -27,7 +30,7 @@ function devices = open(rig, S, varargin)
 %              starting at S.Session.HouseLight, switched at once; disabled in a session
 %              without light that has no PulsePal (lum.dev.openHouseLight)
 %   .doricLED  lum.dev.DoricLED — the LED driver, both channels in external TTL mode at
-%              S.Doric.CurrentmA (lum.dev.openDoricLED, D17); 'Manual' when it is set by
+%              'LEDCurrentmA' (lum.dev.openDoricLED, D17); 'Manual' when it is set by
 %              hand
 %   .openSeconds  How long each device took to open, s (DoricLED, PulsePal, Cameras,
 %              HouseLight, HiFi, Flex), for the session's startup times (lum.StartupTimes)
@@ -50,7 +53,12 @@ p = inputParser;
 p.FunctionName = 'lum.dev.open';
 addParameter(p, 'Only', '', @(x) ischar(x) || isstring(x));
 addParameter(p, 'DoricLED', [], @(x) isempty(x) || isa(x, 'lum.dev.DoricLED'));
+addParameter(p, 'LEDCurrentmA', []);
 parse(p, varargin{:});
+ledCurrents = p.Results.LEDCurrentmA;
+if isempty(ledCurrents)
+    ledCurrents = S.Doric.CurrentmA;
+end
 
 devices = struct();
 devices.emulated = ~isempty(BpodSystem) && isobject(BpodSystem) && BpodSystem.EmulatorMode == 1;
@@ -71,7 +79,7 @@ if isempty(led)
 end
 seconds = struct();
 opening = tic;
-setUpDoricLED(led, devices.emulated, S);
+setUpDoricLED(led, devices.emulated, S, ledCurrents);
 devices.doricLED = led;
 seconds.DoricLED = toc(opening);
 
@@ -105,7 +113,7 @@ seconds.Flex = toc(opening);
 devices.openSeconds = seconds;
 
 
-function setUpDoricLED(led, emulated, S)
+function setUpDoricLED(led, emulated, S, currents)
 % Both LED channels in external TTL mode at the session's currents, or a refusal.
 needsControl = strcmp(S.Session.Type, 'EphysCalibration');
 if ~led.isControlled()
@@ -119,7 +127,7 @@ if ~led.isControlled()
 end
 try
     led.ensureReady();
-    led.setUp(S.Doric.CurrentmA, S.Doric.MaxCurrentmA);
+    led.setUp(currents, S.Doric.MaxCurrentmA);
     led.beginSession();
 catch ledError
     if (S.Session.UseOpto || needsControl) && ~emulated

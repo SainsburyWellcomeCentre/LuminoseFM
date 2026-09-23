@@ -56,10 +56,10 @@ right — D8 in [`architecture.md`](architecture.md).
 | help line | The strip at the foot of a setup or runtime window describing the field under the pointer |
 | house light | The white light inside the box, on PulsePal output 3 and looped back into BNC input 1: `S.Session.HouseLight` (behaviour), `S.Sleep.HouseLight` (sleep), `Data.HouseLight`, `Session.HouseLight`; switched from the live figure's header. Not "room light" or "port 5 light" |
 | plots image | The online figure saved at the end of a session, `<data file name>_plots.png` (`Session.PlotsImage`) |
-| LED current | The Doric driver's current on LED channel 1 (A) or 2 (B), in mA: how bright a channel is while it is gated (`S.Doric.CurrentmA`, `Data.LEDCurrentA`/`B`, `LightSegments.CurrentmA`). Not "LED power" or "intensity" as a stored value |
+| LED current | The Doric driver's current on LED channel 1 (A) or 2 (B), in mA: how bright a channel is while it is gated (`Data.LEDCurrentA`/`B`, `LightSegments.CurrentmA`; asked for as `S.Doric.CurrentmA` on a channel that is not calibrated). Not "LED power" or "intensity" as a stored value |
 | light path | One optical channel and the bundle cable on it, with that cable's fibers at the tip (`lum.led.lightPath`) |
-| irradiance | Power at the fiber tips over their total area, mW/mm2; shown in place of mA once a light path is calibrated |
-| LED calibration | Power meter readings at several LED currents for one cable, stored per bundle and cable (not per channel) in `calibration/` (`lum.led`) |
+| irradiance | Power at the fiber tips over their total area, mW/mm2; what a session asks for on a calibrated light path (`S.Doric.IrradiancemWmm2`, `S.Sleep.TestPulses.IrradiancemWmm2`, `S.Ephys`), turned into the LED current that gives it (`lum.led.intensity`) |
+| LED calibration | Power meter readings at several LED currents for one cable on one channel, stored per bundle, cable and channel in `calibration/` (`lum.led`) |
 | LED window | The window that shows each channel's LED current during a session and changes it between trials (`lum.gui.DoricWindow`) |
 | ePhys calibration | The session type that sends light pulses stepping through intensities and paired-pulse intervals, for the recorded response (`S.Ephys`, D18) |
 | input-output curve | Single pulses at intensities from lowest to highest, one step per level (`S.Ephys.InputOutput`) |
@@ -140,6 +140,18 @@ names.
 | — | the video stops after the final save (`SessionSaved` event), and a second save adds its summary; default format `avi-mjpeg-mt` (SpinCam 1.2.0 engine, multi-core MJPEG), with a note when a single-threaded format cannot keep up; the help line describes the format chosen; a SpinVideo format without SpinVideo is refused when the devices open; `Session.Cameras.EngineVersion` |
 | — | `GUIMeta.<name>.Help` for every runtime parameter; help line in the setup and runtime windows |
 | — | **▶ Play** buttons for the session's sounds in the setup dialog (`lum.testSounds`) |
+
+### 0.9.0 → 0.9.1 — LED calibrations per channel, intensity in mW/mm²
+
+| 0.9.0 | 0.9.1 |
+|-------|-------|
+| a calibration per cable, `DoricLED_<bundle>_<cable>.mat`, used on either channel | per cable **and channel**, `DoricLED_<bundle>_<cable>_<A or B>.mat`: the orange cable on A and on B are calibrated apart. A 0.9.0 file is still read, for the channel it was measured on (`MeasuredOn`) only |
+| settings held the LED current (`S.Doric.CurrentmA`, 100 mA), shown as mW/mm² when calibrated | a calibrated channel asks for **irradiance** and the session sets the current that gives it: `S.Doric.IrradiancemWmm2` (behaviour, **8**), `S.Sleep.TestPulses.IrradiancemWmm2` (sleep, **2**); a channel without a calibration uses the mA (`S.Doric.CurrentmA`, `S.Sleep.TestPulses.CurrentmA`, 100). Existing settings files take the new defaults |
+| sleep test pulses ran at behaviour's `S.Doric.CurrentmA` | at their own intensity, `S.Sleep.TestPulses` |
+| an irradiance outside the calibration was refused | it runs at the most (or least) the channel gives within its limit, with a note (`lum.led.currentFor`) |
+| ePhys curve `MinmA`–`MaxmA`, `MaxmA` with no default (refused until typed); pairs at `CurrentmA` 100 | calibrated: `InputOutput.MinIrradiancemWmm2`–`MaxIrradiancemWmm2`, **0–12** (or the channel's most), pairs at `PairedPulse.IrradiancemWmm2` **8**; not calibrated: `MinmA`–`MaxmA` with `MaxmA` NaN meaning the channel's limit, pairs at `CurrentmA` |
+| — | `Session.DoricLED.Intensity`: what each channel was asked for and the current it started at (`lum.led.intensity`) |
+| the LED window's change was written back as `S.Doric.CurrentmA` | as the irradiance it gave on a calibrated channel, the mA otherwise, and only for a channel that changed (`lum.led.keepIntensity`) |
 
 ### 0.8.1 → 0.9.0 — stimulus families that say what the animal tells apart; centre reward again
 

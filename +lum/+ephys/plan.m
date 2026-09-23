@@ -1,21 +1,27 @@
-function plan = plan(S, cals)
+function [plan, notes] = plan(S, cals)
 % lum.ephys.plan compiles an ePhys calibration session into steps of light (D18).
 %
 % An ePhys calibration session sends light pulses whose intensity or pairing changes step
 % by step, for the response recorded on the Neuropixels probe:
 %
-%   Input-output        one step per intensity, from InputOutput.MinmA to MaxmA in
-%                       nLevels steps; single pulses of PulseWidth
+%   Input-output        one step per intensity, nLevels of them from the lowest to the
+%                       highest; single pulses of PulseWidth
 %   Paired-pulse ratio  one step per inter-pulse interval (onset to onset, within a
 %                       pair) in PairedPulse.Intervals; pairs of PulseWidth pulses at
-%                       PairedPulse.CurrentmA
+%                       one intensity
 %
 % Each step sends Repeats epochs, one every InterEpochInterval seconds, on Channels (A,
 % B, or A and B together, each at its own current). Input-output steps come first, then
 % paired-pulse steps; within each, Order is 'Ascending', 'Descending' or 'Shuffled'
-% (drawn from Seed, with a random stream of its own). With a calibration of a channel's
-% light path, the input-output levels are spaced evenly in irradiance between the two
-% ends' irradiances, and each is rounded to whole mA; without one, evenly in mA.
+% (drawn from Seed, with a random stream of its own).
+%
+% Each channel's intensities are in mW/mm2 where its light path is calibrated, in mA where
+% it is not. Calibrated: the input-output curve runs from InputOutput.MinIrradiancemWmm2 to
+% MaxIrradiancemWmm2, levels spaced evenly in irradiance, and the pairs are at
+% PairedPulse.IrradiancemWmm2; each is turned into whole mA by lum.led.currentFor, so an
+% irradiance above what the channel gives within its limit runs at the most it gives, and
+% says so in notes. Not calibrated: from InputOutput.MinmA to MaxmA (NaN: the channel's
+% limit), spaced evenly in mA, and pairs at PairedPulse.CurrentmA.
 %
 % Light goes out as in a sleep session with test pulses (D13): Bpod gates BNC1/BNC2 and
 % PulsePal, gated, fills each gate with constant light, so the gate is the pulse. Each
@@ -24,9 +30,9 @@ function plan = plan(S, cals)
 % machines with a cut before every step: the LED current changes there, between blocks.
 %
 % Arguments:
-%   S     Settings struct; reads S.Ephys and S.Doric.MaxCurrentmA
+%   S     Settings struct; reads S.Ephys, S.Doric.MaxCurrentmA and S.Light
 %   cals  Optional 1 x 2 cell of calibrations (lum.led.calibrations); default none, so
-%         levels are spaced in mA
+%         every intensity is in mA
 %
 % Returns plan, as lum.sleep.testPulsePlan returns it, whose Steps also have:
 %   .Protocol            'Input-output' or 'Paired-pulse ratio'
@@ -34,6 +40,8 @@ function plan = plan(S, cals)
 %   .CurrentmA           1 x 2, the LED current on A and B during the step (NaN unused)
 %   .IrradiancemWmm2     1 x 2, the same as irradiance (NaN without a calibration)
 %   .InterPulseInterval  Seconds within a pair; NaN for single pulses
+% and notes, a cell of sentences: an irradiance out of a channel's reach, or a channel
+% without a calibration, in mA.
 %
 % Errors with 'lum:ephys:plan:<reason>', or a 'lum:sleep:testPulsePlan:<reason>' for a step
 % that cannot be sent.
@@ -48,13 +56,26 @@ end
 e = S.Ephys;
 used = channelsUsed(e.Channels);
 checkCommon(e);
+notes = {};
+labels = 'AB';
+for k = used
+    if isempty(cals{k})
+        path = lum.led.lightPath(S, k);
+        notes{end+1} = sprintf(['Channel %s: the %s cable is not calibrated on channel %s, so its '...
+                                'intensities are in mA.'], labels(k), path.Cable, labels(k)); %#ok<AGROW>
+    end
+end
 
 definitions = struct('Protocol', {}, 'Label', {}, 'CurrentmA', {}, 'Mode', {}, 'Interval', {});
 if e.InputOutput.Enabled
-    definitions = [definitions, inputOutputSteps(e, used, cals, S.Doric.MaxCurrentmA)];
+    [steps, stepNotes] = inputOutputSteps(e, used, cals, S.Doric.MaxCurrentmA);
+    definitions = [definitions, steps];
+    notes = [notes stepNotes];
 end
 if e.PairedPulse.Enabled
-    definitions = [definitions, pairedPulseSteps(e, used, S.Doric.MaxCurrentmA)];
+    [steps, stepNotes] = pairedPulseSteps(e, used, cals, S.Doric.MaxCurrentmA);
+    definitions = [definitions, steps];
+    notes = [notes stepNotes];
 end
 if isempty(definitions)
     fail('noProtocol', 'Choose input-output, paired-pulse ratio, or both.');
@@ -122,7 +143,7 @@ if ~ismember(char(e.Order), {'Ascending', 'Descending', 'Shuffled'})
 end
 
 
-function steps = inputOutputSteps(e, used, cals, limits)
+function [steps, notes] = inputOutputSteps(e, used, cals, limits)
 io = e.InputOutput;
 n = io.nLevels;
 if ~(isscalar(n) && n >= 2 && n == round(n) && n <= 100)
@@ -130,30 +151,39 @@ if ~(isscalar(n) && n >= 2 && n == round(n) && n <= 100)
 end
 labels = 'AB';
 levels = NaN(2, n);
+notes = {};
 for k = used
-    low = io.MinmA(k);
-    high = io.MaxmA(k);
-    if isnan(high)
-        fail('noMaximum', 'Give the highest intensity of the input-output curve on channel %s.', labels(k));
-    end
-    if ~(low >= 0 && high > low)
-        fail('badRange', ['Channel %s: the input-output curve must rise from its lowest intensity '...
-             '(%g mA) to a higher one (%g mA).'], labels(k), low, high);
-    end
-    if high > limits(k)
-        fail('overLimit', ['Channel %s: the input-output curve reaches %g mA, above the channel''s '...
-             'limit of %g mA on the Doric LED tab.'], labels(k), high, limits(k));
-    end
     if isempty(cals{k})
+        low = io.MinmA(k);
+        high = io.MaxmA(k);
+        if isnan(high)
+            high = limits(k);   % The most the channel may run at
+        end
+        if ~(low >= 0 && high > low)
+            fail('badRange', ['Channel %s: the input-output curve must rise from its lowest intensity '...
+                 '(%g mA) to a higher one (%g mA).'], labels(k), low, high);
+        end
+        if high > limits(k)
+            fail('overLimit', ['Channel %s: the input-output curve reaches %g mA, above the channel''s '...
+                 'limit of %g mA on the Doric LED tab.'], labels(k), high, limits(k));
+        end
         levels(k, :) = round(linspace(low, high, n));
     else
-        ends = lum.led.irradiance(cals{k}, [low high]);
-        if any(isnan(ends))
-            fail('outsideCalibration', ['Channel %s: the input-output curve (%g-%g mA) goes beyond '...
-                 'the calibration (%g-%g mA). Calibrate further, or keep the curve within it.'], ...
-                 labels(k), low, high, cals{k}.CurrentmA(1), cals{k}.CurrentmA(end));
+        low = io.MinIrradiancemWmm2(k);
+        high = io.MaxIrradiancemWmm2(k);
+        if ~(low >= 0 && (isnan(high) || high > low))
+            fail('badRange', ['Channel %s: the input-output curve must rise from its lowest intensity '...
+                 '(%g mW/mm2) to a higher one (%g mW/mm2).'], labels(k), low, high);
         end
-        levels(k, :) = lum.led.current(cals{k}, linspace(ends(1), ends(2), n));
+        [~, lowReached, lowNote] = lum.led.currentFor(cals{k}, low, limits(k));
+        [~, highReached, highNote] = lum.led.currentFor(cals{k}, high, limits(k));
+        if isnan(highReached) || ~(highReached > lowReached)
+            fail('outOfReach', ['Channel %s: the %s cable gives no more than %.3g mW/mm2 on this channel '...
+                 'within its limit, so the input-output curve cannot rise. Raise the limit or '...
+                 'calibrate again.'], labels(k), cals{k}.Cable, lowReached);
+        end
+        notes = [notes prefixed('Input-output curve', {lowNote, highNote})]; %#ok<AGROW>
+        levels(k, :) = min(lum.led.current(cals{k}, linspace(lowReached, highReached, n)), limits(k));
     end
 end
 order = ordered(1:n, e.Order, e.Seed);
@@ -165,7 +195,7 @@ for j = 1:n
 end
 
 
-function steps = pairedPulseSteps(e, used, limits)
+function [steps, notes] = pairedPulseSteps(e, used, cals, limits)
 pp = e.PairedPulse;
 intervals = double(pp.Intervals(:)');
 if isempty(intervals) || any(~isfinite(intervals)) || any(intervals <= 0)
@@ -173,14 +203,25 @@ if isempty(intervals) || any(~isfinite(intervals)) || any(intervals <= 0)
 end
 labels = 'AB';
 current = NaN(1, 2);
+notes = {};
 for k = used
-    value = pp.CurrentmA(k);
-    if ~(isfinite(value) && value >= 0 && value == round(value))
-        fail('badCurrent', 'Channel %s: the paired-pulse current must be a whole number of mA.', labels(k));
-    end
-    if value > limits(k)
-        fail('overLimit', 'Channel %s: the paired pulses at %g mA are above the channel''s limit of %g mA.', ...
-             labels(k), value, limits(k));
+    if isempty(cals{k})
+        value = pp.CurrentmA(k);
+        if ~(isfinite(value) && value >= 0 && value == round(value))
+            fail('badCurrent', 'Channel %s: the paired-pulse current must be a whole number of mA.', labels(k));
+        end
+        if value > limits(k)
+            fail('overLimit', 'Channel %s: the paired pulses at %g mA are above the channel''s limit of %g mA.', ...
+                 labels(k), value, limits(k));
+        end
+    else
+        asked = pp.IrradiancemWmm2(k);
+        if ~(isfinite(asked) && asked >= 0)
+            fail('badIrradiance', 'Channel %s: the paired pulses'' irradiance must be 0 mW/mm2 or more.', ...
+                 labels(k));
+        end
+        [value, ~, note] = lum.led.currentFor(cals{k}, asked, limits(k));
+        notes = [notes prefixed('Paired pulses', {note})]; %#ok<AGROW>
     end
     current(k) = value;
 end
@@ -191,6 +232,12 @@ for j = order
                           'Label', sprintf('PPR %g ms', 1000 * intervals(j)), 'CurrentmA', current, ...
                           'Mode', 'Paired', 'Interval', intervals(j)); %#ok<AGROW>
 end
+
+
+function notes = prefixed(what, notes)
+% Notes that say something, each saying what it is about.
+notes = notes(~cellfun(@isempty, notes));
+notes = cellfun(@(note) sprintf('%s: %s', what, note), notes, 'UniformOutput', false);
 
 
 function order = ordered(indices, how, seed)

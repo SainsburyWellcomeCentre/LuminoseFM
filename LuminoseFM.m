@@ -137,6 +137,12 @@ for i = 1:numel(notes)
     fprintf('LuminoseFM: note: %s\n', notes{i});
 end
 cals = lum.led.calibrations(S);  % Each channel's light path's calibration, or none
+ledIntensity = lum.led.intensity(S, cals, 'Behaviour');  % mW/mm2 into mA, per channel
+if S.Session.UseOpto && S.Doric.Enabled
+    for i = 1:numel(ledIntensity.Notes)
+        fprintf('LuminoseFM: note: %s\n', ledIntensity.Notes{i});
+    end
+end
 startup.lap('checks');
 
 %% Hardware
@@ -146,7 +152,7 @@ startup.lap('checks');
 % Bpod runs the protocol file with no try/catch of its own, so the console is released
 % here before the error is shown.
 try
-    devices = lum.dev.open(rig, S, 'DoricLED', doricLED);
+    devices = lum.dev.open(rig, S, 'DoricLED', doricLED, 'LEDCurrentmA', ledIntensity.CurrentmA);
 catch openError
     releaseLED(doricLED);
     BpodSystem.Status.BeingUsed = 0;
@@ -389,7 +395,7 @@ try
     if isfield(BpodSystem.Data, 'Session')
         BpodSystem.Data.Session.PlotsImage = plotsImage;
         BpodSystem.Data.Session.HouseLight = devices.houseLight.record(BpodSystem.Data);
-        BpodSystem.Data.Session.DoricLED = lum.led.sessionRecord(S, devices.doricLED, cals);
+        BpodSystem.Data.Session.DoricLED = lum.led.sessionRecord(S, devices.doricLED, cals, ledIntensity);
         BpodSystem.Data.Session.DeviceLog = deviceLogs(devices);
         BpodSystem.Data.Session.Cameras = devices.cameras.sessionRecord();
         BpodSystem.Data.Session.EndTime = char(datetime('now'), 'yyyy-MM-dd HH:mm:ss');
@@ -421,8 +427,9 @@ if ~headless
     if devices.houseLight.Switchable
         S.Session.HouseLight = devices.houseLight.On;  % Where the operator left it
     end
-    if devices.doricLED.isControlled() && all(~isnan(devices.doricLED.CurrentmA))
-        S.Doric.CurrentmA = devices.doricLED.CurrentmA;  % As changed from the LED window
+    if devices.doricLED.isControlled()
+        S = lum.led.keepIntensity(S, 'Behaviour', cals, ledIntensity.CurrentmA, ...
+                                  devices.doricLED.CurrentmA);  % As changed from the LED window
     end
     saveSettings(settingsFile, S);
 end

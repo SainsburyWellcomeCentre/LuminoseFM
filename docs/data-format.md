@@ -95,7 +95,11 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
   `Cable`, `nFibers`, `FiberDiameter` (mm), `Area` (mm²); `Calibrations`, a 1 × 2 cell holding the
   calibration of the cable on each channel as used, or `[]` (`Bundle`, `Cable`, `MeasuredOn` and
   `MeasuredLEDChannel`, the channel it was measured through, `CurrentmA`, `PowermW`,
-  `IrradiancemWmm2`, `PowerUnit`, `PowerTyped`, `Date`, `Notes`); and `Device`: `CurrentmA` and `MaxCurrentmA` at the end, `Changes`
+  `IrradiancemWmm2`, `PowerUnit`, `PowerTyped`, `Date`, `Notes`; from 0.9.1 always measured on the
+  channel it is used on); `Intensity` (0.9.1, `lum.led.intensity`): `Type`, `IrradiancemWmm2` asked
+  for and `TypedmA` (1 × 2, A then B; which one applied follows `Calibrated`), `CurrentmA` the session
+  started at, `ReachedmWmm2` the irradiance that gives (NaN without a calibration) and `Notes` (a
+  channel that could not reach what was asked, or had no calibration); and `Device`: `CurrentmA` and `MaxCurrentmA` at the end, `Changes`
   (one row per current sent: session seconds on the LED's clock, channel 1 = A, mA, trial or block)
   and `Package`, the DoricLED package's record of what the driver acknowledged (without its log).
   Irradiance for any current: `lum.led.irradiance(Session.DoricLED.Calibrations{k}, mA)`.
@@ -378,6 +382,10 @@ the null device shims swallowed is recorded in `Data.Session.DeviceLog`. See
   incorrect choices (`PunishCondition` 3). A noise-only punishment of an incorrect choice, or of an
   early withdrawal that ended the trial, was cut off by the ITI one state machine cycle after it
   started on the rig.
+- **Sessions before 0.9.1** have no `Session.DoricLED.Intensity`, and set the LED at `Settings.CurrentmA`
+  whether or not a channel was calibrated; a calibration in them may have been measured on the other
+  channel (compare `MeasuredOn` with `LightPaths(k).Channel`), and was used as it was. Sleep test pulses
+  ran at behaviour's `S.Doric.CurrentmA`.
 - **Sessions before 0.7.2** name the 2-to-19 bundle's cables `'ch1 fiber'` (10 fibers, on A) and
   `'ch2 fiber'` (9, on B) in `Session.DoricLED.LightPaths`, and their settings' `Light.Cables` is not
   read for that bundle. From 0.7.2 the cables are named by colour, blue (9 fibers) and green (10), blue

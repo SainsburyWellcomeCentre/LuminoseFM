@@ -23,9 +23,8 @@ function cal = makeCalibration(path, currents, powers, powerUnit, varargin)
 %   'Date'     datetime of the calibration (default now)
 %   'Notes'    Free text, e.g. the power meter and its wavelength setting
 %
-% The calibration belongs to the cable (Bundle, Cable), not to the channel it was measured
-% on: the two LED channels are taken to give equal power at equal current.
-% MeasuredOn and MeasuredLEDChannel record which channel lit it.
+% The calibration belongs to the cable (Bundle, Cable) on the channel it was measured on
+% (MeasuredOn, MeasuredLEDChannel): the same cable on the other channel needs its own.
 %
 % Returns a struct: MeasuredOn ('A' or 'B'), MeasuredLEDChannel, Bundle, Cable, nFibers, FiberDiameter (mm),
 % Area (mm2), CurrentmA and PowermW and IrradiancemWmm2 (column vectors, sorted by

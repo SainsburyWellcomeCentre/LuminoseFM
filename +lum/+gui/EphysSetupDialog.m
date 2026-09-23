@@ -16,8 +16,11 @@ function [S, accepted, app] = EphysSetupDialog(S, rig, varargin)
 %                      (lum.gui.DoricSetup)
 %   Cameras            video (lum.gui.CameraSetup)
 %
-% Intensities are shown and typed in mW/mm2 where a channel's light path is calibrated,
-% in mA where it is not (lum.gui.IntensityField); settings keep mA. Everything is
+% Intensities are shown and typed in mW/mm2 where a channel's light path (its cable,
+% calibrated on that channel) is calibrated, in mA where it is not
+% (lum.gui.IntensityField); settings keep both forms (S.Ephys). By default the curve runs
+% from 0 to 12 mW/mm2, or to the most the channel gives if less, and the pairs are at
+% 8 mW/mm2; uncalibrated, from 0 mA to the channel's limit, and pairs at 100 mA. Everything is
 % validated on every edit by lum.ephys.validate, and Start stays disabled while anything
 % fails.
 %
@@ -147,12 +150,15 @@ names = {'A', 'B'};
 for ch = 1:2
     label(grid, sprintf('Channel %s from', names{ch}));
     fields.IOMin{ch} = lum.gui.IntensityField(grid, e.InputOutput.MinmA(ch), @refresh, ...
+        'Irradiance', e.InputOutput.MinIrradiancemWmm2(ch), 'LimitmA', S.Doric.MaxCurrentmA(ch), ...
         'Tooltip', 'The lowest intensity of the curve; 0 gives pulses with no light, a baseline.');
 end
 for ch = 1:2
     label(grid, sprintf('Channel %s to', names{ch}));
     fields.IOMax{ch} = lum.gui.IntensityField(grid, e.InputOutput.MaxmA(ch), @refresh, 'AllowEmpty', true, ...
-        'Tooltip', 'The highest intensity of the curve. It has no default: give it for each channel used.');
+        'Irradiance', e.InputOutput.MaxIrradiancemWmm2(ch), 'LimitmA', S.Doric.MaxCurrentmA(ch), ...
+        'Tooltip', ['The highest intensity of the curve. Above what the channel gives, or empty, the '...
+                    'curve ends at the most it gives within its limit.']);
 end
 label(grid, 'Levels');
 controls.IOLevels = lum.gui.Form.number(grid, e.InputOutput.nLevels, [2 100], @refresh, true);
@@ -169,6 +175,7 @@ controls.PPEnabled.Layout.Column = [1 3];
 for ch = 1:2
     label(grid, sprintf('Channel %s intensity', names{ch}));
     fields.PP{ch} = lum.gui.IntensityField(grid, e.PairedPulse.CurrentmA(ch), @refresh, ...
+        'Irradiance', e.PairedPulse.IrradiancemWmm2(ch), 'LimitmA', S.Doric.MaxCurrentmA(ch), ...
         'Tooltip', 'The intensity of both pulses of every pair.');
 end
 label(grid, 'Inter-pulse intervals (ms)');
@@ -208,7 +215,8 @@ controls.BarcodeAxes = previewAxes(barcodeGrid);
 cameras = lum.gui.CameraSetup(cameraTab, S.Camera, t, @refresh, 'Subject', S.Meta.Subject);
 controls.Tabs.Cameras = cameraTab;
 doric = lum.gui.DoricSetup(doricTab, S, t, @refresh, p.Results.DoricLED, ...
-                           'CalibrationFolder', p.Results.CalibrationFolder);
+                           'CalibrationFolder', p.Results.CalibrationFolder, ...
+                           'Intensity', 'EphysCalibration');
 controls.Tabs.Doric = doricTab;
 
 controls.Help = uilabel(outer, 'Text', '', 'WordWrap', 'on', 'FontSize', 11, ...
@@ -329,9 +337,12 @@ end
         candidate.Ephys.InputOutput.Enabled = c.IOEnabled.Value;
         candidate.Ephys.InputOutput.MinmA = [fields.IOMin{1}.currentmA(), fields.IOMin{2}.currentmA()];
         candidate.Ephys.InputOutput.MaxmA = [fields.IOMax{1}.currentmA(), fields.IOMax{2}.currentmA()];
+        candidate.Ephys.InputOutput.MinIrradiancemWmm2 = [fields.IOMin{1}.irradiance(), fields.IOMin{2}.irradiance()];
+        candidate.Ephys.InputOutput.MaxIrradiancemWmm2 = [fields.IOMax{1}.irradiance(), fields.IOMax{2}.irradiance()];
         candidate.Ephys.InputOutput.nLevels = round(c.IOLevels.Value);
         candidate.Ephys.PairedPulse.Enabled = c.PPEnabled.Value;
         candidate.Ephys.PairedPulse.CurrentmA = [fields.PP{1}.currentmA(), fields.PP{2}.currentmA()];
+        candidate.Ephys.PairedPulse.IrradiancemWmm2 = [fields.PP{1}.irradiance(), fields.PP{2}.irradiance()];
         candidate.Ephys.PairedPulse.Intervals = ...
             lum.gui.parseNumbers(c.PPIntervals.Value, 'Inter-pulse intervals') / 1000;
         candidate.Sync.Barcode.Enabled = c.BarcodeEnabled.Value;
@@ -353,6 +364,9 @@ end
             fields.IOMin{k}.setCalibration(cals{k});
             fields.IOMax{k}.setCalibration(cals{k});
             fields.PP{k}.setCalibration(cals{k});
+            fields.IOMin{k}.setLimit(candidate.Doric.MaxCurrentmA(k));
+            fields.IOMax{k}.setLimit(candidate.Doric.MaxCurrentmA(k));
+            fields.PP{k}.setLimit(candidate.Doric.MaxCurrentmA(k));
             fields.IOMin{k}.setEnable(used(k) && candidate.Ephys.InputOutput.Enabled);
             fields.IOMax{k}.setEnable(used(k) && candidate.Ephys.InputOutput.Enabled);
             fields.PP{k}.setEnable(used(k) && candidate.Ephys.PairedPulse.Enabled);

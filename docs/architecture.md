@@ -799,7 +799,7 @@ unchanged. What MATLAB adds is the current:
   session type dialog and it connects in the background while the operator sets up. The setup
   dialogs' Doric LED tab (`lum.gui.DoricSetup`) shows it, calibrates with it and opens the package's
   own window on it; the session then waits for it (`ensureReady`) and sets both channels up
-  (`setUp`: limits, external TTL at `S.Doric.CurrentmA`, started). Every way out of the protocol
+  (`setUp`: limits, external TTL at the currents `lum.led.intensity` gives, started). Every way out of the protocol
   releases it, and teardown closes it first, so both channels are off before PulsePal is released.
 - **Changed only between light.** The LED window (`lum.gui.DoricWindow`) asks for a current
   (`request`); `applyPending` sends it in the next prepare window (behaviour, after the running
@@ -810,36 +810,47 @@ unchanged. What MATLAB adds is the current:
   if the driver does not connect or refuses its settings; unticking the control runs it with the
   driver as set by hand. A session without light runs on with a warning. An ePhys calibration
   session needs the control. The emulator never refuses.
-- **Stored in mA, shown as irradiance when calibrated.** Settings and data hold mA
-  (`S.Doric.CurrentmA`, `S.Ephys.*mA`, `Data.LEDCurrentA/B`, `LightSegments.CurrentmA`). Each
-  channel's light path (the channel and the bundle cable on it, `lum.led.lightPath`) uses the
-  calibration of its cable, if there is one (`lum.led`): power meter readings at several currents,
-  divided by the cable's fiber area (spots × π × (50 µm)²). With one, every window shows and takes
-  that channel's intensity in mW/mm² (`lum.gui.IntensityField`, `lum.led.toUnit`/`fromUnit`),
-  converting by linear interpolation, never extrapolating, and rounding to whole mA. Calibrations
-  live in `calibration/` at the repository root, one file per bundle and cable
-  (`DoricLED_<bundle>_<cable>.mat`), replaced by the next calibration of that cable, and ignored by
-  git. They are measured two cables at a time (`lum.gui.DoricCalibration`, 0.8.1), because the
-  commutator takes two: one table, On/Off and graph per channel, the channel lit in the driver's
-  continuous mode at the selected current, 0–700 mA in 50 mA steps by default.
+- **Asked for in mW/mm² where calibrated, sent and recorded in mA (0.9.1).** Each channel's light
+  path (the channel and the bundle cable on it, `lum.led.lightPath`) uses the calibration of that
+  cable measured on that channel, if there is one (`lum.led`): power meter readings at several
+  currents, divided by the cable's fiber area (spots × π × (50 µm)²). Each session type keeps its
+  intensity per channel in two forms (`lum.led.intensitySetting`): irradiance
+  (`S.Doric.IrradiancemWmm2`, 8 mW/mm² for behaviour; `S.Sleep.TestPulses.IrradiancemWmm2`, 2 for sleep
+  test pulses; `S.Ephys` per protocol) and current (`S.Doric.CurrentmA`, `S.Sleep.TestPulses.CurrentmA`,
+  `S.Ephys.*mA`). As the session starts, `lum.led.intensity` turns each calibrated channel's
+  irradiance into whole mA (`lum.led.currentFor`: linear interpolation, never extrapolating, never
+  above the channel's limit; asked for more than the channel gives, it runs at the most it gives, with
+  a note) and uses the mA on a channel that is not calibrated. What was sent is mA
+  (`Data.LEDCurrentA/B`, `LightSegments.CurrentmA`), and `Session.DoricLED.Intensity` records what
+  was asked for and started at. Windows show and take a calibrated channel's intensity in mW/mm²
+  (`lum.gui.IntensityField`), an uncalibrated one's in mA. Calibrations live in `calibration/` at
+  the repository root, one file per bundle, cable and channel (`DoricLED_<bundle>_<cable>_<A|B>.mat`),
+  replaced by the next calibration of that cable on that channel, and ignored by git; a per-cable
+  file from 0.7.2–0.9.0 is still read for the channel it was measured on. They are measured two cables
+  at a time (`lum.gui.DoricCalibration`, 0.8.1), because the commutator takes two: one table, On/Off
+  and graph per channel, the channel lit in the driver's continuous mode at the selected current,
+  0–700 mA in 50 mA steps by default.
 
 **Why.**
 
 1. *Timing stays in hardware.* A TTL-gated LED lights exactly while PulsePal's output is high; MATLAB
    and USB latency never enter the light's timing, and the emulator reproduces the pattern as
-   before (D1). Setting the current once per trial costs one non-blocking command (~1 ms MATLAB-side).
+   before (D1). Nothing is sent per trial: the current is set once at session start, and again only
+   when the LED window asks, in the next prepare window, as one non-blocking command per channel
+   (about 0.8 ms MATLAB-side; the driver acknowledges in 5–9 ms, DoricLED's `docs/rig-checks.md`),
+   while the running trial's light is over.
 2. *No cost to Bpod.* No state, output, timer or event is added; the per-trial record gains two
    scalars and the session record one small struct (`Session.DoricLED`, the package's own record
    without its log, which goes to `DeviceLog.DoricLED`).
-3. *mA is what the driver takes and what cannot drift.* A stored irradiance would change meaning with
-   every recalibration; a stored current is what was sent. The calibration used is stored with the
-   session, so irradiance can be recomputed from the data.
-4. *A calibration belongs to a cable.* The power leaving a cable depends on the cable's coupling and
-   its fiber count. The two LED channels are taken to give equal power at equal current (measured at
-   the driver's outputs, without the bundle), so the calibration is keyed by bundle and cable only:
-   the operator can swap cables between channels at the commutator without calibrating again, and
-   each cable keeps its own. The channel it was measured on is recorded (`MeasuredOn`). If the two
-   channels ever differ, this assumption is what to revisit.
+3. *The operator thinks in irradiance; the driver takes mA.* A setting in mW/mm² keeps its meaning
+   when a cable moves or is recalibrated: the session finds the current that gives it on the day.
+   The data hold what was sent, in mA, with the calibration used, so irradiance can be recomputed
+   from the data and a later recalibration never changes what a file says. The mA form is kept for
+   channels without a calibration, so an uncalibrated bundle runs as it did before.
+4. *A calibration belongs to a cable on a channel.* Until 0.9.0 the two LED channels were taken to
+   give equal power at equal current and a calibration was keyed by bundle and cable only. On the rig
+   the light leaving a cable also depends on the LED and the commutator channel feeding it, so from
+   0.9.1 it is keyed by bundle, cable and channel: a cable used on both channels is calibrated on each.
 5. *Optional by design.* The protocol runs without the package, as it did before 0.7.0, with the
    driver set by hand; nothing else changes.
 
@@ -860,9 +871,11 @@ unchanged. What MATLAB adds is the current:
 
 **Decision.** A third session type, `'EphysCalibration'`, sends light pulses whose intensity or pairing
 changes step by step, for the response recorded on the probe: an **input-output curve** (single pulses
-from `S.Ephys.InputOutput.MinmA` to `MaxmA` in `nLevels` steps; evenly spaced in irradiance when the
-channel is calibrated, in mA when not) and a **paired-pulse ratio** (pairs at `S.Ephys.PairedPulse.CurrentmA`,
-one step per inter-pulse interval, 20–500 ms by default). Each step sends `Repeats` epochs, one every
+in `nLevels` steps; on a calibrated channel from `S.Ephys.InputOutput.MinIrradiancemWmm2` to
+`MaxIrradiancemWmm2`, 0–12 mW/mm² by default and capped at the most the channel gives, evenly spaced
+in irradiance; on one that is not, from `MinmA` to `MaxmA`, NaN meaning the channel's limit, spaced in
+mA) and a **paired-pulse ratio** (pairs at `S.Ephys.PairedPulse.IrradiancemWmm2`, 8 mW/mm², or
+`CurrentmA` where not calibrated; one step per inter-pulse interval, 20–500 ms by default). Each step sends `Repeats` epochs, one every
 `InterEpochInterval` (1 s by default), on A, B or both; the steps of each protocol run ascending,
 descending or shuffled from a seed.
 

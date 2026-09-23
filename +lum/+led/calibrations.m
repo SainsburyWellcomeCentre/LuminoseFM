@@ -1,10 +1,10 @@
 function cals = calibrations(S, folder)
-% lum.led.calibrations reads the calibrations of the cables on channels A and B.
+% lum.led.calibrations reads the calibrations of the light paths on channels A and B.
 %
 %   cals = lum.led.calibrations(S)     % 1 x 2 cell, A then B: a calibration struct, or [] for none
 %
-% Each is the calibration of the cable on that channel (S.Light.Cables), whichever channel
-% it was measured on (lum.led.calibrationFile).
+% Each is the calibration of the cable on that channel (S.Light.Cables) measured on that
+% channel (lum.led.calibrationFile). A channel without one runs in mA.
 %
 % See also: lum.led.lightPath, lum.led.loadCalibration
 

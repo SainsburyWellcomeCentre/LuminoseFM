@@ -36,5 +36,5 @@ else
 end
 notes = [notes lum.sleep.validateClock(S, rig, S.Sleep.Sync, 'Sleep', durationMinutes)];
 if S.Sleep.TestPulses.Enabled
-    lum.led.validate(S);   % The LED currents and their limits (D17)
+    lum.led.validate(S, {}, 'Sleep');   % The LED intensities and their limits (D17)
 end

@@ -43,7 +43,7 @@ CheckRig            % preflight report — worth reading before the first animal
 
 `CheckRig` prints one line per check: the state machine, the behaviour ports, the optogenetic BNC
 lines, the house light's BNC input, the HiFi module, the Flex I/O configuration, PulsePal, the Doric
-LED (the DoricLED package, its bridge, and which cables are calibrated), the liquid calibration
+LED (the DoricLED package, its bridge, and which cables are calibrated on which channel), the liquid calibration
 and the data folder. Failures name the exact thing to change and where. The protocol runs it at startup too.
 
 ```matlab
@@ -385,7 +385,8 @@ Bpod's notebook plugin is also initialised, for manual annotation during the ses
 
 Opens beside the plots in every session with light (untick *LED window in the session* on the Doric
 LED tab to leave it closed). It shows each channel's LED current, and its irradiance when the channel
-is calibrated. In behaviour and sleep sessions, type a new intensity and press **Apply**: it is sent
+is calibrated. In behaviour and sleep sessions, type a new intensity (mW/mm² on a calibrated channel, mA
+otherwise) and press **Apply**: it is sent
 between trials (or sleep blocks), never while light is gated, the channel reads *waiting for the next
 trial* until then, and each trial records the current it ran at. The intensity you leave it at is
 kept for the next session. In an ePhys calibration session the schedule sets the current, and the
@@ -553,10 +554,13 @@ The **ePhys calibration setup dialog** has three tabs: the session, **Doric LED*
   (5 ms by default), the interval between epochs (1 s, onset to onset), the repeats per step (10),
   and the order of the steps within each protocol: ascending, descending, or shuffled from a seed.
 - **Input-output curve** — single pulses from a lowest intensity (0 by default: pulses with no light,
-  a baseline) to a highest one, which has no default and must be given, in a number of levels (8).
-  Levels are evenly spaced in irradiance when the channel is calibrated, in mA when not.
-- **Paired-pulse ratio** — pairs of pulses at one intensity, one step per inter-pulse interval
-  (onset to onset): 20, 30, 50, 75, 100, 200, 300 and 500 ms by default.
+  a baseline) to a highest one, in a number of levels (8). On a calibrated channel it runs from 0 to
+  12 mW/mm² by default, levels evenly spaced in irradiance; if the channel gives less than 12 within
+  its limit, the curve ends at the most it gives, and a note says so. On a channel that is not
+  calibrated it runs in mA, from 0 to the channel's limit by default (leave *to* empty for the limit).
+- **Paired-pulse ratio** — pairs of pulses at one intensity (8 mW/mm² by default, or 100 mA on a
+  channel that is not calibrated), one step per inter-pulse interval (onset to onset): 20, 30, 50, 75,
+  100, 200, 300 and 500 ms by default.
 - The sync pulses, the house light and the session barcode, as for sleep. The barcode's markers are
   **300 ms** (behaviour 100 ms, sleep 200 ms), so a continuous recording says which kind of session
   each stretch holds.
@@ -593,9 +597,16 @@ their LED current while PulsePal's output into them is high.
 - **Fiber bundle** — the bundle on the animal, and the cable, by colour, on each channel: blue on A and
   green on B by default on the 2-to-19 bundle, orange on A and blue on B on the 4-to-19. If you swap
   the cables at the commutator, swap them here too. **Calibrate LED power…** measures the cables (below).
-- **Intensity** — per channel: the intensity (mA, or mW/mm² when calibrated), the **limit** in mA
-  (700 by default, at most 1000, the LED's rating; anything above is refused, never reduced), the
-  light path (cable, fibers, area) and the calibration.
+- **Intensity** — per channel: the intensity, the **limit** in mA (700 by default, at most 1000, the
+  LED's rating; the LED is never set above it), the light path (cable, fibers, area) and the
+  calibration. On a channel whose cable is calibrated on that channel the intensity is irradiance at
+  the fiber tips, in mW/mm², and the field shows the current that gives it; the session sets that
+  current as it starts. By default **8 mW/mm²** on both channels in behaviour and **2 mW/mm²** for
+  sleep test pulses (the sleep dialog's tab sets the test pulses' own). Asked for more than the
+  channel gives within its limit, it runs at the most it gives, and the field and the session's notes
+  say so. On a channel that is not calibrated the intensity is the LED current in mA (100 by default),
+  so a bundle that has never been calibrated runs without one. In the ePhys calibration dialog the
+  intensities are on its own tab (§8).
 
 A session with light whose LED is controlled from MATLAB does not start if the driver does not
 connect: check its USB cable and power and that Doric Neuroscience Studio is closed, or untick the
@@ -606,8 +617,8 @@ control. The protocol switches both channels off when the session ends.
 4-to-19). **Calibrate LED power…** opens one window for the two cables on the commutator, one on each
 channel. It starts with the tab's bundle and cables; the 2-to-19 bundle is one pair (blue and green),
 the 4-to-19 two (for example orange and blue, then black and green: plug the next pair into the
-commutator and choose it). The line under the cables says which of the bundle's cables are calibrated,
-and when.
+commutator and choose it). The line under the cables says which of the bundle's cables are calibrated
+on A and on B, and when.
 
 1. Hold the power meter at a cable's tip (set to 465 nm). Keep the fibers away from any animal: the
    light is continuous (the driver's continuous mode).
@@ -621,15 +632,22 @@ and when.
    Choosing another cable drops that channel's unsaved readings, after asking. Closing the window
    switches both channels off.
 
-A calibration belongs to the cable, not the channel: the two LED channels are taken to give equal power
-at equal current, so a cable moved to the other channel at the commutator keeps its calibration. Each
-cable used needs one calibration, on either channel. It is saved in `calibration/` in the protocol
-folder (`DoricLED_<bundle>_<cable>.mat`, with a `.png` of the graph), which git does not track, so each
-rig keeps its own. Calibrating the same cable again replaces it. From then on every session type, and
-the LED window, shows and takes the intensity of whichever channel that cable is on in mW/mm²,
-converting with the calibration; a value
-outside the currents measured is refused. Settings and data keep mA, and each data file stores the
-calibration it used, so irradiance can always be worked out again.
+A calibration belongs to a cable **on a channel**: the light leaving a cable depends on the LED and
+the commutator channel feeding it, so the orange cable on A and the orange cable on B are two
+calibrations. To use a cable on both channels, calibrate it on A, swap the pair at the commutator (and
+on the tab), and calibrate it on B. Each is saved in `calibration/` in the protocol folder
+(`DoricLED_<bundle>_<cable>_<A|B>.mat`, with a `.png` of the graph), which git does not track, so each
+rig keeps its own; calibrating the same cable on the same channel again replaces it. A calibration
+saved before 0.9.1 (`DoricLED_<bundle>_<cable>.mat`) is still used, on the channel it was measured on
+only. From then on every session type, and the LED window, takes that channel's intensity in mW/mm².
+Data keep the current sent, in mA, and each data file stores the calibrations it used and the
+intensity asked for, so irradiance can always be worked out again.
+
+**Delay.** Setting an intensity adds nothing to a trial. The current is set once as the session
+starts; after that the driver is written to only when you press **Apply** in the LED window, in the
+next inter-trial window (or between sleep blocks, or before an ePhys step), one command per channel
+that takes under a millisecond of MATLAB's time and that the driver acknowledges in 5–9 ms, while no
+light is gated. Timing within the trial is Bpod's and PulsePal's alone.
 
 **Checking the light path:** `TestDoricLED` (§13).
 

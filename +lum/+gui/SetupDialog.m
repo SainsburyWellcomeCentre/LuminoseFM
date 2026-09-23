@@ -186,7 +186,7 @@ end
         try
             candidate = collectSettings();
             lum.validateSettings(candidate, rig);
-            lum.led.validate(candidate, doric.calibrations());
+            lum.led.validate(candidate, doric.calibrations(), 'Behaviour');
         catch settingsError
             setStatus(settingsError.message, false);
             uialert(fig, settingsError.message, 'Settings not usable');
@@ -360,10 +360,13 @@ end
                               message);
         end
         try
-            ledNotes = lum.led.validate(candidate, doric.calibrations());
+            ledNotes = lum.led.validate(candidate, doric.calibrations(), 'Behaviour');
         catch ledError
             setStatus(ledError.message, false);
             return
+        end
+        if ~candidate.Session.UseOpto
+            ledNotes = {};   % No light, so nothing to say about its intensity
         end
         notes = [notes ledNotes];
         cameraNote = cameras.problem(candidate.Camera);
