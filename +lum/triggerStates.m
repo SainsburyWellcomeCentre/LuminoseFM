@@ -11,10 +11,21 @@ function names = triggerStates(S)
 % after it and receive light, so uploading a state machine or reprogramming PulsePal
 % there would fall inside the stimulus.
 %
+% When a completed hold may end before the light pattern does
+% (lum.HoldShaping.lightMayOutlastHold), the light can still be on in any of those
+% states, and the prepare window changes LED currents and may program PulsePal. The
+% ITI is then the only trigger state: every trial that ends reaches it through
+% WaitForLightEnd, after the light (D21). The next trial is prepared in the ITI, as it
+% already was after NoInitiation and NoResponse.
+%
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
 % See also: lum.SessionRunner, lum.buildTrialSM, lum.HoldShaping
 
+if lum.HoldShaping.lightMayOutlastHold(S)
+    names = {'ITI'};
+    return
+end
 names = {'LeftReward', 'RightReward', 'IncorrectChoice', 'NoResponse', ...
          'NoInitiation', 'WithdrewBeforeReward'};
 if ~lum.HoldShaping.restartsOnBreak(S)

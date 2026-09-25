@@ -62,7 +62,8 @@ ran for their calibrated times on 2026-09-24), the centre reward and the punishm
 end; P6 the End button with the camera and LED windows open (it froze MATLAB before 0.8.1); P7 the
 startup line in a desktop launch; P8 the 0.9.0 stimulus families at the fiber tips, the designer in a
 desktop MATLAB, and centre reward again; P9 the driver's knob at 1000 mA and the LED head's temperature;
-P10 the 0.9.4 reward refusal and shaping seen in a desktop session.** (P1–P3 passed on 2026-09-21; on
+P10 the 0.9.4 reward refusal and shaping seen in a desktop session; P11 the 0.9.5 light playing on
+after a short hold, from the saved file and at the fiber tips.** (P1–P3 passed on 2026-09-21; on
 2026-09-24 the pre-deployment validation ran every device and a behaviour, sleep and ePhys session on
 the rig with video — `docs/validation-2026-09-24.md`. Channel B gives about 58% of A's irradiance on
 every cable.)
@@ -107,7 +108,9 @@ the r2+. Design around this:
   `rig.Limits.GlobalTimers` from `RigConfig`; never hard-code 16. The trial uses conditions
   1–4 (left, right, centre port clear; hold window over) and always one timer, the hold
   window, so the emulator has four left for light — fewer when a cue light or cue air goes off
-  part way through the stimulus, which takes one each. The sync line and the house light take
+  part way through the stimulus, which takes one each, and when the hold can be shorter than the
+  light (a growing hold, or a fixed one shorter than the window), which takes the light clock
+  and condition 5, the emulator's last (D21). The sync line and the house light take
   none, in any mode.
 - **No Flex I/O at all**: no `Flex1` analog stream, no `Flex2DO`, so no airflow viewer, no
   sync pulses and no session barcode (it is recorded with `Sent = false`).
@@ -184,6 +187,9 @@ stops the session part way through as though the End button had been pressed.
   its spec (`nextGUI`/`trialGUI` in `LuminoseFM.m`); record from those, never from the current `S`
   (0.9.3 and earlier recorded trial *k*+1's). `Session.Settings` is S as trial 1 was prepared;
   `Session.LiquidCalibration` the valves' calibrations (0.9.4).
+- `Data.Session.LightMayOutlastHold` and `Data.Session.TriggerStates` (0.9.5, D21) say whether a
+  completed hold could end before the light and where the next trial was prepared. Every trial has
+  the state `WaitForLightEnd` before the `ITI`.
 - `Data.Session.StoppedReason` is `''` for a behaviour session that ran to its end or was stopped from
   the console, and the error message for one that failed; sleep and ePhys sessions keep theirs in
   `Session.TestPulses.StoppedReason` / `Session.Ephys.StoppedReason`. `Session.StimulusSet.GroupPLeft` is
@@ -296,7 +302,10 @@ doc that does not:
 | stimulus window | `S.Stimulus.Duration` from stimulus onset | stimulus duration of the hold |
 | latency | `S.Stimulus.Latency`, poke to stimulus onset, held with the cue on | delay, pre-stimulus hold (as a setting) |
 | hold / hold break / grace | centre hold; leaving during it; forgiven break length | |
+| drinking grace | after a side reward, time out of both side ports before the trial ends (`S.GUI.DrinkingGrace`, 0.3 s; a side poke restarts it) | grace (alone: that is the hold's) |
 | hold window | `S.GUI.HoldWindow`, from trial start, across restarts | initiation window (0.2 name) |
+| fixed hold | the hold without growth set in seconds from stimulus onset (`S.Task.HoldLength` *Fixed*, `S.Task.FixedHold`); *Whole stimulus* is the window plus the post-stimulus hold | minimum hold |
+| light clock | the global timer as long as a trial's light that `WaitForLightEnd` waits for after a completed hold shorter than the light (`plan.lightClock`, `reserved.LightClock`, D21) | stimulus timer |
 | session type | `'Behaviour'`, `'Sleep'` or `'EphysCalibration'` (`S.Session.Type`, `Data.Session.Type`); shown as Behaviour, Sleep, ePhys calibration (`lum.gui.Form.sessionLabel`) | protocol, mode |
 | carrier | PulsePal per-channel frequency, pulse width, voltage | waveform |
 | centre | British spelling in identifiers too (`CentreHold`) | `Center` |
@@ -432,7 +441,9 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   `history.withdrawalsAtHold`, kept by `lum.updateHistory`. Each step is taken from the hold of the
   trial still running (`lum.HoldShaping.notePrepared`, called in the prepare window after
   `nextTrialSpec`), so every completed hold is one step, one trial late. Future difficulty shaping goes under the
-  same switch.
+  same switch. Without growth the hold is `lum.HoldShaping.fullHold(S)`: *Whole stimulus* (window plus
+  post-stimulus hold) or *Fixed* (`S.Task.HoldLength`, `S.Task.FixedHold`), which an Experiment
+  session may use; a growing hold replaces it.
 - **House light (D15).** PulsePal's, not Bpod's: **PulsePal OUT3** → BNC splitter → the light's LED
   driver, and the copy into **Bpod BNC input 1** (`rig.HouseLight`: `PulsePalChannel` 3, `Voltage` 5,
   `Input` `'BNC1'`, `OnEvent` `'BNC1High'`, `OffEvent` `'BNC1Low'`). Switched at once, mid-trial and
@@ -577,9 +588,11 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   window)` (the mixture's cycles depend on all three: `MixtureLayout` `'spread'` shares each amount
   over `MixtureCycles` cycles, two timers each, so the light lasts the whole window; given the
   window, it also makes the bin finer, never coarser, when the defaults cannot be drawn in it), and
-  **every family's defaults must compile within 4 timers (the emulator) and 15 (the rig) with no
-  warning**, in the default window and in a coarse one — `generateTest` checks it; a new family or
-  default must pass it. Typed
+  **every family's defaults must compile with no warning at every budget a session can leave for
+  light: 4, 3 and 2 in the emulator, 15, 14 and 13 on the rig** (the hold clock and the light clock
+  take one each, D21), in the default window and in a coarse one — `generateTest` checks it; a new
+  family or default must pass it. The setup dialog reloads an untouched family's defaults when the
+  budget changes (`followBudget`: stage, shaping, fixed hold), and leaves an edited stimulus alone. Typed
   P(left) is kept only while the group labels are unchanged (`lum.pattern.typedPLeft`); the dialogs
   compile with the family's contingency and apply a typed one on top. Fractions of the window are
   shared over whole bins (never demand that one setting divides another), and the bin is adjusted to
@@ -608,10 +621,10 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
 - **Trial-flow contract**: state names stay fixed across stimulus modalities, cues and hold
   shaping (trial start / waiting for the poke with the cue on / pre-stimulus hold (the latency)
   / centre hold / hold break / resumed hold / centre reward / centre exit / response / reward /
-  incorrect choice / retry / ITI); these change only the `OutputActions`, state timers, global timers and where a
+  incorrect choice / retry / waiting for the light to end / ITI); these change only the `OutputActions`, state timers, global timers and where a
   poke, a completed hold or a wrong side poke leads. Plots, analysis and `lum.scoreTrial` depend
   on this. Version 0.4 removed the `Cue`, `Cue2`… states (D12); 0.8.0 added `CentreReward` and
-  `RetryResponse` (D19).
+  `RetryResponse` (D19); 0.9.5 `WaitForLightEnd` (D21).
   - **The cue lasts until the stimulus starts, `S.Stimulus.Latency` after the poke (D12).** Every
     cue component is an output of `WaitForCentrePoke`, which has no timer. `Port2In` there leads
     to `PreStimulusHold` when the latency is above 0 and straight to `CentreHold` at 0, the
@@ -631,6 +644,18 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
     and leaves on that timer's end or condition 4. Never trigger or cancel the hold window
     anywhere else, and keep `EarlyWithdrawal` out of the trigger states in restart mode
     (`lum.triggerStates`).
+  - **A completed hold leaves the light to play to its end (D21).** The hold ending (`CentreReward`,
+    `WaitForCentreExit`, `WaitForResponse`) stops the cue, the other stimulus components and the
+    hold clock, never the light's timers or lines; only `EarlyWithdrawal` cancels the light. Every
+    path that ends the trial goes through `WaitForLightEnd` to the `ITI`. When the trial's light
+    ends after its hold, the builder adds the **light clock** (a global timer as long as the light,
+    onset 0, triggered in `CentreHold`, cancelled in `EarlyWithdrawal`) and condition 5 (clock not
+    running); `WaitForLightEnd` leaves on either, and otherwise passes straight on. A session where
+    this can happen (`lum.HoldShaping.lightMayOutlastHold`: light on, and a growing hold or a fixed
+    one shorter than the window) reserves the clock (`lum.timerBudget`) and prepares the next trial
+    in the `ITI`, its only trigger state, because the prepare window changes LED currents. Decide
+    it from pre-session settings only; never let the light's timers be cancelled at the hold's end
+    again, and never end a trial while the light may be on.
   The
   hold ends in `WaitForCentreExit`, which waits for `Port2Out` (or condition 3, the centre
   port already clear) before opening the response window — do not shortcut `CentreHold`
@@ -713,13 +738,13 @@ where it can be tested with no hardware.
 | `+lum/defaultSettings.m`, `mergeSettings.m` | The two-tier settings struct; old settings files converted (renames, reshapes, retirements) |
 | `+lum/validateSettings.m` | Everything that must hold before a session starts; returns the stimulus set |
 | `+lum/stageDefaults.m` | The session a training stage assumes: habituation is air and no light; shaping on in habituation and training |
-| `+lum/timerBudget.m` | Global timers left for light after sync, hold clock and timed components |
+| `+lum/timerBudget.m` | Global timers left for light after sync, hold clock, light clock and timed components |
 | `+lum/buildTrialSM.m` | The state graph (fixed names; outputs, timers and transitions vary) |
 | `+lum/cueTiming.m` | What each cue component does once the stimulus starts: continues, off, or timed (D12) |
 | `+lum/nextTrialSpec.m` | Trial policy: follow the order, run limit and bias correction by swapping, stage, hold, centre reward |
 | `+lum/centreRewardAgain.m` | The centre reward asked for again mid-session: starts, ends and unticks its run |
-| `+lum/HoldShaping.m` | Automatic shaping of the centre hold: active mode, next hold and grace, step back after early withdrawals, description; break modes (restart or end) |
-| `+lum/triggerStates.m` | The states that open the prepare window, by break mode |
+| `+lum/HoldShaping.m` | Automatic shaping of the centre hold: active mode, next hold and grace, step back after early withdrawals, description; break modes (restart or end); the hold without growth (whole stimulus or fixed, `fullHold`) and whether the light may outlast it (`lightMayOutlastHold`) |
+| `+lum/triggerStates.m` | The states that open the prepare window, by break mode; the ITI alone when the light may outlast the hold |
 | `+lum/scoreTrial.m` | Outcome classification from states and events, including hold breaks and attempts |
 | `+lum/punishmentFor.m` | Which mistakes are punished, and how; whether a wrong choice may be retried |
 | `+lum/valveTimes.m` | Valve open times for a volume from Bpod's liquid calibration: 0 µL opens nothing, a volume past the fit's peak is refused, one outside the measurements noted. Every valve time goes through it |
@@ -980,7 +1005,8 @@ Keep documentation current in the same change that alters behaviour:
   sleep sessions, D14 video through SpinCam, D15 the house light on PulsePal, looped back into Bpod, D16 the plots
   image and settings kept at teardown, D17 the Doric LED sets the intensity, D18 ePhys calibration
   sessions, D19 the centre reward and the retry after an unpunished incorrect choice, and centre
-  reward again, D20 stimulus families as questions, their contingency and single-cue ceilings). Read
+  reward again, D20 stimulus families as questions, their contingency and single-cue ceilings, D21 the
+  light playing to its end after a completed hold, and the fixed hold). Read
   it before changing the stimulus path, the state graph, sleep blocks or the GUI.
 - `docs/` — rig drawings, `BpodSystemInfo.png`, logo.
 

@@ -97,6 +97,7 @@ runtime = lum.gui.runtimeFields(S);
 cachedSet = [];
 cachedKey = {};
 shownSet = [];
+loadedBudget = NaN;   % The timers left for light when the stimulus was last looked at
 pLeftTyped = S.Task.GroupPLeft;  % Empty: the family's contingency
 pLeftFor = {};                   % The groups typed values belong to; {} when not known
 drawnKeys = struct('Flow', {{}}, 'Cue', {{}}, 'Barcode', {{}}, 'Browser', {{}});
@@ -240,6 +241,34 @@ end
         refresh();
     end
 
+    function candidate = followBudget(candidate)
+        % A family's defaults follow the timers left for light. When they change — a
+        % training stage, automatic shaping, a fixed hold, a timed component — and the
+        % stimulus is still exactly the family's defaults for the timers it had, they are
+        % loaded again for the new number, so that choosing Training after a family, say,
+        % never leaves a pattern the machine refuses (a mixture's cycles in the emulator).
+        % A stimulus the operator has changed is left as it is.
+        budget = lum.timerBudget(candidate, rig);
+        if isequal(budget, loadedBudget)
+            return
+        end
+        generator = candidate.Stimulus.Generator;
+        window = candidate.Stimulus.Duration;
+        if ~isnan(loadedBudget) && isfield(generator, 'Family') && window > 0
+            try
+                asLoaded = lum.pattern.familyDefaults(generator, generator.Family, loadedBudget, window);
+                if isequal(generator, asLoaded)
+                    S.Stimulus.Generator = lum.pattern.familyDefaults(generator, generator.Family, ...
+                                                                      budget, window);
+                    candidate.Stimulus.Generator = S.Stimulus.Generator;
+                end
+            catch
+                % Not a family's defaults as they stand; leave it to validation
+            end
+        end
+        loadedBudget = budget;
+    end
+
     function current = currentSet()
         % The stimulus set as last compiled and shown.
         current = shownSet;
@@ -329,6 +358,7 @@ end
             setStatus(readError.message, false);
             return
         end
+        candidate = followBudget(candidate);
         updateAppearance(candidate);
         try
             key = setKey(candidate, rig);
@@ -419,6 +449,8 @@ end
         candidate.Task.AutoShaping = c.AutoShaping.Value;
         candidate.Task.HoldShaping = c.HoldShaping.Value;
         candidate.Task.OnHoldBreak = c.OnHoldBreak.Value;
+        candidate.Task.HoldLength = c.HoldLength.Value;
+        candidate.Task.FixedHold = c.FixedHold.Value;
         candidate.Task.GroupPLeft = pLeftTyped;
 
         for k = 1:numel(candidate.Cue.Components)
@@ -489,6 +521,9 @@ end
                                      lum.HoldShaping.describe(candidate));
         c.HoldNote.Text = lum.HoldShaping.describeHold(candidate);
         setEnable({c.HoldShaping}, candidate.Task.AutoShaping);
+        grows = lum.HoldShaping.growsHold(candidate);
+        setEnable({c.HoldLength}, ~grows);
+        setEnable({c.FixedHold}, ~grows && lum.HoldShaping.isFixed(candidate));
         setEnable(runtimeHandles(c.Runtime, {'HoldStart', 'HoldGrowth', 'HoldTarget', ...
                                              'HoldStepBackAfter'}), ...
                   lum.HoldShaping.growsHold(candidate));
@@ -549,13 +584,16 @@ end
         flowKey = {candidate.Cue.Components, candidate.Stimulus.Duration, ...
                    candidate.Stimulus.Latency, candidate.GUI, ...
                    candidate.Task.AutoShaping, candidate.Task.HoldShaping, candidate.Task.OnHoldBreak, ...
+                   candidate.Task.HoldLength, candidate.Task.FixedHold, candidate.Session.UseOpto, ...
                    round(c.FlowAxes.InnerPosition(3))};
         if ~isequal(flowKey, drawnKeys.Flow)
             lum.gui.drawTrialFlow(c.FlowAxes, candidate);
             drawnKeys.Flow = flowKey;
         end
         cueKey = {candidate.Cue.Components, candidate.Stimulus.Duration, ...
-                  candidate.Stimulus.Latency, candidate.GUI.PostStimulusHold};
+                  candidate.Stimulus.Latency, candidate.GUI.PostStimulusHold, ...
+                  candidate.Task.HoldLength, candidate.Task.FixedHold, ...
+                  candidate.Task.AutoShaping, candidate.Task.HoldShaping};
         if ~isequal(cueKey, drawnKeys.Cue)
             drawCueTimeline(c.CueAxes, candidate, t);
             drawnKeys.Cue = cueKey;
@@ -750,13 +788,25 @@ controls.ReverseContingency = uicheckbox(form, 'Text', 'Reverse: swap the sides'
 
 panel = uipanel(left, 'Title', 'Centre hold', 'FontWeight', 'bold', ...
                 'BackgroundColor', t.Panel, 'ForegroundColor', t.Accent);
-form = uigridlayout(panel, [numel(shaping) + 5, 2], 'ColumnWidth', {170, '1x'}, ...
-                    'RowHeight', [{44, 26, 26, 26, 72}, repmat({26}, 1, numel(shaping))], ...
+form = uigridlayout(panel, [numel(shaping) + 7, 2], 'ColumnWidth', {170, '1x'}, ...
+                    'RowHeight', [{44, 26, 26, 26, 26, 26, 72}, repmat({26}, 1, numel(shaping))], ...
                     'Padding', [10 8 10 8], 'RowSpacing', 6, 'ColumnSpacing', 10, ...
                     'BackgroundColor', t.Panel, 'Scrollable', 'on');
 label(form, 'Hold', t);
 controls.HoldNote = uilabel(form, 'Text', '', 'WordWrap', 'on', 'FontColor', t.Ink, ...
                             'FontSize', 11, 'VerticalAlignment', 'top');
+label(form, 'Hold for', t);
+controls.HoldLength = uidropdown(form, 'Items', lum.HoldShaping.holdLengths(), ...
+    'Value', holdLengthOf(S), 'ValueChangedFcn', @(~, ~) onEdit(), ...
+    'Tooltip', ['The hold while automatic shaping does not grow it. Whole stimulus: the stimulus '...
+                'window plus the post-stimulus hold. Fixed: the fixed hold below, from stimulus '...
+                'onset; shorter than the window, the animal may leave and choose while the light '...
+                'plays on to its end. Usable in an Experiment session.']);
+label(form, 'Fixed hold (s)', t);
+controls.FixedHold = numberField(form, S.Task.FixedHold, [0.001 60], onEdit, false);
+controls.FixedHold.Tooltip = ['Seconds from stimulus onset the animal holds when the hold is '...
+    'Fixed. The light pattern always plays to its end; a shorter hold only lets the animal leave '...
+    'sooner. Costs one global timer when shorter than the stimulus window.'];
 label(form, 'When the hold breaks', t);
 controls.OnHoldBreak = uidropdown(form, 'Items', lum.HoldShaping.breakModes(), ...
     'Value', S.Task.OnHoldBreak, 'ValueChangedFcn', @(~, ~) onEdit(), ...
@@ -1305,7 +1355,12 @@ window = max(S.Stimulus.Duration, 0);
 postHold = max(S.GUI.PostStimulusHold, 0);
 latency = max(S.Stimulus.Latency, 0);
 holdEnd = max(window + postHold, 0.01);
-wait = 0.5 * (holdEnd + latency);
+if ~lum.HoldShaping.growsHold(S) && lum.HoldShaping.isFixed(S)
+    % A fixed hold: the cue ends with it, and the light plays on to the window's end.
+    holdEnd = max(S.Task.FixedHold, 0.01);
+    postHold = max(holdEnd - window, 0);
+end
+wait = 0.5 * (max(holdEnd, window) + latency);
 start = -latency - wait;
 cueColour = t.Accent;
 
@@ -1373,7 +1428,7 @@ if latency > 0
 end
 tickLabels = arrayfun(@(value) sprintf('%g', value), ticks, 'UniformOutput', false);
 set(ax, 'YTick', 1:n + 1, 'YTickLabel', labels, 'YLim', [0.4, n + 2.1], ...
-    'XLim', [start, 1.1 * holdEnd], 'XTick', [start, ticks], ...
+    'XLim', [start, 1.1 * max(holdEnd, window)], 'XTick', [start, ticks], ...
     'XTickLabel', [{'trial start'}, tickLabels], 'Color', t.Panel, 'XColor', t.Muted, ...
     'YColor', t.Muted, 'TickDir', 'out', 'Box', 'off', 'XGrid', 'off', 'YGrid', 'off', ...
     'FontSize', 11);
@@ -1488,6 +1543,16 @@ else
     chip.Text = 'off';
     chip.BackgroundColor = t.Faint;
     chip.FontColor = t.Muted;
+end
+end
+
+
+function value = holdLengthOf(S)
+% S.Task.HoldLength if it is one of the choices, else the first (the default).
+choices = lum.HoldShaping.holdLengths();
+value = choices{1};
+if isfield(S.Task, 'HoldLength') && ismember(S.Task.HoldLength, choices)
+    value = S.Task.HoldLength;
 end
 end
 

@@ -94,13 +94,85 @@ holdDuration = lum.HoldShaping.next(S, afterOneTrial(0.123456, 0, lum.Outcome.Co
 verifyEqual(testCase, holdDuration, round(holdDuration * 1e4) / 1e4, 'AbsTol', 1e-12);
 end
 
-function testOnlyGraceCostsAGlobalTimer(testCase)
+function testGraceAndAGrowingHoldUnderLightEachCostAGlobalTimer(testCase)
+% Grace needs the hold clock; a growing hold may end before the light, which then needs
+% the light clock (D21). Without light a growing hold costs nothing.
 rig = struct('Limits', struct('GlobalTimers', 16), 'Available', struct('Sync', false));
 for mode = [{'Off'}, lum.HoldShaping.modes()]
     S = shaped(mode{1});
     [~, reserved] = lum.timerBudget(S, rig);
     verifyEqual(testCase, reserved.HoldClock, double(lum.HoldShaping.hasGrace(mode{1})), mode{1});
+    verifyEqual(testCase, reserved.LightClock, double(lum.HoldShaping.growsHold(mode{1})), mode{1});
+    S.Session.UseOpto = false;
+    [~, reserved] = lum.timerBudget(S, rig);
+    verifyEqual(testCase, reserved.LightClock, 0, [mode{1} ' without light']);
 end
+end
+
+%% The hold without growth, and the light after it (D21)
+
+function testAFixedHoldIsTheHoldWithoutGrowth(testCase)
+S = fixedHold(lum.defaultSettings, 0.3);
+[holdDuration, grace] = lum.HoldShaping.next(S, lum.newHistory(5));
+verifyEqual(testCase, holdDuration, 0.3, 'AbsTol', 1e-12);
+verifyEqual(testCase, grace, 0);
+verifyEqual(testCase, lum.HoldShaping.fullHold(S), 0.3);
+S.GUI.PostStimulusHold = 0.4;
+verifyEqual(testCase, lum.HoldShaping.next(S, lum.newHistory(5)), 0.3, 'AbsTol', 1e-12, ...
+            'The post-stimulus hold belongs to the whole-stimulus hold only');
+S.Task.FixedHold = 1.7;
+verifyEqual(testCase, lum.HoldShaping.next(S, lum.newHistory(5)), 1.7, 'AbsTol', 1e-12, ...
+            'Longer than the window, it holds past it');
+end
+
+function testAFixedHoldGivesWayToGrowthButNotToGrace(testCase)
+S = fixedHold(shaped('Grow hold'), 0.3);
+verifyEqual(testCase, lum.HoldShaping.next(S, lum.newHistory(5)), S.GUI.HoldStart, 'AbsTol', 1e-12);
+S = fixedHold(shaped('Shrink grace'), 0.3);
+[holdDuration, grace] = lum.HoldShaping.next(S, lum.newHistory(5));
+verifyEqual(testCase, holdDuration, 0.3, 'AbsTol', 1e-12);
+verifyEqual(testCase, grace, S.GUI.GraceStart, 'AbsTol', 1e-12);
+end
+
+function testTheLightMayOutlastOnlyAHoldThatCanBeShorterThanIt(testCase)
+S = lum.defaultSettings;
+S.Stimulus.Duration = 1;
+verifyFalse(testCase, lum.HoldShaping.lightMayOutlastHold(S), 'The whole stimulus');
+verifyTrue(testCase, lum.HoldShaping.lightMayOutlastHold(fixedHold(S, 0.3)));
+verifyFalse(testCase, lum.HoldShaping.lightMayOutlastHold(fixedHold(S, 1)), 'As long as the window');
+verifyFalse(testCase, lum.HoldShaping.lightMayOutlastHold(fixedHold(S, 1.5)));
+grows = shaped('Grow hold');
+grows.GUI.HoldStart = 2;
+grows.GUI.HoldTarget = 2;
+verifyTrue(testCase, lum.HoldShaping.lightMayOutlastHold(grows), ...
+           'Start and target are runtime settings: a growing hold always reserves the clock');
+verifyTrue(testCase, lum.HoldShaping.lightMayOutlastHold(shaped('Both')));
+verifyFalse(testCase, lum.HoldShaping.lightMayOutlastHold(shaped('Shrink grace')));
+noLight = fixedHold(S, 0.3);
+noLight.Session.UseOpto = false;
+verifyFalse(testCase, lum.HoldShaping.lightMayOutlastHold(noLight), 'No light, nothing to wait for');
+end
+
+function testTheNextTrialIsPreparedInTheITIWhenTheLightMayOutlastTheHold(testCase)
+% The prepare window changes LED currents and may program PulsePal, so it must open
+% after the light: in the ITI, which every ending trial reaches through WaitForLightEnd.
+S = fixedHold(lum.defaultSettings, 0.3);
+verifyEqual(testCase, lum.triggerStates(S), {'ITI'});
+S.Task.OnHoldBreak = 'End trial';
+verifyEqual(testCase, lum.triggerStates(S), {'ITI'});
+verifyEqual(testCase, lum.triggerStates(shaped('Grow hold')), {'ITI'});
+verifyFalse(testCase, isequal(lum.triggerStates(lum.defaultSettings), {'ITI'}));
+end
+
+function testAFixedHoldIsDescribed(testCase)
+S = fixedHold(lum.defaultSettings, 0.3);
+S.Stimulus.Duration = 1;
+text = lum.HoldShaping.describeHold(S);
+verifySubstring(testCase, text, '0.3 s, from the poke');
+verifySubstring(testCase, text, 'light plays on');
+S.Task.FixedHold = 1.5;
+verifySubstring(testCase, lum.HoldShaping.describeHold(S), '0.5 s after it');
+verifySubstring(testCase, lum.HoldShaping.describeHold(shaped('Grow hold')), 'light plays on');
 end
 
 function testABrokenHoldRestartsTheStimulusByDefault(testCase)
@@ -128,7 +200,7 @@ end
 function testDescribeSaysWhatShapingDoes(testCase)
 verifySubstring(testCase, lum.HoldShaping.describe(shaped('Grow hold')), 'grows');
 verifySubstring(testCase, lum.HoldShaping.describe(shaped('Shrink grace')), 'global timer');
-verifySubstring(testCase, lum.HoldShaping.describe(shaped('Off')), 'whole stimulus window');
+verifySubstring(testCase, lum.HoldShaping.describe(shaped('Off')), 'same hold');
 end
 
 
@@ -284,6 +356,11 @@ verifyError(testCase, @() lum.validateSettings(S, RigConfig), ...
             'lum:validateSettings:shapingInExperiment');
 end
 
+
+function S = fixedHold(S, seconds)
+S.Task.HoldLength = 'Fixed';
+S.Task.FixedHold = seconds;
+end
 
 function S = shaped(mode)
 S = lum.defaultSettings;

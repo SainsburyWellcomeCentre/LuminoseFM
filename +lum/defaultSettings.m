@@ -38,7 +38,9 @@ function S = defaultSettings()
 %                   family gives every trial its own (Generator.Continuous).
 %   stimulus window S.Stimulus.Duration, from stimulus onset.
 %   hold            The centre-port hold, from the poke: the stimulus latency, then
-%                   the stimulus window and the post-stimulus hold.
+%                   the stimulus window and the post-stimulus hold, or a fixed or
+%                   growing hold from stimulus onset. The light pattern plays to its
+%                   end after a hold shorter than it.
 %   latency         S.Stimulus.Latency, from the poke to stimulus onset.
 %   centre          British spelling, in identifiers as well as text.
 %
@@ -105,6 +107,12 @@ S.Task.HoldShaping = 'Grow hold';   % lum.HoldShaping.modes()
 % What a hold broken beyond its grace does (lum.HoldShaping.breakModes): restart the
 % stimulus on the next poke, within S.GUI.HoldWindow of trial start, or end the trial.
 S.Task.OnHoldBreak = 'Restart stimulus';
+% The centre hold while automatic shaping does not grow it (lum.HoldShaping.holdLengths):
+% 'Whole stimulus', the stimulus window plus S.GUI.PostStimulusHold, or 'Fixed',
+% S.Task.FixedHold seconds from stimulus onset. A hold shorter than the light pattern lets
+% the animal leave and choose while the light plays on to its end (D21).
+S.Task.HoldLength = 'Whole stimulus';
+S.Task.FixedHold = 0.5;             % Seconds from stimulus onset, when HoldLength is 'Fixed'
 
 %% Pre-session tier: cue
 % What asks the animal to start a trial. One row per component, each switched on
@@ -337,8 +345,10 @@ S = numericParam(S, 'RewardAmount',     3,    'Reward amount (uL)',       [0 100
 S = numericParam(S, 'RewardDelay',      0,    'Reward delay (s)',         [0 60], ...
     ['Seconds between the choice poke and the valve opening. Leaving the port within it '...
      'forfeits the reward (CorrectNoReward).']);
-S = numericParam(S, 'DrinkingGrace',    0.5,  'Drinking grace (s)',       [0 60], ...
-    'How long the animal may leave the reward port and come back while drinking.');
+S = numericParam(S, 'DrinkingGrace',    0.3,  'Drinking grace (s)',       [0 60], ...
+    ['After a reward, how long the animal must stay out of both side ports before the trial '...
+     'ends. A side poke within it waits for the animal to leave again and starts it over; no '...
+     'more water is given.']);
 
 % Centre reward (lum.nextTrialSpec): water at the centre port when a hold is completed.
 % Habituation gives it on the first CentreRewardTrials trials of the session, so a new
@@ -369,7 +379,8 @@ S = numericParam(S, 'HoldWindow',       60,   'Hold window (s)',          [0.1 3
     ['From trial start: the time the animal has to complete a hold, across every restart '...
      'of the stimulus. The trial lapses when it runs out.']);
 S = numericParam(S, 'PostStimulusHold', 0,    'Post-stimulus hold (s)',   [0 60], ...
-    'Seconds the animal keeps holding the centre port after the stimulus window ends.');
+    ['Seconds the animal keeps holding the centre port after the stimulus window ends. Used '...
+     'when the hold is the whole stimulus (Task tab), not with a fixed or growing hold.']);
 S = numericParam(S, 'ResponseWindow',   10,   'Response window (s)',      [0.1 3600], ...
     'From leaving the centre port: the time the animal has to poke a side port.');
 S = numericParam(S, 'ITI',              1,    'Inter-trial interval (s)', [0 3600], ...
@@ -410,7 +421,8 @@ S = numericParam(S, 'HoldGrowth',  5,   'Hold growth per trial (%)',    [0 100],
     'Automatic shaping: how much longer the hold gets after each trial on which it was completed.');
 S = numericParam(S, 'HoldTarget',  1,   'Target hold (s)',              [0 60], ...
     ['Automatic shaping: the hold stops growing here. Normally the stimulus window plus the '...
-     'post-stimulus hold; shorter cuts the light off where the hold ends.']);
+     'post-stimulus hold. The light pattern plays to its end whether or not the hold lasts '...
+     'that long.']);
 S = numericParam(S, 'HoldStepBackAfter', 10, 'Step back after N early withdrawals', [0 1000], ...
     ['Automatic shaping: after this many early withdrawals at one hold, with no completed hold '...
      'in between, the hold steps back one growth step so the animal can go on learning. '...

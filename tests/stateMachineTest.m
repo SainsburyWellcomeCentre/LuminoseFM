@@ -28,7 +28,8 @@ variants = {withSideLights(lum.defaultSettings, 0, 1), ...
             withStimulusRow(lum.defaultSettings, 'Air', true, 0.2, 0.3), ...
             withShaping(lum.defaultSettings, 'Both'), noLight(lum.defaultSettings), ...
             endingTrial(lum.defaultSettings), withCue(lum.defaultSettings, {'Tone', 'Air'}, 0.3), ...
-            withCue(lum.defaultSettings, {}), withLatency(lum.defaultSettings, 0.2)};
+            withCue(lum.defaultSettings, {}), withLatency(lum.defaultSettings, 0.2), ...
+            withFixedHold(lum.defaultSettings, 0.3), withShaping(lum.defaultSettings, 'Grow hold')};
 for i = 1:numel(variants)
     names = sort(lum.buildTrialSM(makeTestContext('Settings', variants{i})).StateNames);
     verifyEqual(testCase, names, reference, sprintf('Variant %d changed the states', i));
@@ -95,7 +96,8 @@ end
 function testEndTrialModeEndsTheTrialOnABrokenHold(testCase)
 [sma, plan] = lum.buildTrialSM(makeTestContext('Settings', endingTrial(lum.defaultSettings)));
 verifyFalse(testCase, plan.restartsOnBreak);
-verifyEqual(testCase, tupTargetOf(sma, 'EarlyWithdrawal'), 'ITI');
+verifyEqual(testCase, tupTargetOf(sma, 'EarlyWithdrawal'), 'WaitForLightEnd');
+verifyEqual(testCase, tupTargetOf(sma, 'WaitForLightEnd'), 'ITI');
 end
 
 function testWithGraceABreakBeyondTheGraceAlsoRestarts(testCase)
@@ -323,7 +325,7 @@ for S = {withLatency(lum.defaultSettings, 0.2), withShaping(withLatency(lum.defa
     verifyEqual(testCase, triggers(stateIndex(sma, 'PreStimulusHold')), 0, ...
                 'Nothing of the stimulus starts before the latency is over');
     verifyEqual(testCase, triggers(stateIndex(sma, 'CentreHold')), ...
-                sum(2 .^ ([plan.timers{:}, plan.holdClock] - 1)));
+                sum(2 .^ ([plan.timers{:}, plan.holdClock, plan.lightClock] - 1)));
     verifyEqual(testCase, plan.latency, 0.2);
 end
 end
@@ -451,14 +453,132 @@ verifyEqual(testCase, stateTimer(sma, 'WaitForCentreExit'), 7);
 verifyEqual(testCase, tupTargetOf(sma, 'WaitForCentreExit'), 'NoResponse');
 end
 
-function testTheStimulusStopsWhenTheHoldEnds(testCase)
+function testTheHoldEndingStopsEverythingButTheLight(testCase)
+% A completed hold stops the cue, the centre light and every timed stimulus component,
+% and leaves the light pattern to play to its end (D21).
 global BpodSystem %#ok<GVMIS>
 rig = RigConfig;
-sma = lum.buildTrialSM(makeTestContext());
-row = stateIndex(sma, 'WaitForCentreExit');
-centreChannel = find(strcmp(BpodSystem.StateMachineInfo.OutputChannelNames, rig.LED.Centre));
-verifyEqual(testCase, sma.OutputMatrix(row, BpodSystem.HW.Pos.GlobalTimerCancel), 1);
-verifyEqual(testCase, sma.OutputMatrix(row, centreChannel), 0);
+S = withStimulusRow(withFixedHold(lum.defaultSettings, 0.3), 'Air', true, 0.1, 0.5);
+[sma, plan] = lum.buildTrialSM(makeTestContext('Settings', S));
+[~, stimulus] = lum.stim.build(S);
+light = [plan.timers{cellfun(@(c) isa(c, 'lum.stim.OptoPattern'), stimulus)}];
+air = setdiff([plan.timers{:}], light);
+verifyNotEmpty(testCase, light);
+verifyNumElements(testCase, air, 1);
+outputs = BpodSystem.StateMachineInfo.OutputChannelNames;
+centreChannel = find(strcmp(outputs, rig.LED.Centre));
+for name = {'CentreReward', 'WaitForCentreExit', 'WaitForResponse'}
+    row = stateIndex(sma, name{1});
+    cancelled = sma.OutputMatrix(row, BpodSystem.HW.Pos.GlobalTimerCancel);
+    verifyEqual(testCase, cancelled, 2 ^ (air - 1), [name{1} ' cancels the air and no light']);
+    verifyEqual(testCase, sma.OutputMatrix(row, centreChannel), 0);
+    for channel = rig.Opto.Channels
+        column = find(strcmp(outputs, channel{1}));
+        verifyEqual(testCase, sma.OutputMatrix(row, column), 0, ...
+                    sprintf('%s must not write %s', name{1}, channel{1}));
+    end
+end
+end
+
+%% The light after the hold (D21) ---------------------------------------------------
+
+function testEveryTrialEndsThroughTheWaitForTheLight(testCase)
+% Every path that ends the trial reaches the ITI through WaitForLightEnd, which passes
+% straight on when the light ends within the hold (no light clock).
+[sma, plan] = lum.buildTrialSM(makeTestContext());
+verifyEmpty(testCase, plan.lightClock, 'A 1 s hold covers the 1 s window');
+for name = {'DrinkingGrace', 'WithdrewBeforeReward', 'IncorrectChoice', 'NoResponse', 'NoInitiation'}
+    verifyEqual(testCase, tupTargetOf(sma, name{1}), 'WaitForLightEnd', name{1});
+end
+verifyEqual(testCase, stateTimer(sma, 'WaitForLightEnd'), 0);
+verifyEqual(testCase, tupTargetOf(sma, 'WaitForLightEnd'), 'ITI');
+reachesITI = sma.StateNames(sma.StateTimerMatrix == stateIndex(sma, 'ITI'));
+verifyEqual(testCase, reachesITI, {'WaitForLightEnd'}, 'Only the wait leads to the ITI');
+end
+
+function testALightThatOutlastsTheHoldIsTimedByTheLightClock(testCase)
+% A 0.3 s hold under light that lasts until 0.9 s: the light clock lasts the light, starts
+% and is cancelled with it, and the trial waits for it before the ITI.
+global BpodSystem %#ok<GVMIS>
+S = withFixedHold(withPulses(lum.defaultSettings, [1 1 0 0.25; 1 2 0.5 0.9]), 0.3);
+[sma, plan] = lum.buildTrialSM(makeTestContext('Settings', S));
+clock = plan.lightClock;
+verifyNotEmpty(testCase, clock);
+verifyEqual(testCase, plan.lightEnd, 0.9, 'AbsTol', 1e-9);
+verifyEqual(testCase, plan.holdDuration, 0.3, 'AbsTol', 1e-9);
+verifyEqual(testCase, stateTimer(sma, 'CentreHold'), 0.3, 'AbsTol', 1e-9);
+verifyEqual(testCase, sma.GlobalTimers.Duration(clock), 0.9, 'AbsTol', 1e-9);
+verifyEqual(testCase, sma.GlobalTimers.OnsetDelay(clock), 0, ...
+            'Running from stimulus onset, so "not running" can only mean over');
+verifyEqual(testCase, plan.nTimersUsed, 4, 'Two for light, the light clock, the hold window');
+
+light = 2 .^ ([plan.timers{:}] - 1);
+bit = 2 ^ (clock - 1);
+triggers = sma.OutputMatrix(:, BpodSystem.HW.Pos.GlobalTimerTrig);
+cancels = sma.OutputMatrix(:, BpodSystem.HW.Pos.GlobalTimerCancel);
+verifyEqual(testCase, find(bitand(triggers, bit))', stateIndex(sma, 'CentreHold'));
+verifyEqual(testCase, cancels(stateIndex(sma, 'EarlyWithdrawal')), sum(light) + bit, ...
+            'A broken hold stops the light and its clock');
+verifyEqual(testCase, find(bitand(cancels, bit))', stateIndex(sma, 'EarlyWithdrawal'));
+verifyEqual(testCase, find(bitand(cancels, sum(light)))', stateIndex(sma, 'EarlyWithdrawal'), ...
+            'Nothing else cancels the light');
+
+verifyEqual(testCase, sma.ConditionChannels(5), BpodSystem.HW.n.Inputs + clock);
+verifyEqual(testCase, sma.ConditionValues(5), 0);
+verifyEqual(testCase, conditionTargetOf(sma, 'WaitForLightEnd', 5), 'ITI');
+verifyEqual(testCase, timerEndTargetOf(sma, 'WaitForLightEnd', clock), 'ITI');
+verifyEqual(testCase, tupTargetOf(sma, 'WaitForLightEnd'), 'WaitForLightEnd', ...
+            'Only the light clock ends the wait');
+end
+
+function testAShortHoldNeedsTheLightClockReserved(testCase)
+% A trial whose light outlasts its hold in a session that reserved no light clock would
+% end with the light still playing; the builder refuses it.
+context = makeTestContext();
+context.spec.HoldDuration = 0.1;
+verifyError(testCase, @() lum.buildTrialSM(context), 'lum:buildTrialSM:lightOutlastsHold');
+end
+
+function testAGrowingHoldUsesTheLightClockUntilItCoversTheLight(testCase)
+S = withShaping(lum.defaultSettings, 'Grow hold');
+context = makeTestContext('Settings', S);
+for hold = [0.1 0.5 1]
+    context.spec.HoldDuration = hold;
+    [~, plan] = lum.buildTrialSM(context);
+    verifyEqual(testCase, isempty(plan.lightClock), hold >= plan.lightEnd, sprintf('Hold %g s', hold));
+end
+end
+
+function testTheTrialWaitsForTheLightAfterAShortHold(testCase)
+% Played as the animal: a 0.1 s hold, a quick correct choice, and B lit from 0.6 to 1.0 s
+% after stimulus onset. The late segment still plays, and the ITI waits for it.
+S = withFixedHold(withPulses(lum.defaultSettings, [1 1 0 0.2; 1 2 0.6 1.0]), 0.1);
+S.GUI.HoldWindow = 5;
+S.GUI.ITI = 0.05;
+S.GUI.DrinkingGrace = 0.05;
+context = makeTestContext('Settings', S);   % Pays left
+trial = runPoked(context, {0.3, 'Port2', 1; 0.6, 'Port2', 0; 0.9, 'Port1', 1; 1.1, 'Port1', 0});
+result = lum.scoreTrial(trial, context.spec, context.rig);
+verifyEqual(testCase, result.Outcome, lum.Outcome.Correct);
+onset = trial.States.CentreHold(1, 1);
+verifyLessThan(testCase, trial.States.WaitForLightEnd(1, 1), onset + 1.0, ...
+               'The animal was done before the light');
+verifyGreaterThanOrEqual(testCase, trial.States.ITI(1, 1), onset + 1.0 - 1e-3, ...
+                         'The ITI starts once the light is over');
+verifyTrue(testCase, isfield(trial.Events, 'GlobalTimer2_Start'), 'B came on after the hold');
+verifyGreaterThanOrEqual(testCase, trial.Events.GlobalTimer2_End(1), onset + 1.0 - 1e-3);
+end
+
+function testABrokenHoldEndsTheWaitForTheLightAtOnce(testCase)
+% A broken hold cancels the light and its clock, so a trial it ends does not wait.
+S = endingTrial(withFixedHold(withPulses(lum.defaultSettings, [1 1 0 1.0]), 0.5));
+S.GUI.HoldWindow = 5;
+S.GUI.ITI = 0.05;
+context = makeTestContext('Settings', S);
+trial = runPoked(context, {0.3, 'Port2', 1; 0.5, 'Port2', 0});
+verifyFalse(testCase, isnan(trial.States.EarlyWithdrawal(1)));
+verifyLessThan(testCase, trial.States.ITI(1, 1), trial.States.CentreHold(1, 1) + 0.8, ...
+               'The light would have lasted 1 s');
 end
 
 function testBothSidesLeadToRewardDuringHabituation(testCase)
@@ -581,7 +701,7 @@ for type = 1:3
     [sma, plan] = lum.buildTrialSM(makeTestContext('Settings', S));
     verifyFalse(testCase, plan.incorrectChoicePunishment.Retry);
     verifyEqual(testCase, targetOf(sma, 'WaitForResponse', 'Port3In'), 'IncorrectChoice');
-    verifyEqual(testCase, tupTargetOf(sma, 'IncorrectChoice'), 'ITI');
+    verifyEqual(testCase, tupTargetOf(sma, 'IncorrectChoice'), 'WaitForLightEnd');
     verifyEqual(testCase, stateTimer(sma, 'IncorrectChoice'), timers(type), 'AbsTol', 1e-9, ...
                 sprintf('Punishment type %d', type));
     verifyEqual(testCase, plan.incorrectChoicePunishment.PlayNoise, type >= 2);
@@ -607,7 +727,8 @@ verifyEqual(testCase, stateTimer(sma, 'IncorrectChoice'), S.Sound.NoiseDuration,
 S = endingTrial(S);
 S.GUI.PunishType = 2;
 sma = lum.buildTrialSM(makeTestContext('Settings', S));
-verifyEqual(testCase, tupTargetOf(sma, 'EarlyWithdrawal'), 'ITI');
+verifyEqual(testCase, tupTargetOf(sma, 'EarlyWithdrawal'), 'WaitForLightEnd');
+verifyEqual(testCase, stateTimer(sma, 'WaitForLightEnd'), 0, 'Nothing lies between it and the ITI');
 verifyEqual(testCase, stateTimer(sma, 'EarlyWithdrawal'), S.Sound.NoiseDuration, 'AbsTol', 1e-9);
 end
 
@@ -793,7 +914,20 @@ context.spec.SyncPulseWidth = 0.02;
 [budget, reserved] = lum.timerBudget(context.S, context.rig);
 nLight = size(context.pattern.Segments, 1);
 verifyEqual(testCase, plan.nTimersUsed, ...
-            nLight + reserved.HoldWindow + reserved.Sync + reserved.HoldClock + reserved.Components);
+            nLight + reserved.HoldWindow + reserved.Sync + reserved.HoldClock + ...
+            reserved.LightClock + reserved.Components);
+verifyLessThanOrEqual(testCase, nLight, budget);
+
+% A hold shorter than the light takes the light clock as well.
+S = withFixedHold(withStimulusRow(lum.defaultSettings, 'Air', true, 0.1, 0.2), 0.3);
+context = makeTestContext('Settings', S);
+[~, plan] = lum.buildTrialSM(context);
+[budget, reserved] = lum.timerBudget(context.S, context.rig);
+nLight = size(context.pattern.Segments, 1);
+verifyEqual(testCase, reserved.LightClock, 1);
+verifyEqual(testCase, plan.nTimersUsed, ...
+            nLight + reserved.HoldWindow + reserved.Sync + reserved.HoldClock + ...
+            reserved.LightClock + reserved.Components);
 verifyLessThanOrEqual(testCase, nLight, budget);
 end
 
@@ -825,8 +959,8 @@ S = lum.defaultSettings;
 S.GUI.HoldWindow = 5;
 S.GUI.ITI = 0.05;
 S.GUI.DrinkingGrace = 0.05;
+S = withFixedHold(S, 0.1);
 context = makeTestContext('Settings', S);   % Pays left
-context.spec.HoldDuration = 0.1;
 context.spec.CentreReward = true;
 context.spec.CentreRewardAmount = 1;
 trial = runPoked(context, {0.3, 'Port2', 1; 0.9, 'Port2', 0; 1.3, 'Port3', 1; ...
@@ -848,8 +982,8 @@ S.GUI.ITI = 0.05;
 S.GUI.PunishCondition = 3;
 S.GUI.PunishType = 1;
 S.GUI.PunishTimeout = 0.2;
+S = withFixedHold(S, 0.1);
 context = makeTestContext('Settings', S);
-context.spec.HoldDuration = 0.1;
 trial = runPoked(context, {0.3, 'Port2', 1; 0.9, 'Port2', 0; 1.3, 'Port3', 1; ...
                            1.6, 'Port3', 0});
 result = lum.scoreTrial(trial, context.spec, context.rig);
@@ -877,12 +1011,17 @@ names = {'TrialStart', 'WaitForCentrePoke', 'PreStimulusHold', 'CentreHold', ...
          'EarlyWithdrawal', 'LeftRewardDelay', 'RightRewardDelay', 'LeftReward', ...
          'RightReward', 'DrinkingLeft', 'DrinkingRight', 'DrinkingGrace', ...
          'WithdrewBeforeReward', 'IncorrectChoice', 'NoResponse', 'NoInitiation', 'ITI', ...
-         'CentreReward', 'RetryResponse'};
+         'CentreReward', 'RetryResponse', 'WaitForLightEnd'};
 end
 
 function S = withShaping(S, mode)
 S.Task.AutoShaping = true;
 S.Task.HoldShaping = mode;
+end
+
+function S = withFixedHold(S, seconds)
+S.Task.HoldLength = 'Fixed';
+S.Task.FixedHold = seconds;
 end
 
 function S = withLatency(S, latency)

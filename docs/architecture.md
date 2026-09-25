@@ -1,7 +1,7 @@
 # LuminoseFM — Architecture
 
-Design record for the LuminoseFM protocol. Status: **implemented** (version 0.9.0); decisions
-D1–D20 confirmed. Update this file whenever the architecture changes.
+Design record for the LuminoseFM protocol. Status: **implemented** (version 0.9.5); decisions
+D1–D21 confirmed. Update this file whenever the architecture changes.
 
 ---
 
@@ -149,7 +149,10 @@ and keeps the *observable* behaviour identical. The mode is recorded in
   `NoResponse`, `NoInitiation`, `WithdrewBeforeReward`, and `EarlyWithdrawal` only when a
   broken hold ends the trial — with restarts, light can follow it, D10; never `RetryResponse` or
   `CentreReward`, after which the trial goes on, D19), and the next state
-  machine is uploaded during the trial. Anything computed from history — bias correction, hold shaping — therefore
+  machine is uploaded during the trial. When a completed hold may end before the light
+  (`lum.HoldShaping.lightMayOutlastHold`, D21) the light can still be on in any of those states,
+  so the `ITI`, reached through `WaitForLightEnd` once the light is over, is the only trigger
+  state; the next trial is then prepared in the ITI. Anything computed from history — bias correction, hold shaping — therefore
   follows trial *n-1* when preparing trial *n+1*.
 - In the emulator the same calls run the trial to completion first.
 - `lum.dev.open` is the only place that reads `BpodSystem.EmulatorMode`.
@@ -312,8 +315,12 @@ withdrawing is not asked for more.
   recorded per trial; a step back shows as a shorter `HoldDuration`.
 - Automatic shaping is meant to grow: choosing easier or harder trial types by performance belongs
   under the same switch.
-- A shaped hold shorter than the stimulus window cuts the light off at the hold's end; the
-  setup dialog notes it when the target is shorter than the window.
+- A shaped hold shorter than the stimulus window no longer cuts the light off (it did up to
+  0.9.4): the light plays to its end while the animal chooses, and a growing hold under light
+  costs the light clock (D21).
+- Without growth the hold is `lum.HoldShaping.fullHold(S)`: the stimulus window plus the
+  post-stimulus hold, or a fixed hold (`S.Task.HoldLength` *Fixed*, `S.Task.FixedHold`), which an
+  Experiment session may use (D21).
 
 ### D7 — A session barcode before the first trial
 
@@ -410,11 +417,13 @@ waiting for its onset starts after an early withdrawal.
 
 ### D10 — A broken hold restarts the stimulus, within a hold window
 
-**Decision.** The stimulus is delivered only while the animal holds. When a hold breaks
+**Decision.** The stimulus is delivered only while the animal holds: a broken hold stops it (a
+completed one leaves the light to play to its end, D21). When a hold breaks
 beyond its grace, `EarlyWithdrawal` cancels the stimulus and, with `S.Task.OnHoldBreak` set to
 *Restart stimulus* (the default), leads back to `WaitForCentrePoke`, where the cue comes back
 on: the next poke starts the latency (D12) and `CentreHold` again, and `CentreHold` triggers every
-stimulus timer from its beginning. *End trial* keeps the 0.2 behaviour (`EarlyWithdrawal` → `ITI`). Either way the trial
+stimulus timer from its beginning. *End trial* keeps the 0.2 behaviour (`EarlyWithdrawal` → the
+ITI, through `WaitForLightEnd`, which passes straight on: the light and its clock were cancelled). Either way the trial
 is bounded by the **hold window**, `S.GUI.HoldWindow`: a global timer triggered in `TrialStart`,
 never cancelled or re-triggered. `WaitForCentrePoke` has no state timer; it leaves for
 `NoInitiation` on that timer's end, or at once on condition 4 (`GlobalTimer<w>` low) when it is
@@ -425,7 +434,7 @@ finish.
 CentreHold --Port2Out--> EarlyWithdrawal --Tup--> WaitForCentrePoke --Port2In--> [PreStimulusHold] --> CentreHold
                                                         | hold window over (timer end, or condition 4)
                                                         v
-                                                   NoInitiation --> ITI
+                                                   NoInitiation --> WaitForLightEnd --> ITI
 ```
 
 **Why.** The animal has to receive the whole stimulus before it may choose, and a naive animal
@@ -438,7 +447,8 @@ transitions rather than states keeps the trial-flow contract.
 **Consequences.**
 
 - The hold window costs one global timer on every trial (`lum.timerBudget`, `reserved.HoldWindow`),
-  and condition 4 is used. The emulator's five timers leave four for light.
+  and condition 4 is used. The emulator's five timers leave four for light (three when the light
+  clock is reserved, D21).
 - Outcome `HoldNotCompleted` (code 6): `NoInitiation` reached after `CentreHold` was visited.
   `NoInitiation` now means the stimulus never started. `EarlyWithdrawal` is the outcome only when
   `EarlyWithdrawal` was visited and `WaitForCentreExit` was not. `HoldAttempts` (visits to
@@ -1054,6 +1064,72 @@ commonest setup error: a contingency typed for one set of groups applied to anot
   Coding amount as intensity (the LED current per trial) instead of time lit would remove the dark
   altogether; it is not built.
 
+### D21 — The light plays to its end after a completed hold
+
+**Decision.** A completed hold never stops the light pattern (0.9.5). The hold decides only when
+the animal may leave and choose; the light runs to the end its pattern gives it, up to the stimulus
+window, while the animal leaves the centre port, chooses, drinks or is punished. Only the light
+does: the cue, the timed stimulus air, centre light and tone, and the hold clock stop as the hold
+ends, as before. A broken hold still stops everything (D10). Before the ITI every trial passes
+through **`WaitForLightEnd`**, which waits for the light to end: Bpod drops every output line when
+a state machine ends, so the trial must not end before it.
+
+The hold can be shorter than the light in two ways, both decided before the session:
+
+- **A growing hold** (automatic shaping, D6), in habituation or training.
+- **A fixed hold** (`S.Task.HoldLength` *Fixed*, `S.Task.FixedHold` seconds from stimulus onset),
+  in any stage, an Experiment session included. *Whole stimulus* (the default) is the stimulus
+  window plus the post-stimulus hold, as before; a fixed hold ignores the post-stimulus hold, and
+  one longer than the window holds past it. A growing hold replaces either.
+
+`lum.HoldShaping.lightMayOutlastHold(S)` says whether a session can have such a trial (light on, and
+a growing hold or a fixed one shorter than the window). Such a session:
+
+- reserves **the light clock** (`lum.timerBudget`, `reserved.LightClock`): a global timer as long as
+  the trial's light, from stimulus onset, triggered in `CentreHold` with the light and cancelled
+  with it in `EarlyWithdrawal`. `WaitForLightEnd` leaves for the ITI on its end, or at once on
+  **condition 5** (the clock not running: ended, cancelled, or never started). A trial whose light
+  ends within its hold (the growing hold has reached it, or no light this trial) defines no light
+  clock, and `WaitForLightEnd` passes straight on (`Tup`);
+- prepares the next trial in the **ITI**, its only trigger state (`lum.triggerStates`, D3), because
+  the prepare window changes LED currents and may program PulsePal, and the light can still be on
+  in every earlier trigger state.
+
+**Why.** Cutting the light off at a shaped hold's end (up to 0.9.4) gave a short hold only the
+start of the pattern, so what the animal saw depended on the hold as well as on the pattern, and a
+family whose evidence comes late in the window (an order, a sequence, a spread mixture) was not
+the same question at every hold. Squeezing the pattern into the hold was the alternative; it would
+change amounts in seconds (the evidence of an absolute rule) and leave a short hold only a pulse or
+two of the carrier. Letting the pattern run keeps every trial's light what the stimulus set says,
+whatever the hold, which also makes a fixed short hold usable in an experiment. The light reaches
+the olfactory bulb through the fibres wherever the animal is, so light after the animal has left
+the centre port is still delivered. The pattern's own timers cannot tell the state machine whether
+light is still to come: a segment waiting for its onset is as not-running as one that has ended.
+One timer running from onset can, hence the light clock.
+
+**Consequences.**
+
+- The animal may answer before the light is over. Reward, drinking, a retry or a punishment
+  noise can come with the light on. The light's timers (`GlobalTimer<k>_Start/_End`) against
+  `WaitForCentreExit` and the side poke show it per trial; `WaitForLightEnd`'s span is the wait.
+- One global timer while the hold may be shorter than the light: the rig's 16 leave 14 for light
+  (13 with grace), the emulator's 5 leave 3 (2 with grace). Every family's defaults fit each of
+  these (`generateTest`); in the emulator the mixture takes fewer cycles and, with 2 timers, the
+  motif family two-letter words. The setup dialog loads a family's defaults again when the budget
+  changes while the stimulus is still those defaults (choosing Training after a family, say); an
+  edited stimulus over the budget is refused, naming its group. Condition 5 is the emulator's last.
+- The light clock is numbered after the light, the timed components' and the cue's timers and the
+  hold clock, before the hold window; its index varies with the trial's number of segments.
+- The next trial is prepared in the ITI: at least `S.GUI.ITI` for the work, as after
+  `NoInitiation` and `NoResponse` already. An ITI of 0 s would make the next trial start once it is
+  prepared and uploaded.
+- `WaitForLightEnd` is a new state in every trial (the trial-flow contract, *Trial engine* below); `Data.Session`
+  records `LightMayOutlastHold` and `TriggerStates`.
+- `lum.validateSettings` notes a session whose light may outlast the hold, refuses an unknown
+  `HoldLength` and a fixed hold of 0 s or less, and checks the hold window against the fixed hold.
+  `lum.buildTrialSM` refuses a trial whose light outlasts its hold in a session that did not
+  reserve the clock.
+
 ---
 
 ## What is built, and where
@@ -1086,16 +1162,28 @@ training stages or hold shaping.
 TrialStart → WaitForCentrePoke (cue) → [PreStimulusHold (latency)] → CentreHold (stimulus)
            → [CentreReward (habituation's first trials)] → WaitForCentreExit
            → WaitForResponse → {*RewardDelay → *Reward → Drinking* → DrinkingGrace
-                                | IncorrectChoice (punished) | NoResponse} → ITI → exit
+                                | IncorrectChoice (punished) | NoResponse}
+           → WaitForLightEnd → ITI → exit
 WaitForResponse   → RetryResponse → WaitForResponse   (wrong side, not punished; D19)
 PreStimulusHold   → EarlyWithdrawal            (left during the latency)
 CentreHold        → EarlyWithdrawal (no grace) | HoldBreak ⇄ CentreHoldResumed (grace)
 HoldBreak         → EarlyWithdrawal            (grace ran out)
-EarlyWithdrawal   → WaitForCentrePoke          (Restart stimulus) | ITI (End trial)
-WaitForCentrePoke → NoInitiation               → ITI   (hold window over)
-WaitForCentreExit → NoResponse                 → ITI
-*RewardDelay      → WithdrewBeforeReward       → ITI
+EarlyWithdrawal   → WaitForCentrePoke          (Restart stimulus) | WaitForLightEnd (End trial)
+WaitForCentrePoke → NoInitiation               → WaitForLightEnd   (hold window over)
+WaitForCentreExit → NoResponse                 → WaitForLightEnd
+*RewardDelay      → WithdrewBeforeReward       → WaitForLightEnd
 ```
+
+Every trial that ends reaches the ITI through `WaitForLightEnd`, which waits for a light that
+outlasts the hold and otherwise passes straight on (D21).
+
+A side reward: `LeftRewardDelay`/`RightRewardDelay` last `S.GUI.RewardDelay` (leaving the port
+goes to `WithdrewBeforeReward`); `LeftReward`/`RightReward` open the valve for its calibrated time;
+`DrinkingLeft`/`DrinkingRight` close it and wait, with no timer, for the port to be clear
+(condition 1 or 2); `DrinkingGrace` lasts `S.GUI.DrinkingGrace` (0.3 s from 0.5), and a poke at
+either side port there returns (`>back`) to the drinking state, which leaves again once the rewarded
+port is clear, so the grace restarts; its end goes to `WaitForLightEnd`. No drinking state has a
+time limit, and none gives more water.
 
 The cue is on in `WaitForCentrePoke`; the poke enters `CentreHold` directly, or after the latency
 in `PreStimulusHold` (D12). The hold
@@ -1108,8 +1196,9 @@ moment the hold ends, whatever the animal intended. So:
 
 - Reaction time is measured from `WaitForResponse` onset: from leaving the centre port to the
   choice poke.
-- `WaitForCentreExit` is where the stimulus stops and the response configuration goes up
-  (stimulus timers cancelled and lines low, centre marker off, guide lights on).
+- `WaitForCentreExit` is where the response configuration goes up: the cue and the stimulus
+  components other than the light stop (their timers cancelled, their lines low), the centre
+  marker goes off and the guide lights on. The light plays on to its end (D21).
 - The wait is bounded by `S.GUI.ResponseWindow` and falls through to `NoResponse`.
 
 Around it:

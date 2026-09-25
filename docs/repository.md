@@ -119,12 +119,15 @@ What it covers:
   emulated block landing in its events as `BNC1Low`); every punishment of an incorrect choice (none
   and a retry, timeout, noise to its end, both), the centre reward after a completed hold, and two
   trials played as the animal under `Bpod('EMU')` (`startMouse`): a wrong choice then the right one,
-  rewarded, with the centre reward; and a punished wrong choice ending the trial.
+  rewarded, with the centre reward; and a punished wrong choice ending the trial. The light after
+  the hold (D21): every ending path through `WaitForLightEnd`; the light clock, its condition and
+  what cancels it; only the light left running as the hold ends; and, played as the animal, a trial
+  that waits for light due after a short hold and one whose broken hold ends the wait at once.
 - `windowsTest` — the runtime window, both plot figures (a close request hides them, they save as an
   image, both figures' house light switch), the session type chooser, both setup
   dialogs (automatic shaping by stage, Play buttons, the help line, the Cameras tab, the format's
   description on the help line, and its preview of simulated cameras, choosing each stimulus family
-  on the Stimulus tab) and both designers (every family's defaults ready to run, typed P(left) kept
+  on the Stimulus tab, its defaults followed when the timers left change, the fixed hold) and both designers (every family's defaults ready to run, typed P(left) kept
   and dropped as the groups change), built invisibly; the psychometric panel along each family's
   evidence and the contingency's boundary on the evidence panel.
 - `cameraTest` — camera settings, the format note for single-threaded encoders, the note for a
@@ -147,12 +150,14 @@ What it covers:
   played as the animal (`startMouse`): the side reward, the centre reward when valve 2 is calibrated
   (and none, with a warning, when it is not, as on the development machine), `CentreHoldTime`, and
   automatic shaping starting the hold at `HoldStart`.
-- `animalSessionTest` — three whole behaviour sessions under `Bpod('EMU')` played by an animal
+- `animalSessionTest` — four whole behaviour sessions under `Bpod('EMU')` played by an animal
   (`startSessionMouse`), one behaviour per trial, reaching every outcome path: correct, retried,
   withdrawn and restarted, no poke, every hold broken, no side poke, never leaving the centre port,
   rapid pokes while drinking; with *End trial*, timeout and noise, a latency and a reward delay:
   leaving before the reward, in the latency and in the hold, a punished wrong choice; and habituation
-  with grow hold and shrink grace together, the centre reward and a step back. Each saved trial is
+  with grow hold and shrink grace together, the centre reward and a step back; and an Experiment
+  session with a fixed 0.2 s hold under 1 s of light, the light playing to its end and each trial
+  waiting for it before the ITI. Each saved trial is
   re-scored from its raw events and checked against its settings: `TrialSettings{k}` against the ITI
   the trial ran (the ITI and reward are typed into the runtime window mid-session), holds, the light
   pattern's timers, the centre valve's time, and the shaping sequence the session's order must give.
@@ -160,7 +165,12 @@ What it covers:
 - `valveTimesTest` — `lum.valveTimes`: 0 µL opens no valve, a volume past the calibration fit's peak
   is refused, one within it gives Bpod's times, one outside the measurements is noted.
 - `holdShapingTest` also replays the session's order (trial *k*+1 prepared before trial *k* is
-  recorded): one growth step and one grace step per completed hold, and a single step back.
+  recorded): one growth step and one grace step per completed hold, and a single step back; and the
+  fixed hold, when a session's light may outlast its hold, the light clock's cost and the ITI as the
+  only trigger state then.
+- `settingsTest` also refuses an unknown hold length, a fixed hold of 0 s and one the hold window
+  cannot hold, lets an Experiment session ask for a fixed hold shorter than the light (one timer
+  more, and a note), and gives old settings files the whole-stimulus hold.
 - `settingsTest` also covers where the subject comes from (`lum.launchSubject`), the house light's
   move out of the runtime tier, and a 0.9.2 file's 700 mA LED limit becoming 1000 mA.
 - `barcodeTest` also samples fitted barcodes frame by frame at 25–150 Hz, at every phase and with

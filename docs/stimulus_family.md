@@ -614,7 +614,10 @@ courses 100%.
 | Words paying right | `MotifRightWords` | `'ABA BAA BBA BBB'` |
 | Flash length (of a letter) | `MotifFill` | 0.5 |
 
-**Cost.** One segment per lit letter (two for X).
+**Cost.** One segment per lit letter (two for X). Where fewer than three timers are left for light
+(only the emulator, with both the hold clock and the light clock), the defaults are the four
+two-letter words, $\{\mathtt{AA}, \mathtt{BB}\}$ left against $\{\mathtt{AB}, \mathtt{BA}\}$
+right: repeat against change, each position at 50%, the count of A at 75%.
 
 ### 6.6 Hand-drawn pulses (`arbitrary`)
 
@@ -749,10 +752,13 @@ end
 
 Each segment is one of the state machine's global timers, and the timer budget is checked before a
 session starts (`lum.timerBudget`): the rig's state machine has 16 timers and the emulator's 5; the
-hold window always takes one; grace shaping and stimulus components timed within the window take
-more. A pattern with more segments than the budget is refused, naming its group. The families'
-defaults stay within 4 segments, except the sequence family on the rig (5 flashes), whose default
-drops to 3 slots when fewer than 5 timers are left. Segment edges fall on the 100 µs cycle of the
+hold window always takes one; grace shaping, a hold that may be shorter than the light (the light
+clock) and stimulus components timed within the window take more. A pattern with more segments than
+the budget is refused, naming its group. The families' defaults are fitted to the timers left when a
+family is chosen: the sequence family's 5 flashes drop to 3 slots (1 with only 2 timers), the
+mixture's 5 cycles to as many as fit, and the motif family's three-letter words to two letters with
+fewer than 3 timers. The setup dialog loads a family's defaults again when the timers left change
+(a training stage, shaping, a fixed hold), as long as the stimulus is still those defaults. Segment edges fall on the 100 µs cycle of the
 state machine.
 
 ---

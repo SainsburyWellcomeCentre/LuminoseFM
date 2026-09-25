@@ -28,21 +28,37 @@ hold(targetAxes, 'on');
 stimulusWindow = max(S.Stimulus.Duration, 0);
 postHold = max(S.GUI.PostStimulusHold, 0);
 latency = max(S.Stimulus.Latency, 0);
+% The stimulus block is the part of the stimulus inside the hold. A fixed hold shorter
+% than the window ends before the light does, and the light plays on while the animal
+% leaves and chooses (D21); a longer one holds past the window.
+stimulusSpan = stimulusWindow;
+choiceCaption = sprintf('<= %g s', S.GUI.ResponseWindow);
+if ~lum.HoldShaping.growsHold(S) && lum.HoldShaping.isFixed(S)
+    fixedHold = max(S.Task.FixedHold, 0);
+    postHold = max(fixedHold - stimulusWindow, 0);
+    stimulusSpan = min(fixedHold, stimulusWindow);
+end
+if isfield(S.Session, 'UseOpto') && lum.HoldShaping.lightMayOutlastHold(S)
+    choiceCaption = sprintf('%s, light plays to %g s', choiceCaption, stimulusWindow);
+end
 openSpan = max(0.35, 0.3 * (latency + stimulusWindow + postHold));
-if latency > 0
-    stimulusCaption = sprintf('%g s', stimulusWindow);
+if stimulusSpan < stimulusWindow
+    stimulusCaption = sprintf('%g s of %g s', stimulusSpan, stimulusWindow);
 else
-    stimulusCaption = sprintf('%g s, from the poke', stimulusWindow);
+    stimulusCaption = sprintf('%g s', stimulusWindow);
+end
+if latency == 0
+    stimulusCaption = [stimulusCaption ', from the poke'];
 end
 
 % Name, seconds drawn as, colour, caption, part of the hold
 blocks = { ...
     'Cue on: wait for poke', openSpan, mix(t.Accent, 0.35), cueCaption(S), false; ...
     'Latency',      latency, mix(t.Accent, 0.2), sprintf('%g s, cue on', latency), true; ...
-    'Stimulus',     max(stimulusWindow, 0.04), mix((t.ChannelA + t.ChannelB) / 2, 0.7), ...
+    'Stimulus',     max(stimulusSpan, 0.04), mix((t.ChannelA + t.ChannelB) / 2, 0.7), ...
                     stimulusCaption, true; ...
     'Post-stimulus hold', postHold, mix(t.Muted, 0.35), sprintf('%g s', postHold), true; ...
-    'Leave and choose', openSpan, t.Faint, sprintf('<= %g s', S.GUI.ResponseWindow), false; ...
+    'Leave and choose', openSpan, t.Faint, choiceCaption, false; ...
     'Outcome',      0.8 * openSpan, mix(t.Correct, 0.3), 'reward / punish', false; ...
     'ITI',          max(S.GUI.ITI, 0.08), t.Faint, sprintf('%g s', S.GUI.ITI), false};
 blocks([false, latency == 0, false, postHold == 0, false, false, false], :) = [];

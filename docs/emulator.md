@@ -39,7 +39,11 @@ below).
   than four stretches of light is refused in the emulator (the hold window always takes one timer)
   and accepted on the rig. Every stimulus family's defaults fit in four; the sequence family, whose
   default is five flashes, loads three slots instead when it is chosen in the emulator
-  (`lum.pattern.familyDefaults`).
+  (`lum.pattern.familyDefaults`). A session whose hold can be shorter than the light (a growing
+  hold, or a fixed one shorter than the window) takes one more timer for the light clock, leaving
+  three (two with grace as well), and uses the fifth and last condition (D21). Every family's
+  defaults fit: the mixture takes fewer cycles, and with two timers the motif family loads two-letter
+  words; the setup dialog reloads a family's untouched defaults when the timers left change.
 - **No Flex I/O at all** — so no airflow stream, no sync pulses and no session barcode (it is
   recorded as not sent).
 - **PulsePal and the HiFi module are unavailable**, so sound states run silently and no light is

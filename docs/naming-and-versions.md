@@ -32,7 +32,10 @@ right — D8 in [`architecture.md`](architecture.md).
 | stimulus window | `S.Stimulus.Duration`, from stimulus onset |
 | latency | `S.Stimulus.Latency`: from the poke to stimulus onset, held with the cue on |
 | hold, hold break, grace | The centre-port hold; leaving during it; how long a break may last unpunished |
+| reward delay, drinking grace | After a correct side poke: the wait before the valve opens (`RewardDelay`), and how long the animal must then stay out of both side ports before the trial ends (`DrinkingGrace`; a side poke within it starts it again) |
 | hold window | `HoldWindow`: the time from trial start in which a hold must be completed, restarts included |
+| fixed hold | A hold of a set length from stimulus onset, used when automatic shaping does not grow the hold (`S.Task.HoldLength` *Fixed*, `S.Task.FixedHold`); the other choice, *Whole stimulus*, is the stimulus window plus the post-stimulus hold |
+| light clock | The global timer, as long as a trial's light from stimulus onset, that tells the trial when the light is over after a completed hold shorter than it; the trial waits for it in `WaitForLightEnd` (D21) |
 | session type | Behaviour, sleep or ePhys calibration; `Session.Type` is `'Behaviour'`, `'Sleep'` or `'EphysCalibration'` |
 | carrier | What PulsePal does on a channel while it is on (frequency, pulse width, voltage) |
 | centre | British spelling, in identifiers as well as text: `CentreHold`, `WaitForCentrePoke` |
@@ -140,6 +143,17 @@ names.
 | — | the video stops after the final save (`SessionSaved` event), and a second save adds its summary; default format `avi-mjpeg-mt` (SpinCam 1.2.0 engine, multi-core MJPEG), with a note when a single-threaded format cannot keep up; the help line describes the format chosen; a SpinVideo format without SpinVideo is refused when the devices open; `Session.Cameras.EngineVersion` |
 | — | `GUIMeta.<name>.Help` for every runtime parameter; help line in the setup and runtime windows |
 | — | **▶ Play** buttons for the session's sounds in the setup dialog (`lum.testSounds`) |
+
+### 0.9.4 → 0.9.5 — the light plays to its end after the hold; a fixed hold
+
+| 0.9.4 | 0.9.5 |
+|-------|-------|
+| a completed hold shorter than the light cut it off: the light timers still running were cancelled as the hold ended, so a growing hold showed the animal only the start of the pattern | the light plays to the end its pattern gives it while the animal leaves and chooses; the cue and the other stimulus components still stop with the hold, and a broken hold still stops everything (D21) |
+| the trial ended in the ITI straight after its last state | every trial that ends passes through the new state **`WaitForLightEnd`**, which waits for a light that outlasts the hold (the **light clock**, a global timer, and condition 5) and otherwise passes straight on |
+| without shaping the hold was always the stimulus window plus the post-stimulus hold | *Hold for* (`S.Task.HoldLength`): *Whole stimulus* (default, as before) or *Fixed* (`S.Task.FixedHold`, 0.5 s by default, from stimulus onset), usable in an Experiment session. Settings files without it hold for the whole stimulus |
+| `S.GUI.DrinkingGrace` 0.5 s by default | **0.3 s**. Settings files keep the value they hold |
+| a family's defaults were fitted to the timers left only when the family was chosen | the setup dialog loads them again when the timers left change and the stimulus is still those defaults; with fewer than 3 timers (the emulator with grace and the light clock) the motif family loads two-letter words |
+| the next trial was prepared from the reward, incorrect-choice, no-response or no-initiation state | the same, unless the hold can be shorter than the light (a growing hold, or a fixed one shorter than the window, with light on): then in the ITI (`Session.TriggerStates`), after the light. Such a session reserves one global timer for the light clock (`Session.LightMayOutlastHold`) |
 
 ### 0.9.3 → 0.9.4 — validation fixes: shaping per completed hold, each trial's own settings, reward volumes the calibration can give, bias correction before the run limit
 

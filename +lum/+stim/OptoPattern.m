@@ -61,9 +61,11 @@ classdef OptoPattern < lum.stim.Component
         end
 
         function actions = stopActions(~, context)
-            % stopActions() pulls the lines the pattern uses low. The trial builder
-            % also cancels the timers; the emulator does not implement cancelling, so
-            % driving the lines low as well keeps light from outliving the hold there.
+            % stopActions() pulls the lines the pattern uses low, when a hold breaks. The
+            % trial builder also cancels the timers; the emulator does not implement
+            % cancelling, so driving the lines low as well keeps light from outliving a
+            % broken hold there. A completed hold leaves the light to play to its end
+            % (D21), so this is not used there.
             actions = {};
             if ~context.spec.OptoOn || isempty(context.pattern.Segments)
                 return

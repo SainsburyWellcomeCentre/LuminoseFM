@@ -13,6 +13,12 @@ function [budget, reserved] = timerBudget(S, rig)
 %              message that quotes the reservation still reads the same.
 %   HoldClock  One when breaks in the hold are forgiven (lum.HoldShaping), because
 %              the hold has to be timed across the animal leaving and returning.
+%   LightClock One when a completed hold may end before the light pattern does
+%              (lum.HoldShaping.lightMayOutlastHold: a growing hold, or a fixed hold
+%              shorter than the stimulus window). It lasts the light, from stimulus
+%              onset, so the trial can wait for the light to end before the ITI (D21):
+%              the pattern's own timers cannot tell the state machine whether light is
+%              still to come.
 %   Components One for each stimulus component that switches on after stimulus
 %              onset or off before the window ends, and for a cue light or cue air
 %              that goes off part way through the stimulus (lum.stim.timerCost).
@@ -31,7 +37,8 @@ function [budget, reserved] = timerBudget(S, rig)
 % Returns:
 %   budget    Timers left for light segments; may be zero or negative when the
 %             other parts already take everything
-%   reserved  Struct with the HoldWindow, Sync, HoldClock and Components counts above
+%   reserved  Struct with the HoldWindow, Sync, HoldClock, LightClock and Components
+%             counts above
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
@@ -41,6 +48,7 @@ reserved = struct();
 reserved.HoldWindow = 1;
 reserved.Sync = 0;  % States, not timers, drive the sync line in every mode (D4)
 reserved.HoldClock = double(lum.HoldShaping.hasGrace(S));
+reserved.LightClock = double(lum.HoldShaping.lightMayOutlastHold(S));
 reserved.Components = lum.stim.timerCost(S);
 budget = rig.Limits.GlobalTimers - reserved.HoldWindow - reserved.Sync ...
-         - reserved.HoldClock - reserved.Components;
+         - reserved.HoldClock - reserved.LightClock - reserved.Components;

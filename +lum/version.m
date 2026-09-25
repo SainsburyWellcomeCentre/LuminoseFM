@@ -65,11 +65,14 @@ function text = version()
 % limit to 1000 mA, the LED's rating (S.Doric.MaxCurrentmA; a 0.9.2 file's 700 mA is
 % converted), calibrates 0-1000 mA in 100 mA steps, starting from the readings already
 % saved, and uses a calibration only when its readings cover the LED's range
-% (lum.led.checkCoverage).
+% (lum.led.checkCoverage). 0.9.5 lets the light pattern play to its end after a completed
+% hold shorter than it: the animal may leave and choose while it plays, and the trial waits
+% for it in a new state, WaitForLightEnd, before the ITI (D21). A hold can be fixed
+% (S.Task.HoldLength 'Fixed', S.Task.FixedHold), in an Experiment session too.
 %
 % See also: LuminoseFM
 
-release = '0.9.4';
+release = '0.9.5';
 text = release;
 
 try

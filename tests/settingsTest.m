@@ -430,7 +430,9 @@ cases = {@wideJitter, 'badSyncJitter'; @unknownBundle, 'badBundle'; ...
          @cueToneAndStimulusTone, 'soundClash'; @stimulusAndSideTones, 'soundClash'; ...
          @shortHoldWindow, 'holdWindowTooShort'; @longLatency, 'holdWindowTooShort'; ...
          @negativeLatency, 'badLatency'; ...
-         @unknownBreakMode, 'badHoldBreak'; @unknownSessionType, 'badSessionType'};
+         @unknownBreakMode, 'badHoldBreak'; @unknownSessionType, 'badSessionType'; ...
+         @unknownHoldLength, 'badHoldLength'; @zeroFixedHold, 'badFixedHold'; ...
+         @fixedHoldBeyondTheWindow, 'holdWindowTooShort'};
 for i = 1:size(cases, 1)
     S = cases{i, 1}(lum.defaultSettings);
     verifyError(testCase, @() lum.validateSettings(S, rig), ...
@@ -438,6 +440,33 @@ for i = 1:size(cases, 1)
 end
 verifyError(testCase, @() lum.validateSettings(negativeCueTime(lum.defaultSettings), rig), ...
             'lum:cueTiming:badDuration', 'A negative time after the poke');
+end
+
+function testAnExperimentMayAskForAHoldShorterThanTheLight(testCase)
+% Automatic shaping is refused in an Experiment session, but a fixed hold is not: the
+% light plays on to its end after it (D21), which the validation notes, at the cost of
+% one global timer.
+rig = RigConfig;
+S = lum.stageDefaults(lum.defaultSettings, 3);
+S.Task.TrainingStage = 3;
+[~, wholeBudget] = lum.validateSettings(S, rig);
+S.Task.HoldLength = 'Fixed';
+S.Task.FixedHold = 0.3;
+[~, budget, notes] = lum.validateSettings(S, rig);
+verifyEqual(testCase, budget, wholeBudget - 1, 'The light clock');
+verifyTrue(testCase, any(contains(notes, 'plays on to its end')), strjoin(notes, ' | '));
+S.Task.FixedHold = S.Stimulus.Duration;
+[~, budget, notes] = lum.validateSettings(S, rig);
+verifyEqual(testCase, budget, wholeBudget, 'A hold as long as the window needs no clock');
+verifyFalse(testCase, any(contains(notes, 'plays on to its end')));
+end
+
+function testOldSettingsHoldForTheWholeStimulus(testCase)
+loaded = lum.defaultSettings;
+loaded.Task = rmfield(loaded.Task, {'HoldLength', 'FixedHold'});
+[S, added] = lum.mergeSettings(lum.defaultSettings, loaded);
+verifyEqual(testCase, S.Task.HoldLength, 'Whole stimulus');
+verifyTrue(testCase, any(strcmp(added, 'Task.HoldLength')));
 end
 
 function testACueThatStopsAtThePokeLeavesItsLineToTheStimulus(testCase)
@@ -539,6 +568,20 @@ end
 
 function S = unknownBreakMode(S)
 S.Task.OnHoldBreak = 'Shrug';
+end
+
+function S = unknownHoldLength(S)
+S.Task.HoldLength = 'As long as it likes';
+end
+
+function S = zeroFixedHold(S)
+S.Task.HoldLength = 'Fixed';
+S.Task.FixedHold = 0;
+end
+
+function S = fixedHoldBeyondTheWindow(S)
+S.Task.HoldLength = 'Fixed';
+S.Task.FixedHold = S.GUI.HoldWindow + 1;
 end
 
 function S = unknownSessionType(S)

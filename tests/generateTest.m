@@ -15,8 +15,9 @@ end
 
 function testEveryFamilysDefaultsCompileOnTheRigAndTheEmulator(testCase)
 % Choosing a family must never produce a set the machine refuses: 15 timers are left
-% for light on the rig, 4 in the emulator.
-for budget = [15 4]
+% for light on the rig, 4 in the emulator, and one or two fewer with the hold clock
+% (grace) and the light clock (a hold that may be shorter than the light, D21).
+for budget = [15 14 13 4 3 2]
     for family = {lum.pattern.families().Name}
         S = lum.defaultSettings;
         S.Stimulus.Generator = lum.pattern.familyDefaults(S.Stimulus.Generator, family{1}, ...
@@ -305,7 +306,7 @@ function testChoosingAFamilyFindsABinItsDefaultsFit(testCase)
 % sequence slots. Choosing either family makes the bin finer; a family that fits keeps it.
 coarse = generator('BinDuration', 0.1);
 for family = {lum.pattern.families().Name}
-    for budget = [15 4]
+    for budget = [15 14 13 4 3 2]
         g = lum.pattern.familyDefaults(coarse, family{1}, budget, 0.3);
         where = sprintf('%s, %d timers', family{1}, budget);
         verifyLessThanOrEqual(testCase, g.BinDuration, 0.1, where);

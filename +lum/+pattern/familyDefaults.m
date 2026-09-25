@@ -12,8 +12,9 @@ function generator = familyDefaults(generator, family, budget, duration)
 %
 % The defaults fit the global timers the machine leaves for light: the sequence family
 % uses five slots where five flashes fit, and three where they do not (the emulated
-% state machine has four timers for light), so that choosing it never produces a set
-% the machine refuses.
+% state machine has four timers for light, three with the light clock, D21), the mixture
+% fewer cycles, and the motif family two-letter words where three letters do not fit,
+% so that choosing a family never produces a set the machine refuses.
 %
 % Arguments:
 %   generator  S.Stimulus.Generator (fields it lacks are filled in first)
@@ -127,8 +128,15 @@ switch family
         % All eight three-letter words of A and B, split so that the side depends on the
         % whole word: no letter position, no repeat or change between letters and no
         % majority tells it (each position, and the count of A, is right 3 times in 4).
+        % Each letter is a flash and costs a global timer: where fewer than three are left
+        % (the emulator with the hold clock and the light clock), the four two-letter
+        % words, same letter twice against a change, which no letter position decides.
         generator.MotifLeftWords = 'AAA AAB ABB BAB';
         generator.MotifRightWords = 'ABA BAA BBA BBB';
+        if budget < 3
+            generator.MotifLeftWords = 'AA BB';
+            generator.MotifRightWords = 'AB BA';
+        end
         generator.MotifFill = 0.5;
     case 'arbitrary'
         % Two groups that can be told apart: A, then B, in the first half of the window.

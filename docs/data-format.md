@@ -64,7 +64,12 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
 - `Subject` — the subject the session was launched for (`lum.launchSubject`)
 - `Rig` — the channel map
 - `DevicesAvailable` — which devices the session had (e.g. `FlexSync`)
-- the runner and runtime window used
+- the runner and runtime window used (`RunnerMode`, `RuntimeWindow`), and `TriggerStates` (0.9.5),
+  the states that opened the window in which the next trial was prepared
+- `LightMayOutlastHold` (0.9.5) — true when a completed hold could end before the light: light on,
+  and a growing hold or a fixed one (`Settings.Task.HoldLength` `'Fixed'`, `Settings.Task.FixedHold`)
+  shorter than the stimulus window. The light then played to its end after the hold, and each such
+  trial waited for it in `WaitForLightEnd` (below)
 - `StartTime`, `EndTime`
 - `Barcode` — value, kind, whether it was sent, its parameters
 - `Cameras` — the video (below): `Enabled`, `Backend` (`'spinnaker'`, `'mock'` for the emulator's
@@ -161,6 +166,26 @@ it, in seconds; NaN when the stimulus never started or the animal never left. Co
 `CentreReward` counts every centre reward: habituation's and those given while *Centre reward
 again* was ticked (in any stage, for `CentreRewardAgainTrials` trials from the tick;
 `TrialSettings{k}.CentreRewardAgain` says whether the box was ticked as trial *k* was prepared).
+
+`HoldDuration` is the hold the trial asked for, from stimulus onset: the stimulus window plus
+`TrialSettings{k}.PostStimulusHold` with *Hold for* *Whole stimulus*, `Settings.Task.FixedHold` with
+*Fixed* (0.9.5), or automatic shaping's growing hold. The drinking after a side reward is in the
+trial's states: `DrinkingLeft`/`DrinkingRight` from the valve closing to the animal leaving the port,
+and `DrinkingGrace`, `TrialSettings{k}.DrinkingGrace` long, one row per time it ran (a side poke
+within it goes back to drinking and starts it again).
+
+**The light after the hold (0.9.5).** A completed hold does not stop the light: the pattern plays
+to its end (its last segment's onset plus duration, from `CentreHold`'s last entry) while the animal
+leaves and chooses. Every trial that ends passes through `WaitForLightEnd` before the `ITI`; it lasts
+0 s when the light had already ended, and otherwise until it ends. The light's global timers are
+numbered first (segment *i* of the trial's pattern is `GlobalTimer<i>`), so their `_Start` and `_End`
+events show when each segment ran, against `WaitForCentreExit`, the side poke and the reward. On a
+trial whose light outlasted its hold the state machine also ran the **light clock**, a timer as long
+as the light from stimulus onset, numbered after the light, the timed stimulus components', the
+cue's and the hold clock (grace); its `_Start` may be missing in the emulator (a zero-onset timer),
+and its `_End` is missing when a broken hold cancelled it. A broken hold still stops the light at
+once. Compare `HoldDuration` with the light's end to find the trials on which the animal could
+answer before the light was over.
 
 ### `SessionData.Session.StimulusSet`
 
@@ -389,6 +414,13 @@ the null device shims swallowed is recorded in `Data.Session.DeviceLog`. See
   incorrect choices (`PunishCondition` 3). A noise-only punishment of an incorrect choice, or of an
   early withdrawal that ended the trial, was cut off by the ITI one state machine cycle after it
   started on the rig.
+- **Sessions before 0.9.5** have no `WaitForLightEnd` state and no `Session.TriggerStates` or
+  `Session.LightMayOutlastHold`; the ITI followed the trial's last state directly. A completed hold
+  shorter than the light (automatic shaping's growing hold) cut the light off where it ended: the
+  light timers still running were cancelled in `WaitForCentreExit` (or `CentreReward`), so a
+  segment's `_End` is missing or early, and a segment due after the hold never started. The hold
+  without shaping was always the stimulus window plus the post-stimulus hold (no
+  `Settings.Task.HoldLength`).
 - **Sessions before 0.9.4**: `TrialSettings{k}` is the runtime tier as trial *k*+1 was prepared, not
   trial *k*'s: a value changed in the runtime window during trial *k* shows from `TrialSettings{k}`
   but took effect from trial *k*+1. Read trial *k*'s value from `TrialSettings{k-1}` (trial 1's from

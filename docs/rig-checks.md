@@ -10,6 +10,24 @@ and move each one to *Done* with its result and session names.
 
 ## Pending — needs the operator at the rig
 
+### P11. The light playing on after a short hold (0.9.5)
+
+The emulator shows the state machine's side (`stateMachineTest`, `animalSessionTest`); on the rig the
+light's lines survive the states after the hold only because firmware 23 skips a BNC line linked to a
+running timer on state entry, and `WaitForLightEnd` relies on a condition on the light clock.
+
+1. With the operator's permission (no animal; an agent can run this headless): an Experiment session
+   with *Hold for* *Fixed*, 0.2 s, a 1 s window and virtual pokes that leave at 0.3 s and choose at
+   0.5 s. From the saved file: every light segment's `GlobalTimer<i>_End` at its planned time after
+   `CentreHold`, `WaitForLightEnd` lasting until the light is over, `ITI` after it,
+   `Session.TriggerStates` `{'ITI'}`, and `Timing.prepare` well inside the ITI. With video, the
+   cameras' `TTL_State` still matched pulse by pulse.
+2. At the rig, with a card (or the power meter) at the fiber tips: the same session played from the
+   console. Poke, leave after the hold and choose at once: the light carries on to the end of the
+   window while the side port is poked and the water is given. Poke and leave before the hold: the
+   light stops at once.
+3. A Training session with automatic shaping: early trials (0.1 s holds) still show the whole pattern.
+
 ### P4. Calibrate the 2-to-19 bundle (0.9.1)
 
 The 4-to-19 bundle is calibrated on both channels for every cable, 0–1000 mA (2026-09-23 and

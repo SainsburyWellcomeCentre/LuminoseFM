@@ -263,8 +263,8 @@ try
     queue = stimulusSet.TrialPattern;
 
     % Trigger states open the window in which MATLAB may prepare the next trial. Every
-    % trial passes through exactly one of these, and each leaves at least the ITI
-    % afterwards for the work to finish in.
+    % trial passes through exactly one of these, and each leaves at least the ITI for the
+    % work to finish in. When the light may outlast the hold, the ITI itself (D21).
     runner = lum.SessionRunner(devices.emulated, lum.triggerStates(S));
     fprintf('LuminoseFM: running in %s mode, %s runtime window.\n', runner.Mode, lower(windowMode));
 
@@ -704,6 +704,10 @@ record.Settings = S;
 record.StimulusSet = rmfield(stimulusSet, 'States');  % Segments are enough; States are for previews
 record.Rig = rig;
 record.RunnerMode = runner.Mode;
+record.TriggerStates = runner.TriggerStates;
+% Whether a completed hold may end before the light (D21): the trial then waits for the
+% light in WaitForLightEnd, timed by the light clock.
+record.LightMayOutlastHold = lum.HoldShaping.lightMayOutlastHold(S);
 record.RuntimeWindow = windowMode;
 record.Emulated = devices.emulated;
 record.DevicesAvailable = struct('PulsePal', devices.pulsePal.Available, ...

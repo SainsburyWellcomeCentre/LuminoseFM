@@ -2,7 +2,7 @@ function tests = animalSessionTest
 % animalSessionTest plays whole behaviour sessions as an animal, and rebuilds every trial
 % from the saved file alone.
 %
-% Three sessions run through LuminoseFM under Bpod('EMU'), each trial played by
+% Four sessions run through LuminoseFM under Bpod('EMU'), each trial played by
 % startSessionMouse with a behaviour chosen to reach one outcome path:
 %   training     restarts on a broken hold, wrong choices retried (the defaults): correct,
 %                retried, withdrawn then completed, no poke, every hold broken, no side
@@ -15,6 +15,9 @@ function tests = animalSessionTest
 %   habituation  grow hold and shrink grace together (automatic shaping, 'Both'), the
 %                centre reward on the first trials, forgiven and unforgiven breaks, and
 %                enough early withdrawals to step the hold back
+%   experiment   the Experiment stage with a fixed 0.2 s hold under 1 s of light: quick
+%                choices while the light plays on (D21), a retry, a broken hold then a
+%                completed one, no poke
 % Each saved trial is then checked against what its behaviour must give, re-scored from
 % its raw events, and its timing compared with the settings it records (TrialSettings,
 % HoldDuration, HoldGrace, the stimulus set). The emulator keeps no millisecond time, so
@@ -37,6 +40,8 @@ mkdir(testCase.TestData.folder);
     runSession(testCase, 'punished', punishedSettings(), punishedBehaviours());
 [testCase.TestData.habituation, testCase.TestData.habituationLog] = ...
     runSession(testCase, 'habituation', habituationSettings(), habituationBehaviours());
+[testCase.TestData.experiment, testCase.TestData.experimentLog] = ...
+    runSession(testCase, 'experiment', experimentSettings(), experimentBehaviours());
 end
 
 function teardownOnce(testCase)
@@ -180,10 +185,47 @@ verifyEqual(testCase, data.HoldDuration(1:5), [0.6 0.6 0.72 0.864 1], 'AbsTol', 
 verifyLessThan(testCase, min(data.HoldDuration(9:end)), 1, 'Stepped back after the withdrawals');
 end
 
+%% Experiment: a fixed hold shorter than the light (D21)
+
+function testExperimentOutcomesFollowTheAnimal(testCase)
+data = testCase.TestData.experiment;
+O = @(name) lum.Outcome.(name);
+verifyEqual(testCase, data.Outcome, [O('Correct'), O('Incorrect'), O('Correct'), O('NoInitiation')]);
+verifyEqual(testCase, data.Rewarded, [1 1 1 0]);
+verifyEqual(testCase, data.EarlyWithdrawals, [0 0 1 0]);
+verifyEqual(testCase, data.TrainingStage, 3 * ones(1, 4), 'An Experiment session');
+end
+
+function testExperimentHoldsAreFixedAndTheLightPlaysToItsEnd(testCase)
+% Every completed hold lasted 0.2 s; every light segment still ended where its pattern
+% puts it, up to 1 s after stimulus onset; and the ITI began only once the light was over.
+data = testCase.TestData.experiment;
+verifyEqual(testCase, data.HoldDuration, 0.2 * ones(1, data.nTrials), 'AbsTol', 1e-9);
+verifyTrue(testCase, data.Session.LightMayOutlastHold);
+verifyEqual(testCase, data.Session.TriggerStates, {'ITI'});
+verifyCompletedHoldsLastTheirHold(testCase, data);
+verifyLightFollowsPattern(testCase, data);
+set = data.Session.StimulusSet;
+for k = 1:data.nTrials
+    states = data.RawEvents.Trial{k}.States;
+    if isnan(states.WaitForCentreExit(1))
+        continue
+    end
+    rows = set.SegmentStart(data.PatternIndex(k)):set.SegmentStart(data.PatternIndex(k) + 1) - 1;
+    lightEnd = max(set.Segments(rows, 3) + set.Segments(rows, 4));
+    onset = states.CentreHold(end, 1);
+    verifyGreaterThan(testCase, lightEnd, data.HoldDuration(k), sprintf('Trial %d', k));
+    verifyGreaterThanOrEqual(testCase, states.ITI(1, 1), onset + lightEnd - 1e-3, sprintf('Trial %d', k));
+    verifyLessThan(testCase, states.ITI(1, 1), onset + lightEnd + 0.8, sprintf('Trial %d', k));
+end
+verifyGreaterThan(testCase, diff(data.RawEvents.Trial{1}.States.WaitForLightEnd(1, :)), 0, ...
+                  'Trial 1 was over before its light and waited for it');
+end
+
 %% Every session
 
 function testEverySavedTrialRescoresToWhatWasSaved(testCase)
-for name = {'training', 'punished', 'habituation'}
+for name = {'training', 'punished', 'habituation', 'experiment'}
     data = testCase.TestData.(name{1});
     for k = 1:data.nTrials
         spec = struct('CorrectSide', data.CorrectSide(k));
@@ -198,7 +240,7 @@ end
 end
 
 function testEveryTrialRecordsItsStimulusAndSettings(testCase)
-for name = {'training', 'punished', 'habituation'}
+for name = {'training', 'punished', 'habituation', 'experiment'}
     data = testCase.TestData.(name{1});
     set = data.Session.StimulusSet;
     verifyEqual(testCase, data.StimulusGroup, set.PatternGroup(data.PatternIndex), name{1});
@@ -212,7 +254,7 @@ end
 end
 
 function testNoSessionWarnedOrFailed(testCase)
-for name = {'training', 'punished', 'habituation'}
+for name = {'training', 'punished', 'habituation', 'experiment'}
     log = testCase.TestData.([name{1} 'Log']);
     % The one warning expected: the training session's refused reward
     log = regexprep(log, 'Warning: The reward stays at 6 uL[^\n]*', '');
@@ -323,6 +365,29 @@ complete = {0.3, 'Centre', 1; 1.6, 'Centre', 0; 2.0, 'Port1', 1; 2.3, 'Port1', 0
 allBroken = {0.3, 'Centre', 1; 0.4, 'Centre', 0; 1.0, 'Centre', 1; 1.1, 'Centre', 0};
 behaviours = {breakWithinGrace, breakBeyondGrace, complete, complete, complete, ...
               allBroken, allBroken, allBroken, complete, complete, complete};
+end
+
+function S = experimentSettings()
+S = baseSettings();
+S.Session.MaxTrials = 4;
+S = lum.stageDefaults(S, 3);           % Light, no shaping
+S.Task.TrainingStage = 3;
+S.Stimulus.Duration = 1;
+S.Task.HoldLength = 'Fixed';
+S.Task.FixedHold = 0.2;
+S.GUI.HoldWindow = 3;
+S.GUI.ResponseWindow = 1.2;
+S.GUI.DrinkingGrace = 0.05;
+end
+
+function behaviours = experimentBehaviours()
+% The light lasts until about 1.3 s; the quick choices are over before it.
+quick = {0.3, 'Centre', 1; 0.6, 'Centre', 0; 0.9, 'Correct', 1; 1.1, 'Correct', 0};
+retry = {0.3, 'Centre', 1; 0.6, 'Centre', 0; 0.9, 'Wrong', 1; 1.1, 'Wrong', 0; ...
+         1.4, 'Correct', 1; 1.6, 'Correct', 0};
+brokenThenComplete = {0.3, 'Centre', 1; 0.4, 'Centre', 0; 0.9, 'Centre', 1; 1.2, 'Centre', 0; ...
+                      1.5, 'Correct', 1; 1.7, 'Correct', 0};
+behaviours = {quick, retry, brokenThenComplete, {}};
 end
 
 function tf = valve2Calibrated()

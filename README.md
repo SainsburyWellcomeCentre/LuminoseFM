@@ -96,12 +96,48 @@ leaving during it is a broken hold, exactly like leaving during the stimulus.
 Once the stimulus starts, each part of the cue either **continues through the stimulus** (the
 default) or stays on for a set time into it; 0 switches it off as the stimulus starts.
 
-**The hold.** The animal has to keep its nose in the centre port for the latency, the whole
-stimulus window and the post-stimulus hold, counted from the poke; the Task tab shows how long
-that is. Only then may it choose.
+**The hold.** The hold is how long the animal must keep its nose in the centre port before it may
+leave and choose. It is not the same thing as the **stimulus window** (Stimulus tab), which is how
+long the light pattern lasts. The Task tab's *Centre hold* panel sets it, and its *Hold* line says
+how long it is:
 
-**The stimulus is delivered only while the animal holds.** If it leaves the centre port
-before the hold is over (beyond any forgiven break), the stimulus stops at once. What happens
+- *Hold for* **Whole stimulus** (the default): the stimulus window plus the post-stimulus hold
+  (runtime window, 0 s by default). The hold and the light end together, or the hold after it.
+- *Hold for* **Fixed**: *Fixed hold* seconds from stimulus onset, the same on every trial. The
+  post-stimulus hold is not used. Shorter than the window, the animal may leave before the light
+  is over; longer, it holds in the dark after the light for the difference.
+- **Automatic shaping** with *Grow hold* or *Both* replaces either choice: the hold grows from
+  `HoldStart` to `HoldTarget` (below), and the two controls are greyed out. *Shrink grace* alone
+  keeps the hold chosen here and only forgives breaks in it.
+
+With a latency, the animal holds the latency first and the hold counts from stimulus onset, so
+from the poke it holds latency + hold. An Experiment session cannot use automatic shaping, so a
+fixed hold is how an experiment asks for a hold shorter than the stimulus. The hold is chosen before
+the session and cannot change during it (automatic shaping aside). Each trial's hold is recorded in
+`Data.HoldDuration`.
+
+For a 1 s stimulus window:
+
+| *Hold for* | The animal must hold | The light | It may choose |
+|---|---|---|---|
+| Whole stimulus, post-stimulus hold 0 s | 1 s | 0–1 s, inside the hold | after 1 s |
+| Whole stimulus, post-stimulus hold 0.5 s | 1.5 s | 0–1 s, then 0.5 s of dark hold | after 1.5 s |
+| Fixed, 0.3 s | 0.3 s | 0–1 s, playing on after it leaves | from 0.3 s |
+| Fixed, 1.5 s | 1.5 s | 0–1 s, then 0.5 s of dark hold | after 1.5 s |
+
+**The light plays to its end.** A completed hold never stops the light pattern: after a hold shorter
+than the light the animal leaves and chooses while the light plays on, to the end the pattern gives
+it, even through the reward or a punishment. Everything else in the stimulus (air, centre light,
+tone) and the cue stops when the hold ends. So every trial delivers its whole pattern whatever the
+hold, and a growing hold only decides how long the animal must sample before it may leave. With a
+hold shorter than the window the animal can answer before it has seen the whole pattern; for a
+family whose deciding part comes late (an order, a sequence) it may answer on part of the evidence.
+A session whose hold can be shorter than the light (a growing hold, or a fixed one shorter than the
+window) uses one more global timer to know when the light is over, so a light pattern can have one
+segment fewer; the setup dialog says so in a note.
+
+**A broken hold stops the stimulus.** If the animal leaves the centre port before the hold is
+over (beyond any forgiven break), the stimulus, light included, stops at once. What happens
 next is the Task tab's *When the hold breaks*:
 
 - *Restart stimulus* (default) — the stimulus stops, the cue comes back on and the animal has to
@@ -119,6 +155,22 @@ stay inert until the animal has left the centre port, so the beam break it makes
 cannot be scored as a choice, and the reaction time is measured from the withdrawal rather than
 from the end of the hold. Never leaving it at all is a non-response.
 
+**A correct choice** is rewarded at that port (runtime window, *Reward*):
+
+1. The poke starts the **reward delay** (`RewardDelay`, 0 s by default). Leaving the port during it
+   forfeits the water: the trial is *CorrectNoReward*.
+2. The valve opens for the time Bpod's liquid calibration gives `RewardAmount` µL (3 by default).
+3. **Drinking**: the trial waits, with no time limit, for the animal to leave the port.
+4. **Drinking grace** (`DrinkingGrace`, **0.3 s** by default): once it is out, it must stay out of
+   both side ports for this long. A poke at either side port within it sends the trial back to
+   waiting for the animal to leave, and the grace starts again when it does; no more water is given.
+   Centre pokes are ignored. A full grace ends the trial.
+
+The grace keeps the next trial, and its cue, from starting while the animal is still at the water.
+Lengthen it for an animal that keeps coming back to the port; 0 ends the trial the moment the
+animal leaves. `Data.Rewarded` is 1 for a rewarded trial; the drinking is in the trial's states
+(`DrinkingLeft`/`DrinkingRight`, `DrinkingGrace`).
+
 **An incorrect choice** is handled as the runtime window's *Punishment* settings say:
 
 | Punish on includes *Incorrect choice*? | Punishment | What happens |
@@ -131,6 +183,19 @@ from the end of the hold. Never leaving it at all is a non-response.
 Either way the trial is scored by the **first** side poked: a wrong choice followed by the correct
 one is *Incorrect*, with `Data.Rewarded` 1 and `Data.ResponseRetries` counting the wrong pokes
 forgiven.
+
+**The end of a trial.** Every trial that ends — after the drinking grace, a punishment, no
+response, no poke, or an early withdrawal that ends the trial — goes through `WaitForLightEnd` and
+then the inter-trial interval (`ITI`, 1 s by default), and the next trial starts. `WaitForLightEnd`
+waits for a light that is still playing after a short hold, and otherwise lasts no time: a broken
+hold has already stopped the light. For example, with a fixed 0.3 s hold and a 1 s light, times from
+the poke:
+
+| The animal | Trial |
+|---|---|
+| holds, leaves at 0.35 s, pokes the correct port at 0.6 s, leaves it at 0.8 s | the grace runs to 1.1 s; the light ended at 1.0 s, so the ITI starts at 1.1 s |
+| holds, leaves at 0.35 s, pokes the correct port at 0.5 s, leaves it at 0.55 s | the grace ends at 0.85 s; the trial waits for the light, and the ITI starts at 1.0 s |
+| comes back to the port at 0.9 s, during the grace, and leaves at 1.2 s | the grace starts again at 1.2 s and ends at 1.5 s; the ITI starts at 1.5 s |
 
 **Outcomes** (`Data.Outcome`, names in `Data.OutcomeNames`): *NoInitiation* — the hold window ran
 out and the stimulus never started; *HoldNotCompleted* — the stimulus started at least once but
@@ -210,8 +275,9 @@ While it is on, the *shaping method* says how:
 
 - *Grow hold* (the default) — the hold starts short (`HoldStart`, **0.1 s**) and grows by
   `HoldGrowth` percent after every trial on which the animal completed it, up to `HoldTarget`
-  (**1 s**), normally the stimulus window plus the post-stimulus hold. Light is cut off where a
-  shaped hold ends. When the animal **withdraws early `HoldStepBackAfter` times (10) at one hold
+  (**1 s**), normally the stimulus window plus the post-stimulus hold. After a shorter hold the
+  light still plays to its end, so every trial delivers its whole pattern and the hold only
+  decides how long the animal must stay before it may leave. When the animal **withdraws early `HoldStepBackAfter` times (10) at one hold
   without completing it**, the hold **steps back** one growth step — to the hold it last
   managed — so it can go on learning; withdrawals it makes up for with a completed hold are
   forgiven, and a new hold starts the count again. `HoldStepBackAfter` 0 never steps back. The
@@ -230,7 +296,8 @@ trial *n*+1's hold is trial *n*'s, grown if trial *n*−1 completed its hold. Wi
 completed and the defaults, the holds run 0.1, 0.1, 0.105, 0.110 … s, reaching 1 s after about 50
 completed holds.
 
-With automatic shaping off, the animal holds for the whole stimulus window on every trial. The
+With automatic shaping off, every trial asks for the same hold: the whole stimulus (the default)
+or the fixed hold. The
 shaping parameters are tuned during the session from the runtime window. The hold each trial
 required, its grace, the number of forgiven breaks and the number of early withdrawals are
 recorded per trial. Later, automatic shaping will also choose easier or harder trial types.
@@ -382,7 +449,8 @@ units, limits held as values are typed, and a header saying how the last trial e
 running now. Under the emulator the reduced form opens instead — Bpod's own single-page parameter
 window, relabelled. `Runtime window` on the Experiment tab can force either.
 
-- *Reward*: `RewardAmount` µL at the side port (3 by default), the valve time from Bpod's liquid
+- *Reward*: `RewardDelay` (0 s) and `DrinkingGrace` (0.3 s), as §3 describes under *A correct
+  choice*. `RewardAmount` µL at the side port (3 by default), the valve time from Bpod's liquid
   calibration of valves 1 and 3. 0 opens no valve. A volume the calibration cannot give — beyond the
   point where its fitted curve stops rising (about 15 µL with the rig's calibration of 2026-09-24) —
   is refused: at the start the session does not begin; during it the reward stays as it was and the

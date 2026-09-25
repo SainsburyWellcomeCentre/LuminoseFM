@@ -565,6 +565,27 @@ verifyTrue(testCase, app.collect().Meta.Neuropixels.Enabled);
 delete(cleanup);
 end
 
+function testTheSetupDialogOffersAFixedHold(testCase)
+assumeUIFigures(testCase);
+[~, ~, app] = lum.gui.SetupDialog(testCase.TestData.S, testCase.TestData.rig, 'Wait', false, ...
+                                  'Visible', 'off');
+cleanup = onCleanup(@() closeIfOpen(app.Figure));
+verifyEqual(testCase, app.controls.HoldLength.Value, 'Whole stimulus');
+verifyEqual(testCase, char(app.controls.FixedHold.Enable), 'off', 'Only a fixed hold is typed');
+app.controls.HoldLength.Value = 'Fixed';
+app.controls.FixedHold.Value = 0.3;
+app.refresh();
+collected = app.collect();
+verifyEqual(testCase, collected.Task.HoldLength, 'Fixed');
+verifyEqual(testCase, collected.Task.FixedHold, 0.3);
+verifyEqual(testCase, char(app.controls.FixedHold.Enable), 'on');
+verifySubstring(testCase, app.controls.HoldNote.Text, 'light plays on');
+app.controls.AutoShaping.Value = true;
+app.refresh();
+verifyEqual(testCase, char(app.controls.HoldLength.Enable), 'off', 'A growing hold replaces it');
+delete(cleanup);
+end
+
 function testTheSetupDialogOffersWhatABrokenHoldDoes(testCase)
 assumeUIFigures(testCase);
 [~, ~, app] = lum.gui.SetupDialog(testCase.TestData.S, testCase.TestData.rig, 'Wait', false, ...
@@ -1024,6 +1045,40 @@ verifySubstring(testCase, app.controls.SetSummary.Text, 'One cue alone');
 delete(cleanup);
 end
 
+
+function testAFamilysDefaultsFollowTheTimersLeftForLight(testCase)
+% A mixture chosen in an Experiment session has two cycles in the emulator (four timers);
+% switching to Training adds the light clock, and the defaults follow with one cycle
+% rather than leaving a set the machine refuses (D21). With grace as well, the motif
+% family loads two-letter words.
+assumeUIFigures(testCase);
+S = testCase.TestData.S;
+[~, ~, app] = lum.gui.SetupDialog(S, testCase.TestData.rig, 'Wait', false, 'Visible', 'off');
+cleanup = onCleanup(@() closeIfOpen(app.Figure));
+app.controls.TrainingStage.Value = 'Experiment';
+app.controls.TrainingStage.ValueChangedFcn([], []);
+app.chooseFamily('mixture');
+cycles = app.collect().Stimulus.Generator.MixtureCycles;
+verifySubstring(testCase, app.status(), 'Ready to start');
+app.controls.TrainingStage.Value = 'Training';
+app.controls.TrainingStage.ValueChangedFcn([], []);
+verifySubstring(testCase, app.status(), 'Ready to start');
+verifyLessThan(testCase, app.collect().Stimulus.Generator.MixtureCycles, cycles, ...
+               'One timer fewer for light in the emulator');
+app.controls.TrainingStage.Value = 'Experiment';
+app.controls.TrainingStage.ValueChangedFcn([], []);
+verifyEqual(testCase, app.collect().Stimulus.Generator.MixtureCycles, cycles, 'And back');
+
+app.controls.TrainingStage.Value = 'Training';
+app.controls.TrainingStage.ValueChangedFcn([], []);
+app.controls.HoldShaping.Value = 'Both';
+app.refresh();
+for family = {lum.pattern.families().Name}
+    app.chooseFamily(family{1});
+    verifySubstring(testCase, app.status(), 'Ready to start', [family{1} ' with grace and growth']);
+end
+delete(cleanup);
+end
 
 function testTheStimulusTabRandomisesAndRepeatsTheTrials(testCase)
 assumeUIFigures(testCase);
