@@ -41,13 +41,21 @@ classdef OnlinePlots < handle
     %     By side       Fraction correct on left- and right-rewarded trials
     %     Side bias     P(chose left) over the last BiasWindow choices, with the
     %                   P(left) bias correction aimed for on each trial
-    %     Reaction time Per trial, by side chosen, with a running median
+    %     Reaction time Per trial, by side chosen, with a running median, on a log axis
+    %                   (a trained animal's fraction of a second and a naive one's several
+    %                   seconds on one panel)
     %     Centre hold   Per trial, how long the animal stayed in the centre port on its
     %                   last hold (completed or broken), against the hold asked for
     %                   (latency plus hold)
     %
     % The header's summary line gives the water drunk so far, side and centre rewards
-    % counted apart, and the hold the running trial asks for.
+    % counted apart, and the hold the running trial asks for. The trial number and the
+    % water total are in bold colour, the rest muted.
+    %
+    % Habituation rewards both side ports (lum.trainingStageNote), so a choice there has no
+    % right or wrong side: every panel that scores choices scores them by whether they were
+    % rewarded (green) or not (a choice that left before the valve opened), and says so.
+    % The data file keeps Correct as the side the group pays, as in every stage.
     %
     % Closing the figure only hides it: the session saves it as an image beside the data
     % file at teardown (lum.gui.savePlotsImage), and close() is what deletes it.
@@ -70,6 +78,7 @@ classdef OnlinePlots < handle
         biasWindow              % Choices the side-bias panel averages over
         nSlots = 4
         maxSegments
+        bothSidesPay            % Habituation: choices are scored by the reward, not the side
 
         rasterOfPattern       % Outcome-raster y of each pattern
         psychometricIndex     % Psychometric point each pattern counts towards
@@ -149,6 +158,7 @@ classdef OnlinePlots < handle
 
             nTrials = S.Session.MaxTrials;
             obj.movingWindow = min(50, max(10, round(nTrials / 20)));
+            obj.bothSidesPay = S.Task.TrainingStage == 1;
             obj.biasWindow = max(1, round(S.GUI.BiasWindow));
             obj.maxSegments = max([1, stimulusSet.nTimers]);
             blank = NaN(1, nTrials);
@@ -193,7 +203,7 @@ classdef OnlinePlots < handle
             % beside it; how the session is going below; side and timing at the bottom.
             x = 1:nTrials;
             obj.buildUpcomingPanel(nexttile(tiles, 1, [1 3]));
-            obj.buildOutcomePanel(nexttile(tiles, 4, [1 9]), x, S);
+            obj.buildOutcomePanel(nexttile(tiles, 4, [1 9]), x);
             obj.buildPerformancePanel(nexttile(tiles, 13, [1 4]), x);
             obj.buildPsychometricPanel(nexttile(tiles, 17, [1 4]), layout);
             obj.buildEvidencePanel(nexttile(tiles, 21, [1 4]));
@@ -235,7 +245,7 @@ classdef OnlinePlots < handle
             set(h.rightReaction, 'YData', obj.rightReactionY);
             set(h.medianReaction, 'YData', obj.medianReactionY);
             set(obj.axesOf.reaction, 'XLim', xLimits, ...
-                'YLim', [0, niceCeiling(obj.reactionTimes(first:trialNumber), 0.5)]);
+                'YLim', logLimits(obj.reactionTimes(first:trialNumber)));
 
             set(h.heldCompleted, 'YData', obj.heldCompletedY);
             set(h.heldBroken, 'YData', obj.heldBrokenY);
@@ -273,7 +283,7 @@ classdef OnlinePlots < handle
                     'YPositiveDelta', errors);
             end
 
-            set(h.summary, 'String', obj.summaryText(trialNumber));
+            set(h.summary, 'String', obj.summaryMarkup(trialNumber));
             drawnow limitrate;
         end
 
@@ -300,27 +310,48 @@ classdef OnlinePlots < handle
             if nargin < 2
                 trialNumber = obj.lastTrial;
             end
+            text = strjoin(obj.summaryParts(trialNumber), '');
+        end
+
+        function markup = summaryMarkup(obj, trialNumber)
+            % summaryMarkup() is the summary as the header shows it: the trial number and
+            % the water total in bold colour, the rest muted (TeX).
+            if nargin < 2
+                trialNumber = obj.lastTrial;
+            end
+            t = obj.theme;
+            parts = obj.summaryParts(trialNumber);
+            plain = ['\rm', texColour(t.Muted)];
+            markup = ['\bf', texColour(t.Ink), parts{1}, plain, parts{2}, ...
+                      '\bf', texColour(t.Accent), parts{3}, plain, parts{4}];
+        end
+
+        function parts = summaryParts(obj, trialNumber)
+            % summaryParts(n) is the summary in four pieces: the trial, the performance,
+            % the water total and the rest, so the header can emphasise the first and third.
             elapsed = toc(obj.clock);
             if obj.nChoices == 0
                 performance = 'no choices yet';
             else
-                performance = sprintf('%.0f%% correct of %d choices', ...
-                                      100 * obj.nCorrect / obj.nChoices, obj.nChoices);
+                performance = sprintf('%.0f%% %s of %d choices', ...
+                                      100 * obj.nCorrect / obj.nChoices, obj.scoreWord(), ...
+                                      obj.nChoices);
             end
-            waterText = sprintf('water %.0f uL: %d side rewards, %.0f uL', ...
-                                obj.water + obj.centreWater, obj.nRewarded, obj.water);
+            waterDetail = sprintf(': %d side rewards, %.0f uL', obj.nRewarded, obj.water);
             if obj.nCentreRewards > 0
-                waterText = sprintf('%s; %d centre, %.0f uL', waterText, obj.nCentreRewards, ...
-                                    obj.centreWater);
+                waterDetail = sprintf('%s; %d centre, %.0f uL', waterDetail, obj.nCentreRewards, ...
+                                      obj.centreWater);
             end
             holdText = '';
             if ~isnan(obj.holdNow)
                 holdText = sprintf('  |  centre hold %.2f s', obj.holdNow);
             end
-            text = sprintf('Trial %d  |  %s  |  %s%s  |  %02d:%02d:%02d', ...
-                           trialNumber, performance, waterText, holdText, ...
-                           floor(elapsed / 3600), floor(mod(elapsed, 3600) / 60), ...
-                           floor(mod(elapsed, 60)));
+            parts = {sprintf('Trial %d', trialNumber), ...
+                     sprintf('  |  %s  |  ', performance), ...
+                     sprintf('water %.0f uL', obj.water + obj.centreWater), ...
+                     sprintf('%s%s  |  %02d:%02d:%02d', waterDetail, holdText, ...
+                             floor(elapsed / 3600), floor(mod(elapsed, 3600) / 60), ...
+                             floor(mod(elapsed, 60)))};
         end
 
         function close(obj)
@@ -338,16 +369,30 @@ classdef OnlinePlots < handle
         function recordTrial(obj, n, spec, result, rewardAmount)
             % Fold one trial into the per-trial series and the running aggregates.
             obj.lastTrial = n;
-            y = obj.rasterOfPattern(spec.PatternIndex);
-            switch result.Outcome
-                case lum.Outcome.Correct
-                    obj.correctY(n) = y;
-                case lum.Outcome.Incorrect
-                    obj.incorrectY(n) = y;
-                otherwise
-                    obj.noChoiceY(n) = y;
+            % What a choice scores: the side the group pays, or in habituation, where both
+            % sides pay, whether it was rewarded.
+            scored = result.Correct;
+            if obj.bothSidesPay && ~isnan(result.Choice)
+                scored = double(result.Rewarded == 1);
             end
-            obj.correctness(n) = result.Correct;
+            y = obj.rasterOfPattern(spec.PatternIndex);
+            if obj.bothSidesPay && ~isnan(result.Choice)
+                if scored == 1
+                    obj.correctY(n) = y;
+                else
+                    obj.incorrectY(n) = y;
+                end
+            else
+                switch result.Outcome
+                    case lum.Outcome.Correct
+                        obj.correctY(n) = y;
+                    case lum.Outcome.Incorrect
+                        obj.incorrectY(n) = y;
+                    otherwise
+                        obj.noChoiceY(n) = y;
+                end
+            end
+            obj.correctness(n) = scored;
             obj.sideOfTrial(n) = spec.CorrectSide;
             obj.biasTargetY(n) = spec.BiasTargetPLeft;
 
@@ -389,7 +434,7 @@ classdef OnlinePlots < handle
             obj.leftPerformanceY(n) = meanOfScored(correct(sides == 1));
             obj.rightPerformanceY(n) = meanOfScored(correct(sides == 2));
 
-            if isnan(result.Correct) || isnan(result.Choice)
+            if isnan(scored) || isnan(result.Choice)
                 % No choice, no information about performance or bias: left out of every
                 % aggregate rather than counted as an error. The bias line carries its
                 % last value across, so it does not break at every missed trial.
@@ -399,10 +444,10 @@ classdef OnlinePlots < handle
                 return
             end
             obj.nChoices = obj.nChoices + 1;
-            obj.nCorrect = obj.nCorrect + result.Correct;
+            obj.nCorrect = obj.nCorrect + scored;
             side = spec.CorrectSide;
             obj.barTrials(side) = obj.barTrials(side) + 1;
-            obj.barCorrect(side) = obj.barCorrect(side) + result.Correct;
+            obj.barCorrect(side) = obj.barCorrect(side) + scored;
 
             obj.choseLeft(obj.nChoices) = double(result.Choice == 1);
             window = obj.choseLeft(max(1, obj.nChoices - obj.biasWindow + 1):obj.nChoices);
@@ -412,7 +457,7 @@ classdef OnlinePlots < handle
             % fixed jitter per trial keeps repeated patterns from hiding one another,
             % without touching the global random stream that draws sides.
             lit = double(spec.OptoOn);
-            series = 2 * (1 - result.Correct) + result.Choice;   % 1..4, see planeX
+            series = 2 * (1 - scored) + result.Choice;   % 1..4, see planeX
             obj.planeX(series, n) = lit * obj.lightA(spec.PatternIndex) + jitter(n, 0.6180339887);
             obj.planeY(series, n) = lit * obj.lightB(spec.PatternIndex) + jitter(n, 0.7548776662);
 
@@ -486,6 +531,24 @@ classdef OnlinePlots < handle
             end
         end
 
+        function word = scoreWord(obj)
+            % What a scored choice is: correct, or in habituation rewarded.
+            if obj.bothSidesPay
+                word = 'rewarded';
+            else
+                word = 'correct';
+            end
+        end
+
+        function labels = scoreLabels(obj)
+            % The keys of a scored choice and an unscored one.
+            if obj.bothSidesPay
+                labels = {'rewarded', 'not rewarded'};
+            else
+                labels = {'correct', 'incorrect'};
+            end
+        end
+
         function buildHeader(obj, S, subject, houseLight)
             % A strip across the top: logo, what session this is, and the summary.
             t = obj.theme;
@@ -512,22 +575,27 @@ classdef OnlinePlots < handle
             titleText = sprintf('LuminoseFM  |  %s  |  %s  |  %s, %d group(s), seed %d  |  %s', ...
                                 orDash(subject), stage, family.Label, ...
                                 obj.stimulusSet.nGroups, obj.stimulusSet.Seed, breakText);
-            if S.Task.TrainingStage == 1
-                titleText = [titleText '  |  habituation: both side ports pay'];
-            end
             uicontrol(header, 'Style', 'text', 'Units', 'normalized', ...
                       'Position', [0.05 0.5 0.8 0.42], 'String', titleText, 'FontSize', 12, ...
                       'FontWeight', 'bold', 'HorizontalAlignment', 'left', ...
                       'BackgroundColor', t.Background, 'ForegroundColor', t.Ink);
             obj.handles.houseLight = lum.gui.houseLightSwitch(header, [0.87 0.5 0.12 0.42], ...
                                                               houseLight, t);
-            obj.handles.summary = uicontrol(header, 'Style', 'text', 'Units', 'normalized', ...
-                      'Position', [0.05 0.06 0.9 0.4], 'String', 'Waiting for the first trial', ...
-                      'FontSize', 10, 'HorizontalAlignment', 'left', ...
-                      'BackgroundColor', t.Background, 'ForegroundColor', t.Muted);
+            % A text in a bare axes rather than a text uicontrol, so the trial number and
+            % the water total can stand out in bold colour (summaryMarkup).
+            summaryAxes = axes('Parent', header, 'Units', 'normalized', ...
+                               'Position', [0.05 0.06 0.9 0.4], 'Visible', 'off', ...
+                               'XLim', [0 1], 'YLim', [0 1], 'HitTest', 'off', ...
+                               'HandleVisibility', 'off');
+            disableDefaultInteractivity(summaryAxes);
+            obj.handles.summary = text(summaryAxes, 0, 0.5, 'Waiting for the first trial', ...
+                      'Interpreter', 'tex', 'FontSize', 10, ...
+                      'FontName', get(groot, 'defaultUicontrolFontName'), ...
+                      'HorizontalAlignment', 'left', 'VerticalAlignment', 'middle', ...
+                      'Color', t.Muted, 'HitTest', 'off');
         end
 
-        function buildOutcomePanel(obj, ax, x, S)
+        function buildOutcomePanel(obj, ax, x)
             t = obj.theme;
             styleAxes(ax, t, 'Outcomes');
             obj.axesOf.outcome = ax;
@@ -551,8 +619,8 @@ classdef OnlinePlots < handle
             xlabel(ax, 'Trial');
             set(ax, 'XLim', [0.5, obj.nTrialsToShow + 0.5]);
             panelLegend(ax, [obj.handles.correct, obj.handles.incorrect, obj.handles.noChoice], ...
-                        {'correct', 'incorrect', 'no choice'}, t);
-            if S.Task.TrainingStage == 1
+                        [obj.scoreLabels(), {'no choice'}], t);
+            if obj.bothSidesPay
                 ax.Title.String = 'Outcomes  (habituation: both side ports pay)';
             end
         end
@@ -601,7 +669,7 @@ classdef OnlinePlots < handle
             obj.handles.performance = line(ax, x, obj.performanceY, 'Color', t.Ink, 'LineWidth', 2);
             set(ax, 'YLim', [0 1], 'XLim', [0 20]);
             xlabel(ax, 'Trial');
-            ylabel(ax, 'Fraction correct');
+            ylabel(ax, ['Fraction ' obj.scoreWord()]);
             panelLegend(ax, [obj.handles.performance, obj.handles.leftPerformance, ...
                              obj.handles.rightPerformance], {'all', 'left-rewarded', 'right-rewarded'}, t);
         end
@@ -675,7 +743,7 @@ classdef OnlinePlots < handle
             set(ax, 'XLim', [-0.06 1.06], 'YLim', [-0.06 1.06], 'XTick', 0:0.5:1, 'YTick', 0:0.5:1);
             xlabel(ax, 'u_A, evidence on A (fraction of the window lit)');
             ylabel(ax, 'u_B, evidence on B');
-            panelLegend(ax, obj.handles.plane([1 3]), {'correct', 'incorrect'}, t);
+            panelLegend(ax, obj.handles.plane([1 3]), obj.scoreLabels(), t);
         end
 
         function buildBarPanel(obj, ax)
@@ -693,7 +761,7 @@ classdef OnlinePlots < handle
             end
             set(ax, 'YLim', [0 1.12], 'XLim', [0.4 2.6], 'XTick', 1:2, ...
                 'XTickLabel', {'left-rewarded', 'right-rewarded'}, 'XGrid', 'off');
-            ylabel(ax, 'Fraction correct');
+            ylabel(ax, ['Fraction ' obj.scoreWord()]);
         end
 
         function buildBiasPanel(obj, ax, x)
@@ -721,9 +789,12 @@ classdef OnlinePlots < handle
                 'Marker', '.', 'MarkerSize', 10, 'Color', t.Right);
             obj.handles.medianReaction = line(ax, x, obj.medianReactionY, 'Color', t.Ink, ...
                                               'LineWidth', 1.2);
-            set(ax, 'YLim', [0 0.5], 'XLim', [0.5, obj.nTrialsToShow + 0.5]);
+            ticks = [0.01 0.02 0.05 0.1 0.2 0.5 1 2 5 10 20 50 100];
+            set(ax, 'YScale', 'log', 'YLim', logLimits([]), 'YTick', ticks, ...
+                'YTickLabel', compose('%g', ticks), 'YMinorGrid', 'off', ...
+                'XLim', [0.5, obj.nTrialsToShow + 0.5]);
             xlabel(ax, 'Trial');
-            ylabel(ax, 'Seconds');
+            ylabel(ax, 'Seconds (log)');
             panelLegend(ax, [obj.handles.leftReaction, obj.handles.rightReaction, ...
                              obj.handles.medianReaction], {'chose left', 'chose right', 'median'}, t);
         end
@@ -872,6 +943,26 @@ if isempty(values)
     return
 end
 upper = max(minimum, 1.15 * max(values));
+end
+
+
+function limits = logLimits(values)
+% Log-axis limits on a 1-2-5 step that hold every positive value on screen, and at least
+% 0.1 to 1 s, so a panel with few points still reads as seconds.
+values = values(values > 0 & isfinite(values));
+steps = [1 2 5];
+if isempty(values)
+    limits = [0.1 10];
+    return
+end
+low = min(values) / 1.1;
+high = max(values) * 1.1;
+decade = 10 ^ floor(log10(low));
+lower = decade * steps(find(steps * decade <= low, 1, 'last'));
+decade = 10 ^ floor(log10(high));
+candidates = [steps 10] * decade;
+upper = candidates(find(candidates >= high, 1));
+limits = [min(0.1, max(lower, 0.001)), max(1, upper)];
 end
 
 

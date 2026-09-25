@@ -76,6 +76,7 @@ else
     sessionType = lum.gui.SessionTypeDialog('Default', S.Session.Type, 'Subject', subject);
     if isempty(sessionType)
         fprintf('LuminoseFM: session cancelled.\n');
+        lum.dev.Flex.discardEmptyAnalogFile();
         releaseLED(doricLED);
         BpodSystem.Status.BeingUsed = 0;
         return
@@ -83,6 +84,8 @@ else
     S.Session.Type = sessionType;
     startup.lap('session type dialog', true);
 end
+% The cameras' crops are this session type's: a box and a home cage film different places.
+S.Camera = lum.dev.Cameras.cropFor(S.Camera, S.Session.Type);
 
 if ismember(S.Session.Type, {'Sleep', 'EphysCalibration'})
     % Everything a sleep or ePhys calibration session holds, the LED included, is
@@ -102,11 +105,13 @@ if ~headless
     [S, accepted] = lum.gui.SetupDialog(S, rig, 'Subject', subject, 'DoricLED', doricLED);
     if ~accepted
         fprintf('LuminoseFM: session setup cancelled.\n');
+        lum.dev.Flex.discardEmptyAnalogFile();
         releaseLED(doricLED);
         clear startup
         BpodSystem.Status.BeingUsed = 0;
         return
     end
+    S.Camera = lum.dev.Cameras.keepCrop(S.Camera, 'Behaviour');
     SaveProtocolSettings(S);  % So the session can be reproduced or resumed
     startup.lap('setup dialog', true);
 end
@@ -281,6 +286,8 @@ try
     nextGUI = S.GUI;
     startSettings = S;   % As trial 1 was prepared: Data.Session.Settings
     startup.lap('first trial');
+    startMemoryGB = matlabMemoryGB();  % What MATLAB holds as trial 1 starts
+    memoryWarned = false;
     fprintf('LuminoseFM: %s.\n', startup.describe());
     startupRecord = startup.record();  % Data.Session.Startup, written with trial 1
     clear startup
@@ -376,6 +383,16 @@ try
 
         saveTimer = tic;
         if mod(currentTrial, S.Session.SaveEveryNTrials) == 0
+            % MATLAB's memory with each save (about 6 ms): a session on 2026-09-25 ended in
+            % "Out of memory", and this says when the next one starts to grow.
+            data.Timing.memoryGB(currentTrial) = matlabMemoryGB();
+            if ~memoryWarned && data.Timing.memoryGB(currentTrial) > max(8, 2 * startMemoryGB)
+                memoryWarned = true;
+                warning('lum:LuminoseFM:memoryGrowing', ['MATLAB is using %.1f GB, up from %.1f GB '...
+                        'at trial 1. If it keeps growing (Data.Timing.memoryGB), end the session '...
+                        'before MATLAB runs out of memory.'], ...
+                        data.Timing.memoryGB(currentTrial), startMemoryGB);
+            end
             BpodSystem.Data = publishTrialFields(BpodSystem.Data, data, currentTrial);
             SaveBpodSessionData;
         end
@@ -413,6 +430,9 @@ if nCompleted > 0
     end
 end
 try
+    if nCompleted > 0
+        data.Timing.memoryGB(nCompleted) = matlabMemoryGB();  % As the session ends
+    end
     BpodSystem.Data = publishTrialFields(BpodSystem.Data, data, nCompleted);
     if isfield(BpodSystem.Data, 'Session')
         BpodSystem.Data.Session.PlotsImage = plotsImage;
@@ -446,6 +466,8 @@ if ~headless
         % Bpod's compact window, already closed by the End button: S is as last synced.
     end
     S.Sync = typedSync;  % What was typed, not what was fitted to the cameras
+    S = handOnHold(S, data, nCompleted);  % The next session's hold starts near this one's
+    S.Camera = lum.dev.Cameras.keepCrop(S.Camera, 'Behaviour');
     if devices.houseLight.Switchable
         S.Session.HouseLight = devices.houseLight.On;  % Where the operator left it
     end
@@ -466,7 +488,8 @@ plots.close();  % Only hidden by the console's End button, so it could be saved 
 closeDevices(devices);
 clear runner runtime devices plots cueComponents stimulusComponents cameraWindow ledWindow  % No lum.* object may outlive Stop
 
-fprintf('LuminoseFM: session ended after %d trial(s).\n', nCompleted);
+fprintf('LuminoseFM: session ended after %d trial(s); MATLAB is using %.1f GB.\n', nCompleted, ...
+        matlabMemoryGB());
 if nCompleted > 0
     fprintf('  %s\n  Data: %s\n', summary, BpodSystem.Path.CurrentDataFile);
 end
@@ -629,7 +652,8 @@ data = struct();
 for name = trialSeriesNames()
     data.(name{1}) = blank;
 end
-data.Timing = struct('prepare', blank, 'send', blank, 'plot', blank, 'save', blank);
+data.Timing = struct('prepare', blank, 'send', blank, 'plot', blank, 'save', blank, ...
+                     'memoryGB', blank);
 data.RuntimeSettings = cell(1, maxTrials);
 
 
@@ -789,6 +813,34 @@ duration = BpodSystem.Data.TrialEndTimestamp(trialNumber) - BpodSystem.Data.Tria
 fallback = houseLight.levelAt(arrivedAt - duration);
 on = lum.dev.HouseLight.levelAtStart(BpodSystem.Data.RawEvents.Trial{trialNumber}.Events, ...
                                      houseLight, fallback);
+
+
+function S = handOnHold(S, data, nCompleted)
+% While shaping grows the hold, the next session starts 10% below the hold this one's last
+% trial asked for (lum.HoldShaping.nextSessionStart), written to the settings file with
+% the rest.
+if nCompleted < 1
+    return
+end
+lastHold = data.HoldDuration(nCompleted);
+start = lum.HoldShaping.nextSessionStart(S, lastHold);
+if isnan(start)
+    return
+end
+S.GUI.HoldStart = start;
+fprintf(['LuminoseFM: the next session''s hold starts at %g s, 10%% below this session''s '...
+         'last (%.3g s).\n'], start, lastHold);
+
+
+function gigabytes = matlabMemoryGB()
+% The memory MATLAB is using, GB; NaN where MATLAB cannot say (memory is Windows only).
+gigabytes = NaN;
+try
+    usage = memory;
+    gigabytes = usage.MemUsedMATLAB / 1e9;
+catch
+    % Not Windows
+end
 
 
 function saveSettings(settingsFile, ProtocolSettings)

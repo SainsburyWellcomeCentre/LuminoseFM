@@ -17,8 +17,14 @@ classdef Cameras < lum.dev.Device
     %   <subject>\LuminoseFM\Session Videos\<data file name>_events.csv   marks, host clock
     %   <subject>\LuminoseFM\Session Videos\<data file name>_session.json settings, summary
     %
-    % where <view> is the camera's name in S.Camera.Cameras (24226887 sideview, 24226657
-    % topview on this rig). The frame log's HostTime_s column is in seconds on the same
+    % where <view> is the camera's name in S.Camera.Cameras (24226887 topview, 24226657
+    % sideview on this rig, checked against the views 2026-09-25).
+    %
+    % Crops are kept per session type (S.Camera.Crops.Behaviour, .Sleep,
+    % .EphysCalibration, by serial): a behaviour box and a home cage need different ones.
+    % Once the session type is known, cropFor puts that type's last crops into
+    % S.Camera.Cameras(k).Roi, which the Cameras tab edits and the session records with;
+    % keepCrop stores them back when the settings file is written. The frame log's HostTime_s column is in seconds on the same
     % host clock as the events file and as Data.CameraTime, which pairs each trial's
     % TrialEndTimestamp with that clock (lum.dev.Cameras.mark).
     %
@@ -62,6 +68,7 @@ classdef Cameras < lum.dev.Device
         TtlLines = {'Line0', 'Line2', 'Line3'}
         MaxFrameRate = 150       % The Chameleon3's limit is 150.7 Hz
         MaxWindowRate = 30       % Preview refreshes per second, at most
+        CropKinds = {'Behaviour', 'Sleep', 'EphysCalibration'}  % S.Camera.Crops fields
     end
 
     properties (SetAccess = protected)
@@ -318,11 +325,84 @@ classdef Cameras < lum.dev.Device
             tf = ismember(char(format), {'avi-mjpeg', 'mp4-h264', 'avi-raw'});
         end
 
+        function camera = cropFor(camera, sessionType)
+            % cropFor(camera, sessionType) sets each camera's Roi to the crop last kept for a
+            % session of this type (S.Camera.Crops.<type>, matched by serial), or to the full
+            % frame where there is none. A crop set for another session type is not used.
+            crops = lum.dev.Cameras.cropsOf(camera, sessionType);
+            for k = 1:numel(camera.Cameras)
+                match = find(strcmp({crops.Serial}, strtrim(char(camera.Cameras(k).Serial))), 1);
+                if isempty(match)
+                    camera.Cameras(k).Roi = [];
+                else
+                    camera.Cameras(k).Roi = crops(match).Roi;
+                end
+            end
+        end
+
+        function camera = keepCrop(camera, sessionType)
+            % keepCrop(camera, sessionType) keeps each camera's Roi as this session type's
+            % crop (S.Camera.Crops.<type>), for the next session of the type: cropFor.
+            kept = struct('Serial', {}, 'Roi', {});
+            for k = 1:numel(camera.Cameras)
+                roi = camera.Cameras(k).Roi;
+                serial = strtrim(char(camera.Cameras(k).Serial));
+                if ~isempty(roi) && ~isempty(serial)
+                    kept(end+1) = struct('Serial', serial, 'Roi', double(roi(:)')); %#ok<AGROW>
+                end
+            end
+            if ~isfield(camera, 'Crops') || ~isstruct(camera.Crops)
+                camera.Crops = lum.dev.Cameras.noCrops();
+            end
+            camera.Crops.(lum.dev.Cameras.cropKind(sessionType)) = kept;
+        end
+
+        function crops = noCrops()
+            % noCrops() is S.Camera.Crops with no crop for any session type.
+            none = struct('Serial', {}, 'Roi', {});
+            crops = struct('Behaviour', none, 'Sleep', none, 'EphysCalibration', none);
+        end
+
+        function roi = parseCrop(text)
+            % parseCrop(text) reads a crop as the Cameras tab shows it: 'x,y wxh' (sensor
+            % pixels, x and y from the top left) or 'full frame' (or nothing) for []. NaN when
+            % it is neither.
+            text = strtrim(lower(char(string(text))));
+            if isempty(text) || any(strcmp(text, {'full frame', 'full', 'none'}))
+                roi = [];
+                return
+            end
+            numbers = str2double(regexp(text, '\d+(\.\d+)?', 'match'));
+            if numel(numbers) ~= 4 || any(numbers(3:4) < 1) || any(mod(numbers, 1) ~= 0)
+                roi = NaN;
+                return
+            end
+            roi = numbers;
+        end
+
         function name = cleanName(name)
             % cleanName(name) is a view name as spincam writes it into file names: letters,
             % digits, - and _, anything else becoming _.
             name = regexprep(strtrim(char(name)), '[^A-Za-z0-9_\-]+', '_');
             name = regexprep(name, '^_+|_+$', '');
+        end
+
+        function crops = cropsOf(camera, sessionType)
+            % The crops kept for a session type, or none.
+            crops = struct('Serial', {}, 'Roi', {});
+            kind = lum.dev.Cameras.cropKind(sessionType);
+            if isfield(camera, 'Crops') && isstruct(camera.Crops) && isfield(camera.Crops, kind) ...
+                    && isstruct(camera.Crops.(kind)) && all(isfield(camera.Crops.(kind), {'Serial', 'Roi'}))
+                crops = camera.Crops.(kind);
+            end
+        end
+
+        function kind = cropKind(sessionType)
+            % The S.Camera.Crops field of a session type; behaviour for anything else.
+            kind = char(sessionType);
+            if ~ismember(kind, lum.dev.Cameras.CropKinds)
+                kind = 'Behaviour';
+            end
         end
 
         function folder = locateSpinCam(folder)

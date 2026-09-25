@@ -125,8 +125,12 @@ end
 
 function testTimingIsRecordedForEveryTrial(testCase)
 sessionData = testCase.TestData.sessionData;
-for field = {'prepare', 'send', 'plot', 'save'}
+for field = {'prepare', 'send', 'plot', 'save', 'memoryGB'}
     verifyLength(testCase, sessionData.Timing.(field{1}), sessionData.nTrials);
+end
+if ispc
+    verifyGreaterThan(testCase, sessionData.Timing.memoryGB(end), 0, ...
+                      'MATLAB''s memory is recorded as the session ends');
 end
 verifyLessThan(testCase, max(sessionData.Timing.prepare), 1, ...
                'Preparing a trial should take well under a second');

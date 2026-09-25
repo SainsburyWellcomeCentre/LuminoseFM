@@ -401,6 +401,42 @@ again.Doric.MaxCurrentmA = [700 700];   % Typed from 0.9.3 on
 verifyEqual(testCase, lum.mergeSettings(lum.defaultSettings, again).Doric.MaxCurrentmA, [700 700]);
 end
 
+function testTheOldDefaultViewsBecomeTheCheckedOnes(testCase)
+% Up to 0.9.5 the defaults had 24226887 as sideview; it films the top (2026-09-25).
+loaded = lum.defaultSettings;
+loaded.Camera = rmfield(loaded.Camera, 'Crops');
+loaded.Camera.Cameras(1).Name = 'sideview';
+loaded.Camera.Cameras(2).Name = 'topview';
+[S, added] = lum.mergeSettings(lum.defaultSettings, loaded);
+verifyEqual(testCase, {S.Camera.Cameras.Serial; S.Camera.Cameras.Name}, ...
+            {'24226887', '24226657'; 'topview', 'sideview'});
+verifyTrue(testCase, any(startsWith(added, 'Camera.Cameras')));
+mine = loaded;
+mine.Camera.Cameras(1).Name = 'arena';
+verifyEqual(testCase, {lum.mergeSettings(lum.defaultSettings, mine).Camera.Cameras.Name}, ...
+            {'arena', 'topview'}, 'Names the operator chose are kept');
+again = lum.defaultSettings;   % 0.9.6 on: the old pairing typed again is the operator's
+again.Camera.Cameras(1).Name = 'sideview';
+again.Camera.Cameras(2).Name = 'topview';
+verifyEqual(testCase, {lum.mergeSettings(lum.defaultSettings, again).Camera.Cameras.Name}, ...
+            {'sideview', 'topview'});
+end
+
+function testAnOldFilesCropsAreKeptForItsLastSessionTypeOnly(testCase)
+% Up to 0.9.5 one crop served every session type; LUMS0014's topview crop was drawn for
+% the behaviour box and would have cropped the home cage too.
+loaded = lum.defaultSettings;
+loaded.Camera = rmfield(loaded.Camera, 'Crops');
+loaded.Camera.Cameras(1).Roi = [240 192 640 640];
+loaded.Session.Type = 'Behaviour';
+[S, added] = lum.mergeSettings(lum.defaultSettings, loaded);
+verifyTrue(testCase, any(startsWith(added, 'Camera.Crops')));
+verifyEqual(testCase, lum.dev.Cameras.cropFor(S.Camera, 'Behaviour').Cameras(1).Roi, [240 192 640 640]);
+verifyEmpty(testCase, lum.dev.Cameras.cropFor(S.Camera, 'Sleep').Cameras(1).Roi, ...
+            'A behaviour crop does not crop a sleep session');
+verifyEmpty(testCase, lum.dev.Cameras.cropFor(S.Camera, 'EphysCalibration').Cameras(1).Roi);
+end
+
 function testOnlyTimedComponentsCostTimers(testCase)
 S = lum.defaultSettings;
 S.Stimulus.Duration = 1;

@@ -95,9 +95,72 @@ verifyGreaterThanOrEqual(testCase, performance.XLim(2), 150);
 verifySubstring(testCase, plots.summaryText(), 'Trial 150');
 verifySubstring(testCase, plots.summaryText(), 'centre hold', 'The hold asked for is shown');
 verifySubstring(testCase, plots.summaryText(), '5 centre', 'Centre rewards are counted apart');
+shown = findall(plots.Figure, 'Type', 'text');
+shown = shown(arrayfun(@(h) contains(char(join(string(h.String))), 'Trial 150'), shown));
+verifyNumElements(testCase, shown, 1, 'The header shows the summary');
+verifyMatches(testCase, shown.String, '^\\bf\\color\[rgb\]\{[^}]*\}Trial 150\\rm', ...
+              'The trial number is in bold');
+verifyMatches(testCase, shown.String, '\\bf\\color\[rgb\]\{[^}]*\}water \d+ uL\\rm', ...
+              'The water total is in bold');
+withoutClock = @(text) regexprep(text, '\d+:\d+:\d+$', '');
+verifyEqual(testCase, withoutClock(regexprep(shown.String, '\\(bf|rm|color\[rgb\]\{[^}]*\})', '')), ...
+            withoutClock(plots.summaryText()), 'The header says what summaryText says');
 holdAxes = axesTitled(plots.Figure, 'Centre hold');
 held = findobj(holdAxes, 'Type', 'line', 'LineStyle', 'none');
 verifyTrue(testCase, any(arrayfun(@(h) any(~isnan(h.YData)), held)), 'Hold times are plotted');
+delete(cleanup);
+end
+
+function testReactionTimesAreOnALogAxis(testCase)
+% A naive animal's 10 s and a trained one's 0.2 s on one panel (LUMS0014 ran 1 to 11 s).
+[S, stimulusSet] = sessionFixture(testCase, 'pure');
+plots = lum.OnlinePlots(S, stimulusSet, 'Visible', 'off');
+cleanup = onCleanup(@() plots.close());
+reaction = axesTitled(plots.Figure, 'Reaction time');
+verifyEqual(testCase, reaction.YScale, 'log');
+feed(plots, S, stimulusSet, 40);
+verifyGreaterThan(testCase, reaction.YLim(1), 0, 'A log axis starts above 0');
+verifyLessThanOrEqual(testCase, reaction.YLim(1), 0.2, 'The fastest reaction (0.2 s) fits');
+verifyGreaterThanOrEqual(testCase, reaction.YLim(2), 1.2, 'The slowest reaction fits');
+delete(cleanup);
+end
+
+function testHabituationScoresChoicesByTheReward(testCase)
+% Both side ports pay in habituation, so a rewarded choice of the other side is green
+% and counts towards the performance, not against it.
+[S, stimulusSet] = sessionFixture(testCase, 'pure');
+S.Task.TrainingStage = 1;
+plots = lum.OnlinePlots(S, stimulusSet, 'Visible', 'off', 'RefreshEvery', 1);
+cleanup = onCleanup(@() plots.close());
+history = lum.newHistory(S.Session.MaxTrials);
+queue = stimulusSet.TrialPattern;
+[spec, queue] = lum.nextTrialSpec(S, stimulusSet, queue, history, 1);
+for trial = 1:12
+    choice = 1 + mod(trial, 2);  % Alternating sides: half of them the group's other side
+    rewarded = trial ~= 12;      % The last left before the valve opened
+    result = struct('Outcome', lum.Outcome.Incorrect, 'Choice', choice, ...
+                    'Correct', double(choice == spec.CorrectSide), 'Rewarded', double(rewarded), ...
+                    'ReactionTime', 2, 'HoldBreaks', 0, 'HoldAttempts', 1, 'EarlyWithdrawals', 0, ...
+                    'CentreRewarded', 0, 'ResponseRetries', 0, 'CentreHoldTime', 0.3);
+    if result.Correct == 1
+        result.Outcome = lum.Outcome.Correct;
+    end
+    if ~rewarded
+        result.Outcome = lum.Outcome.CorrectNoReward;
+    end
+    history = lum.updateHistory(history, trial, spec, result);
+    [nextSpec, queue] = lum.nextTrialSpec(S, stimulusSet, queue, history, trial + 1);
+    plots.update(trial, spec, result, nextSpec, queue, 3);
+    spec = nextSpec;
+end
+outcomes = axesTitled(plots.Figure, 'Outcomes');
+filled = findobj(outcomes, 'Type', 'line', 'Marker', 'o', 'LineWidth', 0.5);
+open = findobj(outcomes, 'Type', 'line', 'Marker', 'o', 'LineWidth', 1.3);
+verifyEqual(testCase, nnz(~isnan(filled.YData)), 11, 'Every rewarded choice is green');
+verifyEqual(testCase, nnz(~isnan(open.YData)), 1, 'Only the unrewarded one is not');
+verifySubstring(testCase, plots.summaryText(), '92% rewarded of 12 choices');
+performance = axesTitled(plots.Figure, 'Performance');
+verifyEqual(testCase, performance.YLabel.String, 'Fraction rewarded');
 delete(cleanup);
 end
 
@@ -492,7 +555,7 @@ S = testCase.TestData.S;
 [~, ~, app] = lum.gui.SetupDialog(S, testCase.TestData.rig, 'Wait', false, 'Visible', 'off');
 cleanup = onCleanup(@() closeIfOpen(app.Figure));
 c = app.cameras.Controls;
-verifyEqual(testCase, c.Table.Data(:, 2)', {'sideview', 'topview'});
+verifyEqual(testCase, c.Table.Data(:, 2)', {'topview', 'sideview'});
 verifySubstring(testCase, c.Format.Tooltip, 'several CPU cores', 'The default format is described');
 c.Format.Value = 'raw';
 c.Format.ValueChangedFcn(c.Format, []);
@@ -513,12 +576,64 @@ verifyEqual(testCase, candidate.Camera.FrameRate, 60);
 assumeNotEmpty(testCase, lum.dev.Cameras.locateSpinCam(''), 'spincam is not on the path');
 c.Simulated.Value = true;
 app.cameras.startPreview();
-verifyEqual(testCase, {app.cameras.Connected.Name}, {'sideview'});
+verifyEqual(testCase, {app.cameras.Connected.Name}, {'topview'});
 pause(1);
 app.cameras.refreshPreview();
 verifyGreaterThan(testCase, numel(findobj(c.Tiles, 'Type', 'image')), 0);
 app.cameras.stopPreview();
 verifyEmpty(testCase, app.cameras.Manager, 'Stopping releases the cameras');
+delete(cleanup);
+end
+
+function testACropDrawnOnThePreviewCropsTheCamera(testCase)
+% Drag a rectangle over a previewed camera: the camera is cropped to it and the crop is the
+% row's; typed crops apply the same way, and Full frame undoes them.
+assumeUIFigures(testCase);
+assumeNotEmpty(testCase, lum.dev.Cameras.locateSpinCam(''), 'spincam is not on the path');
+S = testCase.TestData.S;
+S.Camera.Cameras(2).Record = false;
+[~, ~, app] = lum.gui.SetupDialog(S, testCase.TestData.rig, 'Wait', false, 'Visible', 'off');
+cleanup = onCleanup(@() closeIfOpen(app.Figure));
+c = app.cameras.Controls;
+c.Simulated.Value = true;
+app.cameras.startPreview();
+pause(1);
+app.cameras.refreshPreview();
+verifyEqual(testCase, char(c.DrawCrop.Enable), 'on', 'Cropping is offered while previewing');
+picture = size(findobj(c.Tiles, 'Type', 'image').CData);
+verifyEqual(testCase, picture(1:2), [512 640], 'The simulated camera is 640 x 512');
+roi = app.cameras.cropTile(1, [100.5 50.5], [420.5 306.5]);
+verifyNotEmpty(testCase, roi);
+verifyLessThanOrEqual(testCase, roi(3:4), [320 256], 'No larger than the rectangle drawn');
+verifyGreaterThanOrEqual(testCase, roi(1:2), [96 48], 'Where the rectangle was drawn');
+candidate = app.collect();
+verifyEqual(testCase, candidate.Camera.Cameras(1).Roi, roi, 'The crop is the row''s');
+verifyEqual(testCase, c.Table.Data{1, 4}, sprintf('%d,%d %dx%d', roi), 'And the table shows it');
+verifyEmpty(testCase, app.cameras.cropTile(1, [10 10], [12 12]), 'A click is not a crop');
+
+% The mouse: a press on the picture borrows the pointer's callbacks from the help line
+% while dragging, and the release gives them back.
+helpLineMotion = app.Figure.WindowButtonMotionFcn;
+c.DrawCrop.Value = true;
+picture = findobj(c.Tiles, 'Type', 'image');
+picture.ButtonDownFcn(picture, []);
+verifyNotEqual(testCase, func2str(app.Figure.WindowButtonMotionFcn), func2str(helpLineMotion), ...
+               'Dragging draws the rectangle');
+app.Figure.WindowButtonUpFcn(app.Figure, []);
+verifyEqual(testCase, func2str(app.Figure.WindowButtonMotionFcn), func2str(helpLineMotion), ...
+            'The help line has the pointer back');
+verifyFalse(testCase, c.DrawCrop.Value, 'One crop per press of Draw crop');
+
+c.Table.Data{1, 4} = '0,0 320x256';
+c.Table.CellEditCallback(c.Table, struct('Indices', [1 4], 'NewData', '0,0 320x256'));
+verifyEqual(testCase, app.collect().Camera.Cameras(1).Roi, [0 0 320 256], 'A typed crop is read');
+c.Table.Data{1, 4} = 'somewhere';
+c.Table.CellEditCallback(c.Table, struct('Indices', [1 4], 'NewData', 'somewhere'));
+verifyEqual(testCase, app.collect().Camera.Cameras(1).Roi, [0 0 320 256], 'Nonsense is put back');
+
+c.FullFrame.ButtonPushedFcn(c.FullFrame, []);
+verifyEmpty(testCase, app.collect().Camera.Cameras(1).Roi, 'Full frame clears the crop');
+app.cameras.stopPreview();
 delete(cleanup);
 end
 

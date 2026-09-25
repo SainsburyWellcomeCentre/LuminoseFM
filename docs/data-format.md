@@ -19,8 +19,8 @@ D:\luminoseData\<subject>\LuminoseFM\Session Videos\<data file name>_events.csv 
 D:\luminoseData\<subject>\LuminoseFM\Session Videos\<data file name>_session.json
 ```
 
-`<view>` is the camera's name in `S.Camera.Cameras` (`sideview` = 24226887, `topview` = 24226657 on
-this rig); `.avi` is `.mp4` or `.raw` (+ `.raw.json`) in those formats. The video files are
+`<view>` is the camera's name in `S.Camera.Cameras` (`topview` = 24226887, `sideview` = 24226657 on
+this rig, since 0.9.6); `.avi` is `.mp4` or `.raw` (+ `.raw.json`) in those formats. The video files are
 SpinCam's: see *Video* below and SpinCam's README (§7) for every column.
 
 The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
@@ -148,7 +148,10 @@ started. `LEDCurrentA` and `LEDCurrentB` are the LED currents, in mA, the trial 
 and B (NaN when the driver was set by hand); a change made in the LED window takes effect from the
 next trial prepared after it.
 
-`Choice`, `Correct` and `Outcome` are the **first** side poked. When an incorrect choice is not
+`Choice`, `Correct` and `Outcome` are the **first** side poked **inside the response window** (the
+first visit to `WaitForResponse`); a side poke after it ran out, in the ITI, is not a choice, and
+the trial is `NoResponse`. `ReactionTime` is therefore never longer than the response window. When
+an incorrect choice is not
 punished (`TrialSettings{k}.PunishCondition` without *Incorrect choice*, the default from 0.8.0), the
 trial goes on: state `RetryResponse`, then `WaitForResponse` again, and the correct port still pays.
 Such a trial is `Incorrect` with `Rewarded` 1; `ResponseRetries` counts the wrong pokes forgiven
@@ -224,8 +227,20 @@ p = lum.pattern.patternAt(SessionData.Session.StimulusSet, SessionData.PatternIn
 
 ### `SessionData.Timing`
 
-How long each trial's prepare, send, plot and save steps took, so lag regressions show up in the
-data rather than only in the room.
+How long each trial's prepare, send, plot and save steps took, in seconds (`prepare`, `send`,
+`plot`, `save`), so lag regressions show up in the data rather than only in the room; and
+`memoryGB` (0.9.6), the memory MATLAB was using, in GB, on every trial with a save
+(`Settings.Session.SaveEveryNTrials`) and on the last trial as the session ended, NaN on the others
+and off Windows.
+
+In habituation (`TrainingStage` 1) both side ports pay, and the online plots score a choice by
+`Rewarded`; `Correct` stays the side the trial's group pays, as in every stage.
+
+The settings file's `Camera.Crops` (0.9.6) holds the cameras' crops per session type
+(`Behaviour`, `Sleep`, `EphysCalibration`, each a list of `Serial` and `Roi`); the crops a session
+recorded with are `Session.Settings.Camera.Cameras(k).Roi` and `Session.Cameras.Settings`. The
+settings file's `GUI.HoldStart` after a session that grew the hold is 90% of that session's last
+`HoldDuration` (`lum.HoldShaping.nextSessionStart`).
 
 ---
 
@@ -396,6 +411,22 @@ the null device shims swallowed is recorded in `Data.Session.DeviceLog`. See
 ---
 
 ## Reading older files
+
+- **Videos before 0.9.6 with the default names are misnamed**: the defaults called 24226887
+  `sideview` and 24226657 `topview`, the wrong way round. A file's `sideview_…` was filmed from the
+  top unless the operator renamed the views (LUMS0014's first session, 2026-09-25, was renamed and is
+  right). Go by the serial, not the name: each camera's `CameraID` column in its `.csv`, and
+  `Session.Cameras.Settings.Cameras` / the `_session.json`; 24226887 is the top view.
+- **Sessions before 0.9.6** scored a side poke made after the response window ran out (in the ITI)
+  as the trial's choice: `Choice`, `Correct` and `ReactionTime` were set, `Outcome` was `Correct` or
+  `Incorrect`, and `Rewarded` was 0, with a `NoResponse` state in the trial. Rescore them with the
+  current scorer, which reads only the states and events:
+  `lum.scoreTrial(SessionData.RawEvents.Trial{k}, struct('CorrectSide', SessionData.CorrectSide(k)), SessionData.Session.Rig)`.
+  Bias correction and the plots counted those pokes as choices. With `RewardDelay` 0, leaving the
+  side port in the 0.1 ms before the valve opened (a beam flicker) forfeited the reward
+  (`CorrectNoReward`). In habituation the plots marked a rewarded choice of the other side as
+  incorrect. `Timing` has no `memoryGB`; the settings file had one crop per camera for every session
+  type, and `HoldStart` was not carried from session to session.
 
 - **Sessions before 0.9.0** used the earlier stimulus families (`'pure'`, `'sequence'` — a motif
   of joint states repeated in cycles, `'occupancy'`, `'overlap_order'`, `'tiled_order'`,

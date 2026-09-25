@@ -33,6 +33,19 @@ verifyEqual(testCase, lum.HoldShaping.next(S, lum.newHistory(5)), S.GUI.HoldStar
             'AbsTol', 1e-12);
 end
 
+function testTheNextSessionStartsTenPercentBelowTheLastHold(testCase)
+% LUMS0014 ended its first session at a 0.866 s hold; the next starts at 0.779 s.
+S = shaped('Grow hold');
+verifyEqual(testCase, lum.HoldShaping.nextSessionStart(S, 0.8663), 0.780, 'AbsTol', 1e-12);
+S.GUI.HoldTarget = 0.5;
+verifyEqual(testCase, lum.HoldShaping.nextSessionStart(S, 0.8663), 0.5, 'Never past the target');
+verifyTrue(testCase, isnan(lum.HoldShaping.nextSessionStart(S, NaN)), 'No trial, no change');
+verifyTrue(testCase, isnan(lum.HoldShaping.nextSessionStart(shaped('Shrink grace'), 0.8)), ...
+           'Only a growing hold is handed on');
+S.Task.AutoShaping = false;
+verifyTrue(testCase, isnan(lum.HoldShaping.nextSessionStart(S, 0.8)));
+end
+
 function testGrowthFollowsOnlyCompletedHolds(testCase)
 S = shaped('Grow hold');
 S.GUI.HoldGrowth = 10;

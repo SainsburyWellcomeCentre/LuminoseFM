@@ -104,6 +104,18 @@ verifyEqual(testCase, result.Outcome, lum.Outcome.NoResponse);
 verifyEqual(testCase, result.Rewarded, 0);
 end
 
+function testASidePokeAfterTheResponseWindowIsNotAChoice(testCase)
+% LUMS0014_LuminoseFM_20260925_132300, trial 56: the window ran out at 41.6091 s and the
+% animal poked left at 41.6505 s, in the ITI. Up to 0.9.5 that was scored Correct.
+trial = makeTrial('WaitForResponse', [31.6091 41.6091], 'NoResponse', [41.6091 41.6092], ...
+                  'ITI', [41.6093 42.6093], 'Port1In', 41.6505);
+result = lum.scoreTrial(trial, spec(1), testCase.TestData.rig);
+verifyEqual(testCase, result.Outcome, lum.Outcome.NoResponse);
+verifyTrue(testCase, isnan(result.Choice));
+verifyTrue(testCase, isnan(result.Correct));
+verifyTrue(testCase, isnan(result.ReactionTime));
+end
+
 function testNeverLeavingTheCentrePortIsANoResponse(testCase)
 trial = makeTrial('CentreHold', [0.5 1.5], 'WaitForCentreExit', [1.5 11.5], ...
                   'NoResponse', [11.5 11.5]);

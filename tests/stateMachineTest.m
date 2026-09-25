@@ -589,6 +589,63 @@ verifyEqual(testCase, targetOf(sma, 'WaitForResponse', 'Port1In'), 'LeftRewardDe
 verifyEqual(testCase, targetOf(sma, 'WaitForResponse', 'Port3In'), 'RightRewardDelay');
 end
 
+function testWithoutARewardDelayABeamFlickerCannotForfeitTheReward(testCase)
+% LUMS0014 lost a reward on 2026-09-25 to a 100 us beam flicker in a 0 s reward delay.
+S = lum.defaultSettings;
+S.GUI.RewardDelay = 0;
+sma = lum.buildTrialSM(makeTestContext('Settings', S));
+verifyEqual(testCase, targetOf(sma, 'LeftRewardDelay', 'Port1Out'), 'LeftRewardDelay');
+verifyEqual(testCase, targetOf(sma, 'RightRewardDelay', 'Port3Out'), 'RightRewardDelay');
+verifyEqual(testCase, tupTargetOf(sma, 'LeftRewardDelay'), 'LeftReward');
+S.GUI.RewardDelay = 0.2;
+sma = lum.buildTrialSM(makeTestContext('Settings', S));
+verifyEqual(testCase, targetOf(sma, 'LeftRewardDelay', 'Port1Out'), 'WithdrewBeforeReward');
+verifyEqual(testCase, targetOf(sma, 'RightRewardDelay', 'Port3Out'), 'WithdrewBeforeReward');
+end
+
+function testTheValveOpensOnlyAfterAPokeInThePayingPort(testCase)
+% With or without a reward delay, the only way to a side valve is a beam break at that
+% port in the response window: WaitForResponse -PortNIn-> *RewardDelay -Tup-> *Reward.
+global BpodSystem %#ok<GVMIS>
+% A trial that pays left (training), and one that pays either side (habituation).
+for delay = [0 0.2]
+    S = lum.defaultSettings;
+    S.GUI.RewardDelay = delay;
+    sma = lum.buildTrialSM(makeTestContext('Settings', S));
+    verifyEqual(testCase, targetOf(sma, 'WaitForResponse', 'Port1In'), 'LeftRewardDelay');
+    verifyEqual(testCase, tupTargetOf(sma, 'WaitForResponse'), 'NoResponse', 'No poke, no reward');
+    verifyEqual(testCase, sourcesOf(sma, 'LeftRewardDelay'), {'WaitForResponse'}, ...
+                'Only a poke in the response window starts the reward');
+    verifyEqual(testCase, sourcesOf(sma, 'LeftReward'), {'LeftRewardDelay'});
+    verifyEmpty(testCase, sourcesOf(sma, 'RightRewardDelay'), 'The port that does not pay never opens');
+    verifyEqual(testCase, sourcesOf(sma, 'RightReward'), {'RightRewardDelay'}, ...
+                'Reached only through its delay, which nothing enters');
+    context = makeTestContext('Settings', S);
+    context.spec.RewardedSides = [1 2];
+    both = lum.buildTrialSM(context);
+    verifyEqual(testCase, targetOf(both, 'WaitForResponse', 'Port3In'), 'RightRewardDelay');
+    verifyEqual(testCase, sourcesOf(both, 'RightRewardDelay'), {'WaitForResponse'});
+    verifyEqual(testCase, sourcesOf(both, 'RightReward'), {'RightRewardDelay'});
+    rig = RigConfig;
+    outputs = BpodSystem.StateMachineInfo.OutputChannelNames;
+    for side = {'Left', 'Right'}
+        opening = sma.OutputMatrix(1:numel(sma.StateNames), strcmp(outputs, rig.Valve.(side{1}))) > 0;
+        verifyEqual(testCase, sma.StateNames(opening'), {[side{1} 'Reward']}, ...
+                    'The valve opens in its reward state and nowhere else');
+    end
+end
+end
+
+function names = sourcesOf(sma, stateName)
+% The states with any transition (input, state timer, global timer, condition) into a state.
+target = stateIndex(sma, stateName);
+from = any(sma.InputMatrix == target, 2) | sma.StateTimerMatrix(:) == target ...
+       | any(sma.GlobalTimerEndMatrix == target, 2) | any(sma.ConditionMatrix == target, 2) ...
+       | any(sma.GlobalCounterMatrix == target, 2);
+from(target) = false;  % Staying put is not a way in
+names = sma.StateNames(from);
+end
+
 function testTheWrongSideIsAnIncorrectChoiceOnceTrainingStarts(testCase)
 S = lum.defaultSettings;
 S.GUI.PunishCondition = 3;  % Incorrect choice

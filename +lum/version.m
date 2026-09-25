@@ -68,11 +68,17 @@ function text = version()
 % (lum.led.checkCoverage). 0.9.5 lets the light pattern play to its end after a completed
 % hold shorter than it: the animal may leave and choose while it plays, and the trial waits
 % for it in a new state, WaitForLightEnd, before the ITI (D21). A hold can be fixed
-% (S.Task.HoldLength 'Fixed', S.Task.FixedHold), in an Experiment session too.
+% (S.Task.HoldLength 'Fixed', S.Task.FixedHold), in an Experiment session too. 0.9.6 scores
+% only a side poke inside the response window as a choice, lets no beam flicker cancel the
+% reward after the poke when there is no reward delay, scores habituation's choices by the
+% reward in the plots, draws reaction times on a log axis, hands a growing hold on to the
+% next session (10% below the last), keeps the cameras' crops per session type
+% (S.Camera.Crops), lets them be drawn with the mouse in the Cameras tab, and names 24226887
+% topview and 24226657 sideview, as checked on the rig (the defaults had them swapped).
 %
 % See also: LuminoseFM
 
-release = '0.9.5';
+release = '0.9.6';
 text = release;
 
 try

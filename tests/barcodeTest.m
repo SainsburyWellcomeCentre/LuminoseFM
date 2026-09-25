@@ -76,6 +76,34 @@ verifyEqual(testCase, lum.sync.barcode(1, params).MarkerWidth, params.MarkerWidt
             'A barcode is a behaviour barcode unless it says otherwise');
 end
 
+function testEachSessionTypeSendsItsOwnBarcodeByDefault(testCase)
+% Behaviour, sleep and ePhys calibration sessions started in the same second still send
+% different barcodes, as typed and as fitted to the default cameras, and each decodes to
+% its own kind; sessions a second apart carry different values.
+S = lum.defaultSettings;
+[fitted, ~] = lum.sync.fitToCameras(S);
+kinds = lum.sync.barcodeKinds();
+verifyEqual(testCase, kinds, {'Behaviour', 'Sleep', 'EphysCalibration'});
+startTime = datetime(2026, 9, 25, 13, 23, 0);
+for params = {S.Sync.Barcode, fitted.Sync.Barcode}
+    codes = cellfun(@(kind) lum.sync.barcode(lum.sync.barcodeValue(startTime), params{1}, kind), ...
+                    kinds);
+    widths = [codes.MarkerWidth];
+    verifyEqual(testCase, numel(unique(widths)), 3, 'Three kinds, three markers');
+    verifyTrue(testCase, issorted(widths), 'Each kind''s marker is longer than the one before');
+    for k = 1:3
+        [rising, falling] = edgesOf(codes(k));
+        [value, ~, kind] = lum.sync.decodeBarcode(rising, falling, params{1});
+        verifyEqual(testCase, value, lum.sync.barcodeValue(startTime));
+        verifyEqual(testCase, kind, kinds{k});
+        for other = setdiff(1:3, k)
+            verifyFalse(testCase, isequal(codes(k).Durations, codes(other).Durations));
+        end
+    end
+end
+verifyNotEqual(testCase, lum.sync.barcodeValue(startTime), lum.sync.barcodeValue(startTime + seconds(1)));
+end
+
 function testTheSleepMarkerMustBeLongerThanTheBehaviourMarker(testCase)
 params = defaultParams();
 params.SleepMarkerWidth = params.MarkerWidth;
@@ -89,6 +117,35 @@ verifyEqual(testCase, code.MarkerWidth, 2 * params.MarkerWidth);
 [rising, falling] = edgesOf(code);
 [~, ~, kind] = lum.sync.decodeBarcode(rising, falling, params);
 verifyEqual(testCase, kind, 'Sleep');
+end
+
+function testACancelledLaunchLeavesNoAnalogFile(testCase)
+% The launch manager opens <data file>_ANLG.dat before the protocol runs; a session
+% cancelled in a dialog left it behind, empty (LUMS0014, 2026-09-25 13:21:41).
+ensureEmulator();
+global BpodSystem %#ok<GVMIS>
+saved = {BpodSystem.Data, BpodSystem.AnalogDataFile};
+restore = onCleanup(@() restoreAnalog(saved));
+file = [tempname '_ANLG.dat'];
+BpodSystem.Data = struct('Analog', struct('FileName', file));
+BpodSystem.AnalogDataFile = fopen(file, 'w');
+fid = BpodSystem.AnalogDataFile;
+verifyTrue(testCase, lum.dev.Flex.discardEmptyAnalogFile());
+verifyFalse(testCase, isfile(file), 'The empty file is gone');
+verifyEmpty(testCase, fopen(fid), 'And its handle closed');
+BpodSystem.AnalogDataFile = fopen(file, 'w');
+fwrite(BpodSystem.AnalogDataFile, 1:10, 'uint16');
+fclose(BpodSystem.AnalogDataFile);
+verifyFalse(testCase, lum.dev.Flex.discardEmptyAnalogFile(), 'A file with data is kept');
+verifyTrue(testCase, isfile(file));
+delete(file);
+delete(restore);
+end
+
+function restoreAnalog(saved)
+global BpodSystem %#ok<GVMIS>
+BpodSystem.Data = saved{1};
+BpodSystem.AnalogDataFile = saved{2};
 end
 
 function testTheAnalogStreamIsRealignedAfterTheBarcode(testCase)

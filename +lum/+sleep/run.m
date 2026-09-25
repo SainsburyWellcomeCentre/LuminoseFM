@@ -92,6 +92,7 @@ if ~isEphys
     kind = 'Sleep';
 end
 label = lum.gui.Form.sessionLabel(kind, true);
+S.Camera = lum.dev.Cameras.cropFor(S.Camera, kind);  % The crops last used in this session type
 
 %% Settings
 if ~headless
@@ -102,10 +103,12 @@ if ~headless
     end
     if ~accepted
         fprintf('LuminoseFM: %s session setup cancelled.\n', label);
+        lum.dev.Flex.discardEmptyAnalogFile();
         releaseLED(doricLED);
         BpodSystem.Status.BeingUsed = 0;
         return
     end
+    S.Camera = lum.dev.Cameras.keepCrop(S.Camera, kind);  % This session type's crops
     SaveProtocolSettings(S);
     startup.lap('setup dialog', true);
 end
@@ -436,6 +439,7 @@ if ~headless
     end
     S.Sync = typedSync;             % What was typed, not what was fitted to the cameras
     S.Sleep.Sync = typedSleepSync;
+    S.Camera = lum.dev.Cameras.keepCrop(S.Camera, kind);
     S.Ephys.Sync = typedEphysSync;
     try
         ProtocolSettings = S;

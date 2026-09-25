@@ -174,7 +174,16 @@ What it covers:
 - `settingsTest` also covers where the subject comes from (`lum.launchSubject`), the house light's
   move out of the runtime tier, and a 0.9.2 file's 700 mA LED limit becoming 1000 mA.
 - `barcodeTest` also samples fitted barcodes frame by frame at 25–150 Hz, at every phase and with
-  the camera 5 % slow, and decodes every one (`lum.sync.fitToCameras`).
+  the camera 5 % slow, and decodes every one (`lum.sync.fitToCameras`); checks that behaviour, sleep
+  and ePhys calibration sessions send different barcodes by default, typed and fitted, each decoding
+  to its own kind; and that a launch cancelled in a dialog leaves no empty `_ANLG.dat`.
+- Added after LUMS0014's first session (0.9.6): `scoreTrialTest` — a side poke after the response
+  window is not a choice; `stateMachineTest` — with no reward delay a beam flicker cannot forfeit the
+  reward; `windowsTest` — habituation's plots score choices by the reward, reaction times on a log
+  axis, and a crop drawn on the Cameras tab's preview (and typed, and cleared), the drag handing the
+  pointer back to the help line; `cameraTest` — crops kept per session type and typed crops read;
+  `settingsTest` — an old file's crops kept for its last session type only; `holdShapingTest` — the
+  next session's hold 10% below the last; `emulatorSessionTest` — `Timing.memoryGB`.
 - `ledTest` — light paths and fiber areas (cables by colour, swapped between channels), calibrations
   (units, refusals, saving and replacing, one per cable and channel, a cable keeping two calibrations,
   a 0.9.0 per-cable file read only on its channel, a damaged file, readings too few or too low to be

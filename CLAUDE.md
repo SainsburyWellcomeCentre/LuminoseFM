@@ -20,7 +20,7 @@ platform did not resolve the symlink, read `CLAUDE.md`.
 | PulsePal | `../../PulsePal` — **not** on the saved MATLAB path; add it explicitly |
 | Examples | `../../Bpod_Gen2/Examples/Protocols`, and `../FreelyMoving2AFC` (lab's prior 2-AFC) |
 | Stimulus generator origin | `../../generatePattern` (`generateStimuli.m`), ported into `+lum/+pattern/generate.m` |
-| SpinCam | `../../SpinCam` — the lab's camera package, its own repository (read its `CLAUDE.md` before touching the camera path). On this machine's saved MATLAB path; sessions name it by `S.Camera.SpinCamFolder`. Engine 1.2.0; `spincam.version()` still returns 1.1.0 (SpinCam's to bump, not ours) |
+| SpinCam | `../../SpinCam` — the lab's camera package, its own repository (read its `CLAUDE.md` before touching the camera path). On this machine's saved MATLAB path; sessions name it by `S.Camera.SpinCamFolder`. Engine 1.2.0; `spincam.version()` still returns 1.1.0 (SpinCam's to bump, not ours). Its `DefaultCameraNames` (by serial rank) became {'sideview','topview'} on 2026-09-25 at the operator's request, so 24226887 is topview there too |
 | Spinnaker SDK | `C:\Program Files\Teledyne\Spinnaker` 4.2.0.83, .NET assemblies incl. `SpinVideoNET` in `bin64\vs2015`. SpinCam compiles its engine against them with Windows' `csc.exe` (.NET Framework 4.8) |
 | DoricLED | `../../DoricLED` — the Doric LED package (`doric.*`), its own project with its own `CLAUDE.md`; on this machine's saved MATLAB path; sessions name it by `S.Doric.Folder` when it is not. Its bridge `bin/doric_bridge.exe` runs `DoricSystem.dll` out of process. The driver is "LED Driver" on Doric port 4 (a rotary joint on port 3 is skipped by name). Never modify it from here |
 | LED calibrations | `calibration/` at the repo root: one `DoricLED_<bundle>_<cable>_<A|B>.mat` (+ `.png`) per cable and channel; a per-cable `DoricLED_<bundle>_<cable>.mat` (0.7.2–0.9.0) is still read for the channel it was measured on; rig-local, git-ignored |
@@ -63,7 +63,8 @@ end; P6 the End button with the camera and LED windows open (it froze MATLAB bef
 startup line in a desktop launch; P8 the 0.9.0 stimulus families at the fiber tips, the designer in a
 desktop MATLAB, and centre reward again; P9 the driver's knob at 1000 mA and the LED head's temperature;
 P10 the 0.9.4 reward refusal and shaping seen in a desktop session; P11 the 0.9.5 light playing on
-after a short hold, from the saved file and at the fiber tips.** (P1–P3 passed on 2026-09-21; on
+after a short hold, from the saved file and at the fiber tips; P12 the 0.9.6 mouse-drawn crop, crops
+per session type, carried hold and habituation plots in a desktop session.** (P1–P3 passed on 2026-09-21; on
 2026-09-24 the pre-deployment validation ran every device and a behaviour, sleep and ePhys session on
 the rig with video — `docs/validation-2026-09-24.md`. Channel B gives about 58% of A's irradiance on
 every cable.)
@@ -190,6 +191,15 @@ stops the session part way through as though the End button had been pressed.
 - `Data.Session.LightMayOutlastHold` and `Data.Session.TriggerStates` (0.9.5, D21) say whether a
   completed hold could end before the light and where the next trial was prepared. Every trial has
   the state `WaitForLightEnd` before the `ITI`.
+- A choice is the first side poke **inside the first visit to `WaitForResponse`** (0.9.6,
+  `lum.scoreTrial`); a poke after the window ran out is not one (up to 0.9.5 it was, scored
+  `Correct`/`Incorrect` with `Rewarded` 0 — rescore old files with `lum.scoreTrial`).
+- `Data.Timing.memoryGB` (0.9.6): MATLAB's memory (`memory`, Windows only, ~6 ms) at every save and
+  as the session ends; a one-time warning past twice trial 1's and 8 GB. LUMS0014's first session
+  (`LUMS0014_LuminoseFM_20260925_132300`) ended in "Out of memory" after its teardown had saved
+  everything; Windows logged MATLAB committing 180 GB two minutes later. Cause not found: a mock
+  recording with the camera window stayed flat at 2.1 GB, and nothing of ours runs after the
+  teardown. Look at `memoryGB` and the Windows System log (event 2004) if it happens again.
 - `Data.Session.StoppedReason` is `''` for a behaviour session that ran to its end or was stopped from
   the console, and the error message for one that failed; sleep and ePhys sessions keep theirs in
   `Session.TestPulses.StoppedReason` / `Session.Ephys.StoppedReason`. `Session.StimulusSet.GroupPLeft` is
@@ -254,7 +264,9 @@ stops the session part way through as though the End button had been pressed.
   predates both, so trust the live values where they disagree.
 - Modules: `HiFi1` (Module#1, USB `COM8`) → amplifier → speaker. Modules 2/3 unregistered.
 - Cameras: 2 × Chameleon3 CM3-U3-13Y3M on one USB 3.0 controller, recorded through SpinCam.
-  **24226887 = sideview, 24226657 = topview** (`S.Camera.Cameras`). Default 100 Hz full frame,
+  **24226887 = topview, 24226657 = sideview** (`S.Camera.Cameras`; checked by the operator 2026-09-25 —
+  up to 0.9.5 the defaults, here and in SpinCam's `DefaultCameraNames`, were the other way round, so
+  older default-named videos are misnamed; `lum.mergeSettings` converts that exact old pairing). Default 100 Hz full frame,
   `avi-mjpeg-mt`; both cameras on one USB 3.0 controller deliver at most 120 Hz full frame together.
   Line0 (yellow/brown) is logged per frame; **Flex2 is wired to both cameras' Line0** (through the splitter,
   3.3 V TTL, since 2026-09-17), so `TTL_State` carries the barcode and trial pulses. The first wired session
@@ -433,7 +445,10 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   dropdown's change, never during a session and never enforced by validation — the operator may
   untick anything afterwards — **except** automatic shaping in an Experiment session, which
   `lum.validateSettings` refuses (`shapingInExperiment`).
-- **Automatic shaping (D6).** `S.Task.AutoShaping` (off by default) switches it; decide everything
+- **Automatic shaping (D6).** A session that grew the hold writes `S.GUI.HoldStart` = 90% of its last
+  trial's `HoldDuration` into the settings file at teardown (`lum.HoldShaping.nextSessionStart`,
+  `handOnHold` in `LuminoseFM`), so the next session starts near where the animal stopped. From the
+  settings file only, never from earlier data files. `S.Task.AutoShaping` (off by default) switches it; decide everything
   through `lum.HoldShaping.activeMode(S)` / `growsHold(S)` / `hasGrace(S)`, never by reading
   `S.Task.HoldShaping`, which has no *Off* any more (old files are migrated in `lum.mergeSettings`).
   Grow hold starts at 0.1 s, targets 1 s, and steps back one growth step after
@@ -492,6 +507,14 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   BpodSystem.Status.CurrentSubjectName, BpodSystem.Path.CurrentDataFile)`: the launch manager's
   Launch button always sets `GUIData.SubjectName`, but `Status.CurrentSubjectName` only when the
   subject list's selection changes, which left sessions up to 0.6.1 with an empty subject.
+- **Crops per session type (0.9.6, D14).** `S.Camera.Crops.Behaviour/.Sleep/.EphysCalibration`
+  (`Serial`, `Roi`) keep each type's crops. `lum.dev.Cameras.cropFor(S.Camera, type)` sets
+  `S.Camera.Cameras(k).Roi` once the session type is known (`LuminoseFM`, and `lum.sleep.run`), and
+  `keepCrop` stores them back before every settings write (Start and teardown, both scripts). Keep
+  both calls with any new settings write. Everything else (the Cameras tab, `configureCameras`, the
+  record) still reads `Cameras(k).Roi`. The Cameras tab crops with the mouse (**Draw crop**, press–drag–
+  release on a tile; `CameraSetup.cropTile` maps picture to sensor pixels) or a typed `x,y wxh`
+  (`lum.dev.Cameras.parseCrop`); the drag borrows and returns the help line's pointer callbacks.
 - **Video (D14).** `devices.cameras` (`lum.dev.openCameras`): on the rig a session with
   `S.Camera.Enabled` refuses to start without SpinCam or a ticked camera; in the emulator it uses
   SpinCam's mock cameras or the null shim. `lum.dev.configureCameras` is the only place settings
@@ -526,6 +549,9 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   Group tone frequencies come from `lum.toneFrequencies`, shared with `lum.loadSounds`. `S.Task.Variant` (Familiar/Novel,
   Mixture, Sequence, Motifs; `lum.experimentChoices().TaskVariants`) names the task and is
   recorded; per-variant defaults will go in `lum.stageDefaults`'s neighbourhood when they exist.
+- **A cancelled launch leaves no files.** The launch manager opens `<data file>_ANLG.dat` before the
+  protocol runs; every "setup cancelled" path calls `lum.dev.Flex.discardEmptyAnalogFile` (closes the
+  handle, deletes the file while it is empty).
 - **A failed session is torn down, not abandoned.** The trial loop in `LuminoseFM` is wrapped in
   a `try`: on an error the trials that completed are saved, the analog stream merged, the
   windows closed, the devices released and `RunProtocol('Stop')` called (which flushes the serial
@@ -686,6 +712,11 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   - `HoldBreak` and `CentreHoldResumed` exist in every trial. Without grace shaping they are
     unreachable; with it, `CentreHold` triggers the stimulus timers and the hold clock, and
     `CentreHoldResumed` must **not** re-trigger them.
+  - **No reward delay, no withdrawal (0.9.6).** A side valve opens only after a poke at a paying
+    port: `WaitForResponse` -`PortNIn`→ `*RewardDelay` -`Tup`→ `*Reward`, and nothing else enters those
+    states (`stateMachineTest` checks it). With `S.GUI.RewardDelay` 0 the `*RewardDelay` states leave
+    only on `Tup` (one cycle after the poke): a 0.1 ms beam flicker as the snout went in forfeited
+    LUMS0014's reward on trial 76. With a delay, leaving goes to `WithdrewBeforeReward` as before.
   - **Centre reward and retries (D19).** `CentreReward` and `RetryResponse` exist in every trial.
     A completed hold goes through `CentreReward` (centre valve open for the calibrated time,
     response configuration up) only when `spec.CentreReward` (amount > 0 and either habituation with
@@ -751,7 +782,7 @@ where it can be tested with no hardware.
 | `+lum/SyncMode.m` | How trials drive the sync TTL; codes are part of the data format |
 | `+lum/SessionRunner.m` | TrialManager on the rig, blocking in the emulator (D3) |
 | `+lum/StartupTimes.m` | How long the session took to start, step by step (`Data.Session.Startup`) |
-| `+lum/OnlinePlots.m` | The behaviour session's live figure: now and next, outcomes; performance, psychometric (along the family's evidence, or by group), evidence (u_A vs u_B: fraction of the window each channel is lit, with the contingency's boundary); by side, side bias, reaction time, centre hold (time in the port vs asked for); header: water (side and centre) and the running hold. Every key goes through `panelLegend`: one row under the axis label, never over data |
+| `+lum/OnlinePlots.m` | The behaviour session's live figure: now and next, outcomes; performance, psychometric (along the family's evidence, or by group), evidence (u_A vs u_B: fraction of the window each channel is lit, with the contingency's boundary); by side, side bias, reaction time (log axis), centre hold (time in the port vs asked for); header: water (side and centre) and the running hold. In habituation (both sides pay) every scored panel counts a choice by `Rewarded`, labelled *rewarded*/*not rewarded*. Every key goes through `panelLegend`: one row under the axis label, never over data |
 | `+lum/loadSounds.m` | The session's sounds, loaded once |
 | `+lum/testSounds.m`, `toneFrequencies.m` | A session sound as `TestHiFiSound` arguments, for the Play buttons; group tone spacing |
 | `+lum/fiberBundles.m`, `experimentChoices.m` | Bundle cables and spot counts; the Experiment tab's lists |

@@ -13,7 +13,8 @@ function result = scoreTrial(trialEvents, spec, rig)
 %
 % Returns:
 %   .Outcome       lum.Outcome code
-%   .Choice        Side poked first: 1 = Left, 2 = Right, NaN if no choice was made.
+%   .Choice        Side poked first in the response window: 1 = Left, 2 = Right, NaN if
+%                  no choice was made before it ran out.
 %                  An unpunished wrong choice may be followed by the correct one
 %                  (RetryResponse); the first is the animal's choice.
 %   .Correct       1, 0, or NaN if there was no choice to score
@@ -49,10 +50,13 @@ result = struct('Outcome', lum.Outcome.NoResponse, 'Choice', NaN, ...
                 'ResponseRetries', 0, 'CentreHoldTime', NaN);
 
 %% Which side was poked, and how quickly
+% Only a poke inside the response window is a choice: the one that ended its first visit.
+% A side poke after the window ran out (NoResponse), in the ITI, is not; up to 0.9.5 it
+% was scored as one.
 responseWindow = getState(states, 'WaitForResponse');
 if ~isnan(responseWindow(1))
-    leftTime  = firstEventAfter(events, rig.PokeIn.Left,  responseWindow(1));
-    rightTime = firstEventAfter(events, rig.PokeIn.Right, responseWindow(1));
+    leftTime  = firstEventWithin(events, rig.PokeIn.Left,  responseWindow);
+    rightTime = firstEventWithin(events, rig.PokeIn.Right, responseWindow);
     if ~isnan(leftTime) || ~isnan(rightTime)
         if isnan(rightTime) || leftTime < rightTime
             result.Choice = 1;
@@ -155,6 +159,14 @@ function n = nVisits(states, name)
 n = 0;
 if isfield(states, name)
     n = sum(~isnan(states.(name)(:, 1)));
+end
+
+
+function t = firstEventWithin(events, eventName, span)
+% Time of the first occurrence of an event from span(1) to span(2) inclusive, else NaN.
+t = firstEventAfter(events, eventName, span(1));
+if t > span(2) + 1e-6
+    t = NaN;
 end
 
 

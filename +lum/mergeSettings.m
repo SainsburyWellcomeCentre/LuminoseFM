@@ -273,6 +273,44 @@ if hasPath(loaded, 'Doric.MaxCurrentmA') && ~hasPath(loaded, 'Doric.CalibrationC
                        '1000 mA, the LED''s rating)'];
 end
 
+%% Replaced default (version 0.9.6): the views checked against the cameras
+% Up to 0.9.5 the defaults named 24226887 sideview and 24226657 topview, never checked
+% against the pictures; the operator found them the other way round (2026-09-25). A file from
+% before 0.9.6 (it has no Camera.Crops) holding exactly that pairing takes the checked one.
+% Any other naming is the operator's, and is kept; so is the old pairing typed from 0.9.6 on.
+if hasPath(loaded, 'Camera.Cameras') && ~hasPath(loaded, 'Camera.Crops') ...
+        && isstruct(loaded.Camera.Cameras) && all(isfield(loaded.Camera.Cameras, {'Serial', 'Name'}))
+    rows = loaded.Camera.Cameras;
+    serials = arrayfun(@(row) strtrim(char(row.Serial)), rows, 'UniformOutput', false);
+    names = arrayfun(@(row) strtrim(char(row.Name)), rows, 'UniformOutput', false);
+    side = strcmp(serials, '24226887') & strcmp(names, 'sideview');
+    top = strcmp(serials, '24226657') & strcmp(names, 'topview');
+    if any(side) && any(top) && numel(rows) == 2
+        loaded.Camera.Cameras(side).Name = 'topview';
+        loaded.Camera.Cameras(top).Name = 'sideview';
+        migrated{end+1} = ['Camera.Cameras (the old default views, 24226887 sideview and 24226657 '...
+                           'topview, became the checked ones: 24226887 topview, 24226657 sideview)'];
+    end
+end
+
+%% Reshaped (version 0.9.6): crops are kept per session type
+% Up to 0.9.5 one crop per camera (Camera.Cameras(k).Roi) served every session type, so a
+% crop drawn for the behaviour box also cropped the home cage. Each type now keeps its own
+% (Camera.Crops). A file's crops were drawn for the last session it ran, so they are kept
+% for that session type only.
+if hasPath(loaded, 'Camera.Cameras') && ~hasPath(loaded, 'Camera.Crops') ...
+        && isstruct(loaded.Camera.Cameras) && isfield(loaded.Camera.Cameras, 'Roi') ...
+        && any(arrayfun(@(row) ~isempty(row.Roi), loaded.Camera.Cameras))
+    kind = 'Behaviour';
+    if hasPath(loaded, 'Session.Type')
+        kind = lum.dev.Cameras.cropKind(loaded.Session.Type);
+    end
+    loaded.Camera.Crops = lum.dev.Cameras.noCrops();
+    loaded.Camera = lum.dev.Cameras.keepCrop(loaded.Camera, kind);
+    migrated{end+1} = sprintf('Camera.Crops (the crops in the file kept for %s sessions only)', ...
+                              lum.gui.Form.sessionLabel(kind, true));
+end
+
 %% Retired (version 0.2, and 0.4)
 % The hand-written stimulus table was replaced by the stimulus generator; its rows
 % cannot be converted into generator parameters, so the defaults are used instead.

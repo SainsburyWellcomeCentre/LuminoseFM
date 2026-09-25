@@ -85,6 +85,35 @@ classdef Flex < lum.dev.Device
     end
 
     methods (Static)
+        function discarded = discardEmptyAnalogFile()
+            % discardEmptyAnalogFile() closes the analog file the launch manager opened for a
+            % session that was then cancelled in a setup dialog, and deletes it while it is
+            % still empty, so a cancelled launch leaves no _ANLG.dat in Session Data (one did
+            % on 2026-09-25). Nothing streams before the first state machine run, so a
+            % cancelled session's file is always empty; a file with data is left alone.
+            % Returns true when a file was deleted. Safe anywhere, the emulator included.
+            global BpodSystem %#ok<GVMIS>
+            discarded = false;
+            try
+                if isempty(BpodSystem) || ~isfield(BpodSystem.Data, 'Analog') ...
+                        || ~isfield(BpodSystem.Data.Analog, 'FileName')
+                    return
+                end
+                file = BpodSystem.Data.Analog.FileName;
+                if ~isempty(BpodSystem.AnalogDataFile) && BpodSystem.AnalogDataFile > 2 ...
+                        && ~isempty(fopen(BpodSystem.AnalogDataFile))
+                    fclose(BpodSystem.AnalogDataFile);
+                end
+                listing = dir(file);
+                if isscalar(listing) && listing.bytes == 0
+                    delete(file);
+                    discarded = true;
+                end
+            catch
+                % Nothing to discard, or Bpod keeps it elsewhere: the launch is cancelled anyway
+            end
+        end
+
         function analog = alignAnalog(analog, firstTrialStart, runsBeforeTrials)
             % alignAnalog(analog, firstTrialStart, runsBeforeTrials) corrects the
             % timeline AddFlexIOAnalogData gives the analog stream.

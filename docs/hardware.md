@@ -223,8 +223,12 @@ both on one USB 3.0 controller, recorded by SpinCam (§3):
 
 | Serial | View (file prefix) |
 |--------|--------------------|
-| 24226887 | `sideview` |
-| 24226657 | `topview` |
+| 24226887 | `topview` |
+| 24226657 | `sideview` |
+
+Checked against the pictures by the operator on 2026-09-25. Up to then the defaults (in
+LuminoseFM and SpinCam) had them the other way round; see `docs/data-format.md`, *Reading older
+files*.
 
 Each camera's opto-isolated input **Line0** is on the yellow (signal) and brown (ground) wires of
 its GPIO cable, logged with every frame (passive TTL logging, `S.Camera.TtlLine`). **The Bpod sync line

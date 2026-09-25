@@ -67,10 +67,20 @@ classdef HoldShaping
     % the trial still running has the hold those withdrawals were made at, so it never
     % steps back twice for the same withdrawals.
     %
+    % A session that grew the hold hands it on: at teardown the settings file's
+    % S.GUI.HoldStart becomes 10% less than the hold the session's last trial asked for
+    % (nextSessionStart), so the animal's next session starts a little below where this
+    % one ended rather than at the beginning. Only a session with a settings file does this
+    % (not a headless one), and only while the hold grows.
+    %
     % Later, automatic shaping will also choose easier or harder trial types; that
     % belongs under the same switch.
     %
     % See also: lum.nextTrialSpec, lum.buildTrialSM, lum.timerBudget, lum.stageDefaults
+
+    properties (Constant)
+        NextSessionFraction = 0.9  % The next session's first hold, as a fraction of the last
+    end
 
     methods (Static)
         function names = modes()
@@ -213,6 +223,19 @@ classdef HoldShaping
             % The state machine's cycle is 100 us; store what it will run.
             holdDuration = round(max(holdDuration, 0) / 1e-4) * 1e-4;
             grace = round(max(grace, 0) / 1e-4) * 1e-4;
+        end
+
+        function start = nextSessionStart(S, lastHold)
+            % nextSessionStart(S, lastHold) is the hold the animal's next session starts at,
+            % given the hold this session's last trial asked for: 10% less, to the ms, no
+            % longer than the target. NaN when the hold does not grow or no trial ran; the
+            % settings' HoldStart then stays as it is.
+            start = NaN;
+            if ~lum.HoldShaping.growsHold(S) || ~(lastHold > 0)
+                return
+            end
+            start = round(lum.HoldShaping.NextSessionFraction * lastHold, 3);
+            start = min(start, S.GUI.HoldTarget);
         end
 
         function history = notePrepared(history, spec)

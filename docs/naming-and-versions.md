@@ -54,7 +54,7 @@ right — D8 in [`architecture.md`](architecture.md).
 | centre reward again | The centre reward given again, in any stage, on a set number of trials after the operator ticks it in the runtime window (`S.GUI.CentreRewardAgain`, `S.GUI.CentreRewardAgainTrials`) |
 | retry | Going on to the correct port after an unpunished incorrect choice: state `RetryResponse`, then the response window again (`Data.ResponseRetries`). Not "correction trial": the trial is the same one |
 | centre hold time | How long the animal stayed in the centre port on a trial's last hold, from the poke to leaving (`Data.CentreHoldTime`); the time asked for is the latency plus `HoldDuration` |
-| view | A camera's name, the prefix of its files: `sideview` (24226887), `topview` (24226657) |
+| view | A camera's name, the prefix of its files: `topview` (24226887), `sideview` (24226657); swapped in 0.9.6 after the operator checked the pictures |
 | camera clock | SpinCam's host clock: `HostTime_s` in the frame logs, `_events.csv`, `Data.CameraTime` |
 | help line | The strip at the foot of a setup or runtime window describing the field under the pointer |
 | house light | The white light inside the box, on PulsePal output 3 and looped back into BNC input 1: `S.Session.HouseLight` (behaviour), `S.Sleep.HouseLight` (sleep), `Data.HouseLight`, `Session.HouseLight`; switched from the live figure's header. Not "room light" or "port 5 light" |
@@ -143,6 +143,23 @@ names.
 | — | the video stops after the final save (`SessionSaved` event), and a second save adds its summary; default format `avi-mjpeg-mt` (SpinCam 1.2.0 engine, multi-core MJPEG), with a note when a single-threaded format cannot keep up; the help line describes the format chosen; a SpinVideo format without SpinVideo is refused when the devices open; `Session.Cameras.EngineVersion` |
 | — | `GUIMeta.<name>.Help` for every runtime parameter; help line in the setup and runtime windows |
 | — | **▶ Play** buttons for the session's sounds in the setup dialog (`lum.testSounds`) |
+
+### 0.9.5 → 0.9.6 — after LUMS0014's first session: choices inside the response window, crops per session type
+
+Found auditing `LUMS0014_LuminoseFM_20260925_132300`, the first animal's first (habituation)
+session.
+
+| 0.9.5 | 0.9.6 |
+|-------|-------|
+| a side poke after the response window ran out (in the ITI) was scored as the trial's choice: 3 of LUMS0014's 51 "choices" were such pokes, scored `Correct` with `Rewarded` 0 | only a poke inside the first visit to `WaitForResponse` is a choice; the others are `NoResponse` (`lum.scoreTrial`; rescore older files with it) |
+| with `RewardDelay` 0, leaving the side port in the 0.1 ms before the valve opened forfeited the reward (trial 76: a beam flicker as the snout went in) | a poke at the paying port is still the only way to the valve; with no delay, the delay state then leaves only on its timer (one cycle), so a flicker cannot cancel it; with a delay, leaving still forfeits it |
+| the defaults named 24226887 `sideview` and 24226657 `topview` (never checked) | 24226887 `topview`, 24226657 `sideview`, checked by the operator; a file with exactly the old default pairing is converted on load, other names are kept. SpinCam's own defaults (`DefaultCameraNames`, by serial rank) were swapped to match |
+| habituation's plots scored a rewarded choice of the other side as incorrect (red), and the header said "% correct" | in habituation the plots score by the reward: *rewarded* (green) or *not rewarded*, "% rewarded"; the data keep `Correct` as the group's side |
+| reaction time on a linear axis from 0 | on a log axis, 0.1–10 s at least |
+| `S.GUI.HoldStart` stayed as typed | after a session that grew the hold, the settings file's `HoldStart` is 10% below the hold of its last trial (`lum.HoldShaping.nextSessionStart`) |
+| one crop per camera (`S.Camera.Cameras(k).Roi`) for every session type; cropped only in SpinCam's full viewer | crops kept per session type (`S.Camera.Crops`, `lum.dev.Cameras.cropFor`/`keepCrop`; an old file's crops go to the type it last ran); drawn with the mouse on the Cameras tab's preview (**Draw crop**) or typed in its table |
+| a launch cancelled in a setup dialog left an empty `_ANLG.dat` in Session Data | it is deleted (`lum.dev.Flex.discardEmptyAnalogFile`) |
+| — | `Data.Timing.memoryGB`: MATLAB's memory at every save and at the end, a warning when it grows past twice trial 1's (and 8 GB), and the end-of-session line says it. LUMS0014's session ended in "Out of memory" after everything was saved (Windows logged MATLAB committing 180 GB two minutes later); the cause is not known yet |
 
 ### 0.9.4 → 0.9.5 — the light plays to its end after the hold; a fixed hold
 

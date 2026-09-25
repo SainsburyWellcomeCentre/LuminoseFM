@@ -29,7 +29,7 @@ function [sma, plan] = buildTrialSM(context)
 %                          -> NoResponse                                        +-> WaitForLightEnd
 %   WaitForCentrePoke -> NoInitiation         -> WaitForLightEnd   (the hold window ran out)
 %   WaitForCentreExit -> NoResponse           -> WaitForLightEnd
-%   *RewardDelay      -> WithdrewBeforeReward -> WaitForLightEnd
+%   *RewardDelay      -> WithdrewBeforeReward -> WaitForLightEnd   (only with a reward delay)
 %   WaitForLightEnd   -> ITI -> exit
 %
 % The cue asks the animal to poke: every cue component is on in WaitForCentrePoke,
@@ -440,14 +440,25 @@ sma = AddState(sma, 'Name', 'EarlyWithdrawal', ...
     'OutputActions', lum.mergeActions(stimulusOff, centreOff, ...
                                       noiseActions(context, earlyWithdrawalPunishment)));
 
+% Only a poke at a paying side port in WaitForResponse enters these states, so the valve
+% never opens without one. Leaving the port before the delay is over forfeits the reward.
+% With no delay there is nothing to wait for: after the poke the valve opens on the next
+% cycle, and a beam that flickers in that cycle as the snout goes in (100 us, LUMS0014 on
+% 2026-09-25) no longer cancels it.
+leftDelayExits = {'Tup', 'LeftReward'};
+rightDelayExits = {'Tup', 'RightReward'};
+if S.GUI.RewardDelay > 0
+    leftDelayExits = [{rig.PokeOut.Left, 'WithdrewBeforeReward'}, leftDelayExits];
+    rightDelayExits = [{rig.PokeOut.Right, 'WithdrewBeforeReward'}, rightDelayExits];
+end
 sma = AddState(sma, 'Name', 'LeftRewardDelay', ...
     'Timer', S.GUI.RewardDelay, ...
-    'StateChangeConditions', {rig.PokeOut.Left, 'WithdrewBeforeReward', 'Tup', 'LeftReward'}, ...
+    'StateChangeConditions', leftDelayExits, ...
     'OutputActions', guideOff);
 
 sma = AddState(sma, 'Name', 'RightRewardDelay', ...
     'Timer', S.GUI.RewardDelay, ...
-    'StateChangeConditions', {rig.PokeOut.Right, 'WithdrewBeforeReward', 'Tup', 'RightReward'}, ...
+    'StateChangeConditions', rightDelayExits, ...
     'OutputActions', guideOff);
 
 sma = AddState(sma, 'Name', 'LeftReward', ...

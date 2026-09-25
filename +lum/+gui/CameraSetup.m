@@ -2,8 +2,8 @@ classdef CameraSetup < handle
     % lum.gui.CameraSetup is the Cameras tab of both setup dialogs, with a live preview.
     %
     % It edits S.Camera: whether the session records video, where SpinCam was cloned,
-    % the video format, which cameras record under which view name (24226887 sideview,
-    % 24226657 topview on this rig), frame rate, exposure and gain, the TTL input logged
+    % the video format, which cameras record under which view name (24226887 topview,
+    % 24226657 sideview on this rig), frame rate, exposure and gain, the TTL input logged
     % with every frame, and the camera window shown during the session.
     %
     % Settings are easiest to get right while looking at the picture, so the tab has a
@@ -11,9 +11,16 @@ classdef CameraSetup < handle
     % will (lum.dev.configureCameras) and shows them; frame rate, exposure and gain apply
     % live. **Simulated cameras** previews spincam's synthetic cameras instead, for a desk
     % without cameras. **Full viewer...** opens spincam's own LiveViewer on the same
-    % cameras, for cropping and the finer controls; when it closes, the crop, names,
-    % frame rate, exposure and gain it left are read back into the tab. The cameras are
-    % released when the preview stops or the dialog closes, so the session can open them.
+    % cameras, for the finer controls; when it closes, the crop, names, frame rate,
+    % exposure and gain it left are read back into the tab. The cameras are released when
+    % the preview stops or the dialog closes, so the session can open them.
+    %
+    % Cropping. **Draw crop** lets the operator drag a rectangle over a camera's picture
+    % with the mouse (press, drag, release); the camera is cropped to it at once, as close
+    % as its increments allow, and the preview shows the crop. Drawing again inside a crop
+    % crops further; **Full frame** clears every crop. The Crop column can also be typed,
+    % as 'x,y wxh' in sensor pixels or 'full frame'. Crops are kept per session type
+    % (lum.dev.Cameras.cropFor): the tab shows and edits this session type's.
     %
     % Usage, inside a dialog:
     %   cameras = lum.gui.CameraSetup(tab, S.Camera, t, @refresh, 'Subject', subject);
@@ -43,6 +50,9 @@ classdef CameraSetup < handle
         ticks = 0
         viewer = []
         helpLine = []         % The dialog's lum.gui.HelpLine, once attached
+        applied = {}          % The crop each connected camera has now, [x y w h]
+        views = struct('Offset', {}, 'Scale', {})  % Picture pixels to sensor pixels, per tile
+        drag = []             % The crop being drawn: tile, start point, outline, saved callbacks
     end
 
     properties (Constant, Access = private)
@@ -181,10 +191,12 @@ classdef CameraSetup < handle
                 obj.say(sprintf('Preview failed: %s', previewError.message), true);
                 return
             end
+            obj.readAppliedCrops();
             obj.buildTiles();
             obj.Controls.Preview.Value = true;
             obj.Controls.Preview.Text = 'Stop preview';
             obj.Controls.FullViewer.Enable = 'on';
+            obj.Controls.DrawCrop.Enable = 'on';
             obj.say(sprintf('Previewing %s.', strjoin(arrayfun(@(k) sprintf('%s (%s)', ...
                 obj.Connected(k).Name, obj.Connected(k).Serial), 1:numel(obj.Connected), ...
                 'UniformOutput', false), ', ')), false);
@@ -194,12 +206,15 @@ classdef CameraSetup < handle
         function stopPreview(obj)
             % stopPreview() stops showing the cameras and releases them.
             obj.stopTimer();
+            obj.endDrag(false);
             obj.closeViewer();
             obj.releaseManager();
             if isfield(obj.Controls, 'Preview') && isvalid(obj.Controls.Preview)
                 obj.Controls.Preview.Value = false;
                 obj.Controls.Preview.Text = 'Preview';
                 obj.Controls.FullViewer.Enable = 'off';
+                obj.Controls.DrawCrop.Enable = 'off';
+                obj.Controls.DrawCrop.Value = false;
             end
         end
 
@@ -216,9 +231,12 @@ classdef CameraSetup < handle
                     if isempty(frame) || ~isvalid(obj.images(k))
                         continue
                     end
+                    scale = 1;
                     if size(frame, 2) > 640
                         frame = frame(1:2:end, 1:2:end);
+                        scale = 2;
                     end
+                    obj.views(k).Scale = scale;
                     obj.images(k).CData = frame;
                     ax = obj.images(k).Parent;
                     if ~isequal(ax.XLim, [0.5 size(frame, 2) + 0.5])
@@ -244,6 +262,29 @@ classdef CameraSetup < handle
         function close(obj)
             % close() stops the preview and releases the cameras.
             obj.stopPreview();
+        end
+
+        function roi = cropTile(obj, k, corner1, corner2)
+            % cropTile(k, corner1, corner2) crops the k-th previewed camera to the rectangle
+            % between two points on its picture ([x y], picture pixels, as the axes report
+            % them), as a drag with the mouse does, and returns the crop the camera took,
+            % [x y w h] in sensor pixels ([] for the full frame). Empty when nothing changed.
+            roi = [];
+            if isempty(obj.Manager) || ~isvalid(obj.Manager) || k > numel(obj.Connected)
+                return
+            end
+            view = obj.views(k);
+            ends = sort([corner1(:)'; corner2(:)'], 1);  % Top left, bottom right
+            frame = size(obj.images(k).CData);
+            ends(:, 1) = min(max(ends(:, 1), 0.5), frame(2) + 0.5);
+            ends(:, 2) = min(max(ends(:, 2), 0.5), frame(1) + 0.5);
+            picked = round([(ends(1, :) - 0.5) * view.Scale, diff(ends, 1, 1) * view.Scale]);
+            if any(picked(3:4) < 16)
+                obj.say('Drag across the picture to draw a crop: that was too small to be one.', true);
+                return
+            end
+            wanted = [view.Offset + picked(1:2), picked(3:4)];
+            roi = obj.applyCrop(k, wanted);
         end
 
         function delete(obj)
@@ -291,11 +332,12 @@ classdef CameraSetup < handle
             inner = uigridlayout(box, [2 1], 'RowHeight', {'1x', 28}, 'Padding', [10 8 10 8], ...
                                  'RowSpacing', 6, 'BackgroundColor', t.Panel);
             c.Table = uitable(inner, 'ColumnName', {'Serial', 'View (file prefix)', 'Record', 'Crop'}, ...
-                'ColumnEditable', [true true true false], 'ColumnWidth', {90, 'auto', 60, 110}, ...
+                'ColumnEditable', [true true true true], 'ColumnWidth', {90, 'auto', 60, 110}, ...
                 'ColumnFormat', {'char', 'char', 'logical', 'char'}, ...
-                'CellEditCallback', @(~, ~) obj.onEdit(), ...
+                'CellEditCallback', @(~, event) obj.tableEdited(event), ...
                 'Tooltip', ['One row per camera, by serial number. The view names the files: '...
-                            'sideview_<session>.avi. Tick Record for each camera the session records.']);
+                            'sideview_<session>.avi. Tick Record for each camera the session records. '...
+                            'Crop is x,y wxh in sensor pixels, or full frame; draw it on the preview.']);
             c.Table.Data = obj.tableData(camera.Cameras);
             buttons = uigridlayout(inner, [1 3], 'ColumnWidth', {'1x', '1x', '1x'}, 'Padding', 0, ...
                                    'ColumnSpacing', 6, 'BackgroundColor', t.Panel);
@@ -306,7 +348,7 @@ classdef CameraSetup < handle
                 'Tooltip', 'Add an empty row to type a serial number into');
             c.FullFrame = uibutton(buttons, 'Text', 'Full frame', ...
                 'ButtonPushedFcn', @(~, ~) obj.fullFrame(), ...
-                'Tooltip', 'Clear every crop: record the whole sensor');
+                'Tooltip', 'Clear every crop, on the preview too: record the whole sensor');
 
             form = lum.gui.Form.panel(left, 'Image', 4, t, 130);
             lum.gui.Form.label(form, 'Frame rate (Hz)', t);
@@ -361,7 +403,7 @@ classdef CameraSetup < handle
                           'BackgroundColor', t.Panel, 'ForegroundColor', t.Accent);
             right = uigridlayout(box, [3 1], 'RowHeight', {30, 40, '1x'}, 'Padding', [10 8 10 8], ...
                                  'RowSpacing', 6, 'BackgroundColor', t.Panel);
-            row = uigridlayout(right, [1 3], 'ColumnWidth', {140, 170, 150}, 'Padding', 0, ...
+            row = uigridlayout(right, [1 4], 'ColumnWidth', {120, 150, 110, 120}, 'Padding', 0, ...
                                'ColumnSpacing', 8, 'BackgroundColor', t.Panel);
             c.Preview = uibutton(row, 'state', 'Text', 'Preview', 'FontWeight', 'bold', ...
                 'ValueChangedFcn', @(source, ~) obj.previewToggled(source.Value), ...
@@ -369,6 +411,10 @@ classdef CameraSetup < handle
                             'them, and show them. Released when stopped or when the dialog closes.']);
             c.Simulated = uicheckbox(row, 'Text', 'Simulated cameras', 'Value', false, ...
                 'Tooltip', 'Preview SpinCam''s synthetic cameras, on a computer without cameras');
+            c.DrawCrop = uibutton(row, 'state', 'Text', 'Draw crop', 'Enable', 'off', ...
+                'ValueChangedFcn', @(source, ~) obj.drawCropToggled(source.Value), ...
+                'Tooltip', ['Crop a camera with the mouse: press on its picture, drag a rectangle '...
+                            'round what to keep, release. Full frame (Cameras) undoes it.']);
             c.FullViewer = uibutton(row, 'Text', ['Full viewer' char(8230)], 'Enable', 'off', ...
                 'ButtonPushedFcn', @(~, ~) obj.openViewer(), ...
                 'Tooltip', ['SpinCam''s own viewer on the same cameras: crop, black level and more. '...
@@ -420,6 +466,11 @@ classdef CameraSetup < handle
 
         function fullFrame(obj)
             obj.rois = cell(1, size(obj.Controls.Table.Data, 1));
+            if ~isempty(obj.Manager) && isvalid(obj.Manager)
+                for k = 1:numel(obj.Connected)
+                    obj.applyCrop(k, []);
+                end
+            end
             obj.refreshTable();
             obj.onEdit();
         end
@@ -570,6 +621,7 @@ classdef CameraSetup < handle
                         obj.rois{row} = roi;
                     end
                 end
+                obj.readAppliedCrops();
                 obj.refreshTable();
                 obj.onEdit();
                 if strcmp(obj.Manager.State, 'idle')
@@ -591,7 +643,8 @@ classdef CameraSetup < handle
                 ax = uiaxes(obj.Controls.Tiles, 'Color', obj.theme.Ink);
                 ax.Toolbar.Visible = 'off';
                 disableDefaultInteractivity(ax);
-                obj.images(k) = image(ax, zeros(2, 2, 'uint8'), 'CDataMapping', 'scaled');
+                obj.images(k) = image(ax, zeros(2, 2, 'uint8'), 'CDataMapping', 'scaled', ...
+                                      'ButtonDownFcn', @(~, ~) obj.pressed(k));
                 colormap(ax, gray(256));
                 clim(ax, [0 255]);
                 axis(ax, 'image');
@@ -600,6 +653,149 @@ classdef CameraSetup < handle
                 title(ax, sprintf('%s  ·  %s', obj.Connected(k).Name, obj.Connected(k).Serial), ...
                       'Interpreter', 'none', 'FontWeight', 'normal', 'FontSize', 11);
             end
+        end
+
+        function readAppliedCrops(obj)
+            % The crop each connected camera has now, and so how its picture maps to the sensor.
+            n = numel(obj.Connected);
+            obj.applied = cell(1, n);
+            obj.views = struct('Offset', repmat({[0 0]}, 1, n), 'Scale', repmat({1}, 1, n));
+            for k = 1:n
+                try
+                    obj.applied{k} = obj.Manager.getRoi({obj.Connected(k).Serial});
+                    obj.views(k).Offset = obj.applied{k}(1:2);
+                catch
+                    obj.applied{k} = [];
+                end
+            end
+        end
+
+        function actual = applyCrop(obj, k, roi)
+            % Crop the k-th connected camera to roi ([] for the full frame) now, and keep what
+            % it took as that row's crop.
+            actual = [];
+            serial = obj.Connected(k).Serial;
+            obj.stopTimer();
+            quiet = warning('off', 'spincam:roi:adjusted');  % What it took is shown below
+            restore = onCleanup(@() warning(quiet));
+            try
+                if isempty(roi)
+                    taken = obj.Manager.resetRoi({serial});
+                else
+                    taken = obj.Manager.setRoi(double(roi), {serial});
+                end
+                taken = taken(1, :);
+                full = obj.Manager.camera(serial).sensorSize();
+            catch cropError
+                obj.say(sprintf('Could not crop %s: %s', obj.Connected(k).Name, cropError.message), true);
+                obj.startTimer();
+                return
+            end
+            delete(restore);
+            obj.applied{k} = taken;
+            obj.views(k).Offset = taken(1:2);
+            actual = taken;
+            if isequal(taken, [0 0 full])
+                actual = [];
+            end
+            row = obj.Connected(k).Row;
+            obj.rois{row} = actual;
+            obj.refreshTable();
+            obj.onEdit();
+            if strcmp(obj.Manager.State, 'idle')
+                obj.Manager.startPreview();
+            end
+            obj.startTimer();
+            if isempty(actual)
+                obj.say(sprintf('%s: full frame, %dx%d.', obj.Connected(k).Name, full(1), full(2)), false);
+            else
+                obj.say(sprintf('%s cropped to %s (as close to the rectangle as the camera''s increments allow).', ...
+                                obj.Connected(k).Name, cropText(actual)), false);
+            end
+        end
+
+        function drawCropToggled(obj, on)
+            if on
+                obj.say(['Draw crop: press on a camera''s picture, drag a rectangle round what to '...
+                         'keep, and release.'], false);
+            else
+                obj.endDrag(false);
+                obj.say('Not drawing a crop.', false);
+            end
+        end
+
+        function pressed(obj, k)
+            % The mouse went down on the k-th picture: start a crop there, if drawing.
+            if ~obj.Controls.DrawCrop.Value || ~isempty(obj.drag) || k > numel(obj.images)
+                return
+            end
+            ax = obj.images(k).Parent;
+            fig = ancestor(ax, 'figure');
+            start = ax.CurrentPoint(1, 1:2);
+            outline = line(ax, start(1) * [1 1 1 1 1], start(2) * [1 1 1 1 1], 'Color', obj.theme.ChannelA, ...
+                           'LineWidth', 1.5, 'HitTest', 'off', 'PickableParts', 'none');
+            % The help line owns the pointer's motion; borrowed while dragging, then given back.
+            obj.drag = struct('Tile', k, 'Start', start, 'Outline', outline, 'Figure', fig, ...
+                              'Motion', {fig.WindowButtonMotionFcn}, 'Up', {fig.WindowButtonUpFcn});
+            fig.WindowButtonMotionFcn = @(~, ~) obj.dragged();
+            fig.WindowButtonUpFcn = @(~, ~) obj.endDrag(true);
+        end
+
+        function dragged(obj)
+            if isempty(obj.drag) || ~isvalid(obj.drag.Outline)
+                return
+            end
+            here = obj.drag.Outline.Parent.CurrentPoint(1, 1:2);
+            x = [obj.drag.Start(1) here(1)];
+            y = [obj.drag.Start(2) here(2)];
+            set(obj.drag.Outline, 'XData', x([1 2 2 1 1]), 'YData', y([1 1 2 2 1]));
+        end
+
+        function endDrag(obj, apply)
+            % The mouse came up (apply) or the drawing was abandoned: give the pointer's
+            % callbacks back, and crop to the rectangle when asked.
+            if isempty(obj.drag)
+                return
+            end
+            finished = obj.drag;
+            obj.drag = [];
+            if isvalid(finished.Figure)
+                finished.Figure.WindowButtonMotionFcn = finished.Motion;
+                finished.Figure.WindowButtonUpFcn = finished.Up;
+            end
+            here = finished.Start;
+            if isvalid(finished.Outline)
+                here = finished.Outline.Parent.CurrentPoint(1, 1:2);
+                delete(finished.Outline);
+            end
+            if apply
+                obj.cropTile(finished.Tile, finished.Start, here);
+                obj.Controls.DrawCrop.Value = false;
+            end
+        end
+
+        function tableEdited(obj, event)
+            % A typed crop is read, and applied to the preview straight away; one that cannot
+            % be read is put back.
+            if ~isempty(event) && (isfield(event, 'Indices') || isprop(event, 'Indices')) ...
+                    && ~isempty(event.Indices) && event.Indices(2) == 4
+                row = event.Indices(1);
+                roi = lum.dev.Cameras.parseCrop(event.NewData);
+                if isequaln(roi, NaN)
+                    obj.say(sprintf('A crop is x,y wxh in sensor pixels (e.g. 240,192 640x640) or full frame, not "%s".', ...
+                                    char(string(event.NewData))), true);
+                    obj.refreshTable();
+                    return
+                end
+                obj.rois{row} = roi;
+                k = find([obj.Connected.Row] == row, 1);
+                if ~isempty(k) && ~isempty(obj.Manager) && isvalid(obj.Manager)
+                    obj.applyCrop(k, roi);
+                    return
+                end
+                obj.refreshTable();
+            end
+            obj.onEdit();
         end
 
         function startTimer(obj)

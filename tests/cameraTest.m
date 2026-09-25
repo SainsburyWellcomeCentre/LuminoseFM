@@ -16,7 +16,7 @@ function testTheDefaultsRecordBothViews(testCase)
 camera = lum.defaultSettings().Camera;
 verifyTrue(testCase, camera.Enabled, 'Recording is on by default');
 verifyEqual(testCase, {camera.Cameras.Serial}, {'24226887', '24226657'});
-verifyEqual(testCase, {camera.Cameras.Name}, {'sideview', 'topview'});
+verifyEqual(testCase, {camera.Cameras.Name}, {'topview', 'sideview'});
 verifyEqual(testCase, camera.Format, 'avi-mjpeg-mt', 'Encoded on several cores');
 verifyWarningFree(testCase, @() lum.dev.Cameras.validateSettings(camera));
 verifyEmpty(testCase, lum.dev.Cameras.formatNote(camera), 'The default keeps up at the default rate');
@@ -73,6 +73,35 @@ verifyWarningFree(testCase, @() lum.dev.Cameras.validateSettings(camera), ...
                   'With recording off no camera has to be ticked');
 end
 
+function testEachSessionTypeKeepsItsOwnCrops(testCase)
+camera = lum.defaultSettings().Camera;
+verifyEmpty(testCase, [lum.dev.Cameras.cropFor(camera, 'Behaviour').Cameras.Roi], 'Full frame by default');
+camera.Cameras(1).Roi = [0 0 640 512];
+camera = lum.dev.Cameras.keepCrop(camera, 'Sleep');
+camera.Cameras(1).Roi = [];
+camera.Cameras(2).Roi = [240 192 640 640];
+camera = lum.dev.Cameras.keepCrop(camera, 'Behaviour');
+sleep = lum.dev.Cameras.cropFor(camera, 'Sleep');
+verifyEqual(testCase, {sleep.Cameras.Roi}, {[0 0 640 512], []});
+behaviour = lum.dev.Cameras.cropFor(camera, 'Behaviour');
+verifyEqual(testCase, {behaviour.Cameras.Roi}, {[], [240 192 640 640]});
+verifyEqual(testCase, {lum.dev.Cameras.cropFor(camera, 'EphysCalibration').Cameras.Roi}, {[], []});
+reordered = camera;
+reordered.Cameras = reordered.Cameras([2 1]);
+verifyEqual(testCase, lum.dev.Cameras.cropFor(reordered, 'Behaviour').Cameras(1).Roi, [240 192 640 640], ...
+            'Crops follow the serial, not the row');
+end
+
+function testATypedCropIsRead(testCase)
+verifyEqual(testCase, lum.dev.Cameras.parseCrop('240,192 640x640'), [240 192 640 640]);
+verifyEqual(testCase, lum.dev.Cameras.parseCrop(' 0, 0  320 x 256 '), [0 0 320 256]);
+verifyEmpty(testCase, lum.dev.Cameras.parseCrop('full frame'));
+verifyEmpty(testCase, lum.dev.Cameras.parseCrop(''));
+verifyEqual(testCase, lum.dev.Cameras.parseCrop('somewhere'), NaN);
+verifyEqual(testCase, lum.dev.Cameras.parseCrop('0,0 0x256'), NaN, 'A crop has an area');
+verifyEqual(testCase, lum.dev.Cameras.parseCrop('0,0 10.5x20'), NaN, 'Whole pixels');
+end
+
 function testVideosGoBesideTheSessionData(testCase)
 dataFile = fullfile('D:', 'luminoseData', 'M1', 'LuminoseFM', 'Session Data', 'M1_LuminoseFM_20260916_101500.mat');
 verifyEqual(testCase, lum.dev.Cameras.videoFolder(dataFile), ...
@@ -110,7 +139,7 @@ camera.Cameras(2).Roi = [0 0 960 720];
 manager = StubCameraManager({'24226657', '24226887'});
 connected = lum.dev.configureCameras(manager, camera, 'PreviewRate', 5);
 verifyEqual(testCase, {connected.Serial}, {'24226887', '24226657'});
-verifyEqual(testCase, {manager.Cameras.Name}, {'sideview', 'topview'});
+verifyEqual(testCase, {manager.Cameras.Name}, {'topview', 'sideview'});
 calls = manager.Calls;
 verifyTrue(testCase, any(strcmp(calls, 'full frame 24226887')), 'An empty crop is the full frame');
 verifyTrue(testCase, any(strcmp(calls, 'crop 24226657 [0 0 960 720]')));
@@ -127,14 +156,14 @@ camera = lum.defaultSettings().Camera;
 verifyError(testCase, @() lum.dev.configureCameras(StubCameraManager({'24226657'}), camera), ...
             'lum:dev:configureCameras:notAttached');
 connected = lum.dev.configureCameras(StubCameraManager({'24226657'}), camera, 'Strict', false);
-verifyEqual(testCase, {connected.Name}, {'topview'});
+verifyEqual(testCase, {connected.Name}, {'sideview'});
 end
 
 function testSimulatedCamerasTakeTheRowsInOrder(testCase)
 camera = lum.defaultSettings().Camera;
 connected = lum.dev.configureCameras(StubCameraManager({'90000001', '90000002'}, 'mock'), camera);
 verifyEqual(testCase, {connected.Serial}, {'90000001', '90000002'});
-verifyEqual(testCase, {connected.Name}, {'sideview', 'topview'});
+verifyEqual(testCase, {connected.Name}, {'topview', 'sideview'});
 end
 
 function testARecordingIsMarkedAndSummarised(testCase)
@@ -146,12 +175,12 @@ dataFile = fullfile(tempdir, 'Session Data', 'M1_LuminoseFM_20260916_101500.mat'
 plan = cameras.startRecording(dataFile);
 verifyEqual(testCase, plan.BaseName, 'M1_LuminoseFM_20260916_101500');
 verifyEqual(testCase, plan.Cameras(1).VideoFile, ...
-            fullfile(tempdir, 'Session Videos', 'sideview_M1_LuminoseFM_20260916_101500.avi'));
+            fullfile(tempdir, 'Session Videos', 'topview_M1_LuminoseFM_20260916_101500.avi'));
 verifyFalse(testCase, isnan(cameras.mark('TrialEnd', 1)));
 verifyTrue(testCase, any(strcmp(manager.Calls, 'event TrialEnd 1')));
 verifyTrue(testCase, cameras.canPreview());
 stats = cameras.statistics();
-verifyEqual(testCase, {stats.Name}, {'sideview', 'topview'});
+verifyEqual(testCase, {stats.Name}, {'topview', 'sideview'});
 cameras.stopRecording();
 record = cameras.sessionRecord();
 verifyTrue(testCase, record.Recorded);
@@ -220,7 +249,7 @@ record = sessionData.Session.Cameras;
 verifyEqual(testCase, record.Backend, 'mock');
 verifyTrue(testCase, record.Recorded);
 verifyNotEmpty(testCase, record.EngineVersion, 'The native engine''s version is recorded');
-verifyEqual(testCase, {record.Summary.Cameras.Name}, {'sideview', 'topview'});
+verifyEqual(testCase, {record.Summary.Cameras.Name}, {'topview', 'sideview'});
 verifyGreaterThan(testCase, [record.Summary.Cameras.FramesWritten], 0);
 videos = lum.dev.Cameras.videoFolder(dataFile);
 for name = {'sideview', 'topview'}
@@ -330,7 +359,7 @@ c.ExposureTime = microseconds;
 end
 
 function c = sameNames(c)
-c.Cameras(2).Name = 'sideview';
+c.Cameras(2).Name = 'topview';
 end
 
 function c = noneRecorded(c)

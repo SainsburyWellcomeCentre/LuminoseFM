@@ -321,6 +321,11 @@ withdrawing is not asked for more.
 - Without growth the hold is `lum.HoldShaping.fullHold(S)`: the stimulus window plus the
   post-stimulus hold, or a fixed hold (`S.Task.HoldLength` *Fixed*, `S.Task.FixedHold`), which an
   Experiment session may use (D21).
+- **Between sessions (0.9.6).** A session that grew the hold writes `S.GUI.HoldStart` =
+  `lum.HoldShaping.nextSessionStart(S, lastHold)` (90% of its last trial's `HoldDuration`, to the ms,
+  capped at `HoldTarget`) into the settings file at teardown, so the next session starts a step below
+  where the animal stopped. It is kept in the settings file, not looked up in earlier data files
+  (data move to the cloud), and stays an ordinary runtime value the operator can overwrite.
 
 ### D7 — A session barcode before the first trial
 
@@ -692,7 +697,17 @@ PulsePal, D1).
 - The emulator's timing stretches further with simulated video, so the timing tests run without
   it and `cameraTest` runs its own sessions with it.
 - Crops are part of the settings (`Roi`, `[]` = full frame): a crop left in a camera by another
-  program is reset, not silently recorded.
+  program is reset, not silently recorded. Since 0.9.6 they are kept per session type
+  (`S.Camera.Crops`): once the session type is chosen, `lum.dev.Cameras.cropFor` puts that type's
+  crops into `S.Camera.Cameras(k).Roi`, which the Cameras tab edits and the session records with, and
+  `keepCrop` stores them back when the settings file is written (on Start and at teardown, in both
+  `LuminoseFM` and `lum.sleep.run`). A box and a home cage need different crops; one list for every
+  type let a behaviour crop cut down a sleep recording.
+- The Cameras tab crops with the mouse (0.9.6): **Draw crop**, then a press, drag and release on a
+  preview tile (`lum.gui.CameraSetup.cropTile` maps picture pixels to sensor pixels through the
+  tile's current crop and halving). The drag borrows the figure's `WindowButtonMotionFcn` and
+  `WindowButtonUpFcn` from the help line and gives them back on release. SpinCam applies the crop
+  with the preview stopped and restarts it, rounding down to the camera's increments.
 - `lum.dev.Cameras.sessionRecord` is `Data.Session.Cameras`; SpinCam's own `_session.json` holds the
   full camera state.
 - Flex2 has reached both cameras' Line0 since 2026-09-17 (3.3 V TTL through the splitter). The first

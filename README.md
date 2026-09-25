@@ -157,8 +157,13 @@ from the end of the hold. Never leaving it at all is a non-response.
 
 **A correct choice** is rewarded at that port (runtime window, *Reward*):
 
-1. The poke starts the **reward delay** (`RewardDelay`, 0 s by default). Leaving the port during it
-   forfeits the water: the trial is *CorrectNoReward*.
+1. The reward starts only when the animal **pokes the paying port**: its beam break in the response
+   window leads to the reward delay; no poke, no water (in habituation either side port's poke
+   does). The poke starts the **reward delay** (`RewardDelay`, 0 s by default). Leaving the port
+   during it forfeits the water: the trial is *CorrectNoReward*. At 0 s there is no delay to leave
+   in: the valve opens on the next state machine cycle (0.1 ms) after the poke, and a beam flicker
+   in that cycle no longer cancels it (before 0.9.6 a 0.1 ms flicker as the snout went in could).
+   LUMS0014's first session: all 47 rewards opened 0.1 ms after a poke at that port.
 2. The valve opens for the time Bpod's liquid calibration gives `RewardAmount` µL (3 by default).
 3. **Drinking**: the trial waits, with no time limit, for the animal to leave the port.
 4. **Drinking grace** (`DrinkingGrace`, **0.3 s** by default): once it is out, it must stay out of
@@ -216,7 +221,9 @@ Stimulus tab (§4), which has families of the same names to match (Mixture, Sequ
 Stage 1 (*Habituation*) rewards **both** side ports, whichever way the animal goes, so it learns
 that the side ports pay before it has to learn which one. By default the rewarded ports are also
 lit during the response window in habituation (the *guide light*, set per side). Stages 2
-(*Training*) and 3 (*Experiment*) reward only the correct side.
+(*Training*) and 3 (*Experiment*) reward only the correct side. With both sides paying there is no
+wrong side, so in habituation the plots score a choice by whether it was rewarded (§6); the data
+file still records `Correct` as the side the stimulus group pays.
 
 **Centre reward (habituation only).** To teach a new animal that the centre port is worth
 visiting, the first trials of a habituation session also give water at the **centre port** as the
@@ -290,6 +297,13 @@ While it is on, the *shaping method* says how:
   during the latency is never forgiven.
 
 - *Both* — the two together.
+
+**The next session carries on.** When a session that grew the hold ends, `HoldStart` in the
+settings file becomes **10% less than the hold its last trial asked for** (to the ms, no longer than
+`HoldTarget`), so the animal's next session starts a little below where it stopped instead of at
+the beginning; the session log says so (`the next session's hold starts at 0.78 s …`). It is an
+ordinary value on the setup dialog's Runtime tab (*Shaping*): type another start to override it.
+Headless sessions, and sessions whose hold does not grow, leave it as it was.
 
 Each trial is prepared while the one before it runs, so shaping follows the animal one trial late:
 trial *n*+1's hold is trial *n*'s, grown if trial *n*−1 completed its hold. With every hold
@@ -514,7 +528,8 @@ S = lum.gui.TestPulseDesigner();   % defaults: paired-pulse probes alternating A
 One figure, updated in place once per trial, with a header giving the subject, stage, stimulus
 set and its seed, what a broken hold does, trial count, performance, the **water drunk** (total, then side
 rewards and centre rewards apart), the **centre hold** the running trial asks for (latency plus
-hold), and session time — and the **House light** box.
+hold), and session time — and the **House light** box. The trial number and the water total
+are in bold colour so they read at a glance.
 
 **The house light** (the white light inside the box) is switched with that box, and it changes **at
 once**, in either direction, whatever the trial is doing. It starts as set on the setup dialog's
@@ -533,7 +548,10 @@ Panels, in the order they are read:
     channel A above B (the title is the key), with the side each pays; shown from the moment the
     session starts
   - **Outcomes** — each trial's choice by stimulus group (by the B share of its light when the
-    mixture draws amounts every trial): correct, incorrect or no choice
+    mixture draws amounts every trial): correct, incorrect or no choice. In habituation, where both
+    side ports pay, *rewarded* (green) or *not rewarded* (a choice that left before the valve
+    opened), and the header, Performance, Evidence and By side panels count rewarded choices the
+    same way
 - Middle row
   - **Performance** — fraction correct over a moving window, for all, left- and right-rewarded trials
   - **Psychometric** — P(choose left) with error bars along the family's evidence: the B share of
@@ -553,7 +571,9 @@ Panels, in the order they are read:
   - **By side** — fraction correct on left- and right-rewarded trials
   - **Side bias** — P(chose left) over the last `BiasWindow` choices (as set when the session
     started), with the P(left) that bias correction aimed for on each trial
-  - **Reaction time** — by side chosen, with a running median
+  - **Reaction time** — by side chosen, with a running median, on a log axis (0.1 to 10 s at least,
+    widened to what is on screen), so a trained animal's fraction of a second and a new animal's
+    several seconds both read
   - **Centre hold** — how long the animal stayed in the centre port on each trial's last hold,
     from the poke to leaving (`Data.CentreHoldTime`): green dots for holds completed, red crosses
     for holds that broke, against a grey line for the time the trial asked for (latency plus
@@ -794,8 +814,8 @@ next load. Everything else the computer needs is listed in
 |-------|---------|--------------|
 | Record video | on | Record every camera ticked below for the whole session. Untick to run without video |
 | Video format | `avi-mjpeg-mt` | How frames are stored (below). Choosing one puts a sentence on what it does in the help line at the foot of the dialog |
-| Cameras | 24226887 *sideview*, 24226657 *topview* | One row per camera: serial, view (the file prefix), record, crop. **Find attached** adds attached cameras; **Full frame** clears the crops |
-| Frame rate | 100 Hz | For every camera; up to 120 Hz at full frame, above that crop (full viewer) |
+| Cameras | 24226887 *topview*, 24226657 *sideview* | One row per camera: serial, view (the file prefix), record, crop (`x,y wxh` in sensor pixels, typed or drawn on the preview). **Find attached** adds attached cameras; **Full frame** clears the crops |
+| Frame rate | 100 Hz | For every camera; up to 120 Hz at full frame, above that crop |
 | Exposure, gain | Auto | Or a manual value (µs, dB) |
 | TTL input | Line0 | The camera input logged with every frame (yellow signal, brown ground) |
 | Camera window | shown, 5 Hz | A window with every camera during the session |
@@ -818,9 +838,22 @@ video.
 **Preview** connects the ticked cameras exactly as the session will and shows them; frame rate,
 exposure and gain apply live. **Simulated cameras** previews SpinCam's synthetic cameras on a
 computer without cameras. **Full viewer…** opens SpinCam's own viewer on the same cameras, for
-cropping and the finer controls; what it leaves (crop, names, frame rate, exposure, gain) is read
-back when it closes. Preview releases the cameras when stopped and when the dialog closes, and
-**SpinView must be closed**: a camera can be streamed by only one program.
+the finer controls; what it leaves (crop, names, frame rate, exposure, gain) is read back when it
+closes. Preview releases the cameras when stopped and when the dialog closes, and **SpinView must
+be closed**: a camera can be streamed by only one program.
+
+**Cropping.** While previewing, press **Draw crop**, then press on a camera's picture, drag a
+rectangle round what to keep and release: the camera is cropped to it at once (as close as the
+camera's size steps allow, never larger) and the preview shows the crop. Draw again inside the crop
+to crop further; **Full frame** undoes every crop. A crop can also be typed into the table's Crop
+column (`240,192 640x640`, or `full frame`). A smaller crop encodes faster and allows higher frame
+rates.
+
+**Crops are kept per session type.** The crop a behaviour session used is loaded again for the next
+behaviour session, a sleep session's for the next sleep session, and an ePhys calibration's for the
+next of those: a box and a home cage film different places, so a crop drawn for one never crops the
+other. A session type with no crop yet records the full frame. (A settings file from before 0.9.6
+keeps its crops for the type of session it last ran.)
 
 **During the session** recording starts before the session barcode and stops only once the session's
 data are saved, so every trial in the data file is on the video (the recording summary is then added
@@ -906,7 +939,9 @@ few trials.
   back into the `.mat` as `SessionData.Analog`, so for analysis the `.mat` is enough. Keep the
   `.dat` anyway: it is the only copy of the airflow if MATLAB or the computer fails before the
   session ends. It is written only when a Flex channel is an
-  analog input — not in the emulator. Details in [`docs/data-format.md`](docs/data-format.md).
+  analog input — not in the emulator. The launch manager creates it before the protocol starts;
+  a session cancelled in a setup dialog deletes its empty one (up to 0.9.5 it was left behind).
+  Details in [`docs/data-format.md`](docs/data-format.md).
 - **`_plots.png`** is the online figure as it looked when the session ended.
 - **LED intensity.** Each behaviour trial records the LED current it ran at on A and B
   (`LEDCurrentA`, `LEDCurrentB`, mA); sleep and ePhys calibration sessions record it per gate of
@@ -915,8 +950,8 @@ few trials.
   channel A's irradiance.
 - **Settings.** The settings file chosen in the launch manager (`DefaultSettings` unless you make
   another) holds the last session's settings: it is written when **Start** is pressed and again
-  when the session ends, so runtime changes (reward, timing) and the house light carry over to the next
-  session. To keep a set of settings apart — per animal, or per stage — create a new settings file
+  when the session ends, so runtime changes (reward, timing), the house light, a growing hold (§3)
+  and each session type's camera crops (§10) carry over to the next session. To keep a set of settings apart — per animal, or per stage — create a new settings file
   in the launch manager and choose it. Every data file also holds the exact settings it ran with,
   in `SessionData.Session.Settings`. Session-level information — the settings, the stimulus set, the rig map, the barcode —
 is stored **once** in `SessionData.Session`; each trial stores only its own events, timestamps,
@@ -932,6 +967,11 @@ p = lum.pattern.patternAt(SessionData.Session.StimulusSet, SessionData.PatternIn
 `SessionData.Session.StoppedReason` is empty for a session that ran to its end or was stopped from
 the console, and the error message for one that failed — a session that errors still saves the
 trials that completed, merges the analog stream and releases the rig.
+
+MATLAB's memory is recorded with every save (`SessionData.Timing.memoryGB`, GB) and printed when the
+session ends. If it grows past twice what it was at trial 1 (and past 8 GB) the session warns once;
+end the session before MATLAB runs out of memory. (LUMS0014's first session, 2026-09-25, ended with
+MATLAB out of memory after everything had been saved; the cause is not known yet.)
 
 Every field, and what to watch for in files from older versions, is in
 [`docs/data-format.md`](docs/data-format.md).

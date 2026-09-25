@@ -10,6 +10,28 @@ and move each one to *Done* with its result and session names.
 
 ## Pending — needs the operator at the rig
 
+### P12. What 0.9.6 changed, in a desktop session (0.9.6)
+
+The pieces are tested under the emulator; these need the desktop MATLAB and the cameras.
+
+1. **Crop with the mouse.** Setup dialog, Cameras tab, **Preview**, **Draw crop**: press on the
+   topview picture, drag round the arena, release. The preview shows only the crop and the table's
+   Crop column its `x,y wxh`; the help line still follows the pointer afterwards. Type a crop into the
+   column: the preview follows. **Full frame** undoes both.
+2. **Crops per session type.** Start a behaviour session with a crop, end it; open a sleep session:
+   its Cameras tab shows full frame (or the sleep crop last kept). Open a behaviour session again:
+   the behaviour crop is back. From the files: `Session.Settings.Camera.Cameras(k).Roi` and each
+   `_session.json`'s camera `Settings` (`Width`, `Height`, `OffsetX`, `OffsetY`) match.
+3. **Hold carried over.** After a habituation or training session with *Grow hold*, the log's last
+   lines say where the next session's hold starts, and the next session's Runtime tab shows it as
+   *Hold at start*.
+4. **Habituation plots.** Every rewarded side poke is a green dot in *Outcomes*, the header says
+   "% rewarded", and reaction times sit on a log axis.
+5. **Memory.** The end-of-session line prints MATLAB's memory. If "Out of memory" appears again, note
+   what was done after the session ended (windows opened, files loaded) and keep the session's
+   `Timing.memoryGB`; Windows' System log (Resource-Exhaustion-Detector, event 2004) names the
+   process and how much it committed.
+
 ### P11. The light playing on after a short hold (0.9.5)
 
 The emulator shows the state machine's side (`stateMachineTest`, `animalSessionTest`); on the rig the
