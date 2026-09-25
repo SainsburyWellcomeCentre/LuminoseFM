@@ -46,11 +46,16 @@ classdef HoldShaping
     % patterns share (lum.timerBudget).
     %
     % A trial is prepared while the one before it is still running, so the values
-    % for trial n+1 follow the outcome of trial n-1. Trials without a centre poke do
-    % not change the shaping; early withdrawals hold it where it is until there have
-    % been S.GUI.HoldStepBackAfter of them at that hold (history.withdrawalsAtHold,
-    % lum.updateHistory). Stepping back is computed from the last trial's hold, so the
-    % trial still running when the step is decided cannot make it step back twice.
+    % for trial n+1 follow the outcome of trial n-1, and are taken from trial n's hold
+    % and grace (the trial still running, which the session notes with notePrepared):
+    % every completed hold is one growth step, one trial late. Before 0.9.4 they were
+    % taken from trial n-1's, so odd and even trials shaped apart: the hold grew every
+    % second trial, and an animal completing every other hold kept one of the two at its
+    % start. Trials without a centre poke do not change the shaping; early withdrawals
+    % hold it where it is until there have been S.GUI.HoldStepBackAfter of them at that
+    % hold (history.withdrawalsAtHold, lum.updateHistory). The hold steps back only while
+    % the trial still running has the hold those withdrawals were made at, so it never
+    % steps back twice for the same withdrawals.
     %
     % Later, automatic shaping will also choose easier or harder trial types; that
     % belongs under the same switch.
@@ -117,26 +122,30 @@ classdef HoldShaping
             %
             % Without hold growth the hold is the whole stimulus window plus the
             % post-stimulus hold; without grace, the grace is 0.
-            [lastHold, lastGrace, completed] = lum.HoldShaping.lastTrial(history);
+            [lastHold, ~, completed] = lum.HoldShaping.lastTrial(history);
+            [baseHold, baseGrace] = lum.HoldShaping.running(history);
             steppedBack = false;
 
             if lum.HoldShaping.growsHold(S)
                 start = S.GUI.HoldStart;
                 target = S.GUI.HoldTarget;
                 growth = 1 + S.GUI.HoldGrowth / 100;
-                if isnan(lastHold)
+                % The withdrawals counted were made at the last recorded trial's hold;
+                % they step back only the hold still in force.
+                sameHold = abs(lastHold - baseHold) < 5e-5;
+                if isnan(baseHold)
                     holdDuration = start;
                 elseif completed
-                    holdDuration = lastHold * growth;
-                elseif lum.HoldShaping.stepBackDue(S, history)
+                    holdDuration = baseHold * growth;
+                elseif sameHold && lum.HoldShaping.stepBackDue(S, history)
                     % One growth step back: the hold the animal last managed.
-                    holdDuration = lastHold / growth;
+                    holdDuration = baseHold / growth;
                     steppedBack = true;
                 else
-                    holdDuration = lastHold;
+                    holdDuration = baseHold;
                 end
                 floorHold = min(start, target);
-                steppedBack = steppedBack && lastHold > floorHold;
+                steppedBack = steppedBack && baseHold > floorHold;
                 holdDuration = min(max(holdDuration, floorHold), target);
             else
                 holdDuration = S.Stimulus.Duration + S.GUI.PostStimulusHold;
@@ -145,12 +154,12 @@ classdef HoldShaping
             if lum.HoldShaping.hasGrace(S)
                 start = S.GUI.GraceStart;
                 target = S.GUI.GraceTarget;
-                if isnan(lastGrace)
+                if isnan(baseGrace)
                     grace = start;
                 elseif completed
-                    grace = lastGrace * (1 - S.GUI.GraceShrink / 100);
+                    grace = baseGrace * (1 - S.GUI.GraceShrink / 100);
                 else
-                    grace = lastGrace;
+                    grace = baseGrace;
                 end
                 grace = max(min(grace, max(start, target)), target);
             else
@@ -160,6 +169,15 @@ classdef HoldShaping
             % The state machine's cycle is 100 us; store what it will run.
             holdDuration = round(max(holdDuration, 0) / 1e-4) * 1e-4;
             grace = round(max(grace, 0) / 1e-4) * 1e-4;
+        end
+
+        function history = notePrepared(history, spec)
+            % notePrepared(history, spec) notes the hold and grace of the trial just
+            % prepared, which will be running while the next one is prepared: next()
+            % shapes from it. Call it after lum.nextTrialSpec, in the prepare window.
+            history.preparedTrial = spec.TrialNumber;
+            history.preparedHold = spec.HoldDuration;
+            history.preparedGrace = spec.HoldGrace;
         end
 
         function text = describeHold(S)
@@ -230,6 +248,18 @@ classdef HoldShaping
             end
             tf = limit >= 1 && isfield(history, 'withdrawalsAtHold') ...
                  && history.withdrawalsAtHold >= limit;
+        end
+
+        function [hold, grace] = running(history)
+            % The hold and grace to shape from: the trial prepared but not yet recorded
+            % (the one running while the next is prepared, notePrepared), or else the
+            % last recorded trial's.
+            if isfield(history, 'preparedTrial') && history.preparedTrial > history.nTrials
+                hold = history.preparedHold;
+                grace = history.preparedGrace;
+            else
+                [hold, grace] = lum.HoldShaping.lastTrial(history);
+            end
         end
 
         function [lastHold, lastGrace, completed] = lastTrial(history)

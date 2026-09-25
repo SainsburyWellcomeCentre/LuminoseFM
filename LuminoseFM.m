@@ -128,6 +128,9 @@ end
 % settings file the dialog would have refused. Only the LED is open yet to release.
 try
     [stimulusSet, ~, notes] = lum.validateSettings(S, rig);
+    % The reward's valve times, from the liquid calibration: a volume the side valves'
+    % calibration cannot give, or a side valve with none, refuses the session here.
+    lum.valveTimes(S.GUI.RewardAmount, rig.SidePorts);
 catch settingsError
     releaseLED(doricLED);
     BpodSystem.Status.BeingUsed = 0;
@@ -197,78 +200,95 @@ if ~stimulusSet.Continuous
     end
 end
 
-sounds = lum.loadSounds(S, devices, stimulusSet);
-devices.hifi.freeze();  % No more USB transfers once the trial loop owns the module
-
-[cueComponents, stimulusComponents] = lum.stim.build(S);
-startup.lap('sounds');
-
-%% Interface
-BpodNotebook('init');
-windowMode = S.Session.RuntimeWindow;
-if strcmp(windowMode, 'Automatic')
-    if devices.emulated
-        windowMode = 'Compact';  % The reduced form, for the emulator
-    else
-        windowMode = 'Tabbed';
-    end
-end
-runtime = lum.gui.RuntimeWindow(S, 'Mode', windowMode, 'Subject', subject);
-plots = lum.OnlinePlots(S, stimulusSet, 'Subject', subject, 'HouseLight', devices.houseLight);
-if S.Session.ShowAnalogViewer
-    devices.flex.openAnalogViewer();  % Airflow, from the flow meter on Flex1
-end
+% Everything from here to trial 1 can fail with the devices open and the video recording
+% (a sound the module refuses, a window, the barcode, the first trial's valve times), so
+% a failure here is torn down as one in the trial loop is: windows closed, video stopped,
+% devices released, the console freed, and then the error.
+runtime = [];
+plots = [];
+runner = [];
 cameraWindow = [];
-if S.Camera.ShowWindow && devices.cameras.canPreview()
-    cameraWindow = lum.gui.CameraWindow(devices.cameras, S.Camera, 'Subject', subject);
-end
 ledWindow = [];
-if S.Doric.ShowWindow && S.Session.UseOpto
-    ledWindow = lum.gui.DoricWindow(devices.doricLED, S, 'Subject', subject, 'Calibrations', cals);
+try
+    sounds = lum.loadSounds(S, devices, stimulusSet);
+    devices.hifi.freeze();  % No more USB transfers once the trial loop owns the module
+
+    [cueComponents, stimulusComponents] = lum.stim.build(S);
+    startup.lap('sounds');
+
+    %% Interface
+    BpodNotebook('init');
+    windowMode = S.Session.RuntimeWindow;
+    if strcmp(windowMode, 'Automatic')
+        if devices.emulated
+            windowMode = 'Compact';  % The reduced form, for the emulator
+        else
+            windowMode = 'Tabbed';
+        end
+    end
+    runtime = lum.gui.RuntimeWindow(S, 'Mode', windowMode, 'Subject', subject);
+    plots = lum.OnlinePlots(S, stimulusSet, 'Subject', subject, 'HouseLight', devices.houseLight);
+    if S.Session.ShowAnalogViewer
+        devices.flex.openAnalogViewer();  % Airflow, from the flow meter on Flex1
+    end
+    if S.Camera.ShowWindow && devices.cameras.canPreview()
+        cameraWindow = lum.gui.CameraWindow(devices.cameras, S.Camera, 'Subject', subject);
+    end
+    if S.Doric.ShowWindow && S.Session.UseOpto
+        ledWindow = lum.gui.DoricWindow(devices.doricLED, S, 'Subject', subject, 'Calibrations', cals);
+    end
+    startup.lap('windows');
+
+    %% Session barcode
+    % One barcode before the first trial identifies the session on every acquisition
+    % device's sync channel. It runs as a state machine of its own, before the trial
+    % manager exists, so no trial carries its states; the analog merge at the end
+    % corrects for Bpod counting it as a trial.
+    startTime = datetime('now');
+    barcode = lum.sync.barcode(lum.sync.barcodeValue(startTime), S.Sync.Barcode, 'Behaviour');
+    barcodeSent = false;
+    if S.Session.UseSync && S.Sync.Barcode.Enabled
+        barcodeSent = devices.flex.sendBarcode(barcode);
+    end
+    if barcodeSent
+        fprintf('LuminoseFM: session barcode %s sent (%.2f s).\n', barcode.Hex, barcode.TotalDuration);
+    end
+    startup.lap('barcode');
+
+    %% Session state
+    maxTrials = S.Session.MaxTrials;
+    history = lum.newHistory(maxTrials);
+    data = initialiseDataFields(maxTrials);
+    valveCache = struct('amount', NaN, 'times', [0 0], 'centreAmount', NaN, 'centreTime', NaN);
+    queue = stimulusSet.TrialPattern;
+
+    % Trigger states open the window in which MATLAB may prepare the next trial. Every
+    % trial passes through exactly one of these, and each leaves at least the ITI
+    % afterwards for the work to finish in.
+    runner = lum.SessionRunner(devices.emulated, lum.triggerStates(S));
+    fprintf('LuminoseFM: running in %s mode, %s runtime window.\n', runner.Mode, lower(windowMode));
+
+    [S, spec, sma, valveCache, queue, ledCurrent, history] = prepareTrial(S, rig, devices, history, ...
+        stimulusSet, queue, sounds, cueComponents, stimulusComponents, 1, valveCache, runtime);
+    % What the first trials will deliver is known now, so it is shown before trial 1 starts
+    % rather than after it ends.
+    plots.showNext(spec, queue);
+    runtime.showStatus(sprintf('Session started  |  %s', runningText(spec, stimulusSet)));
+    nextSpec = spec;
+    nextLEDCurrent = ledCurrent;
+    % The runtime settings each trial was prepared with, kept beside its spec: the loop
+    % syncs S for the next trial before this one is recorded.
+    nextGUI = S.GUI;
+    startSettings = S;   % As trial 1 was prepared: Data.Session.Settings
+    startup.lap('first trial');
+    fprintf('LuminoseFM: %s.\n', startup.describe());
+    startupRecord = startup.record();  % Data.Session.Startup, written with trial 1
+    clear startup
+catch setupError
+    abandonSetup(devices, runtime, plots, runner, cameraWindow, ledWindow);
+    BpodSystem.Status.BeingUsed = 0;
+    rethrow(setupError);
 end
-startup.lap('windows');
-
-%% Session barcode
-% One barcode before the first trial identifies the session on every acquisition
-% device's sync channel. It runs as a state machine of its own, before the trial
-% manager exists, so no trial carries its states; the analog merge at the end
-% corrects for Bpod counting it as a trial.
-startTime = datetime('now');
-barcode = lum.sync.barcode(lum.sync.barcodeValue(startTime), S.Sync.Barcode, 'Behaviour');
-barcodeSent = false;
-if S.Session.UseSync && S.Sync.Barcode.Enabled
-    barcodeSent = devices.flex.sendBarcode(barcode);
-end
-if barcodeSent
-    fprintf('LuminoseFM: session barcode %s sent (%.2f s).\n', barcode.Hex, barcode.TotalDuration);
-end
-startup.lap('barcode');
-
-%% Session state
-maxTrials = S.Session.MaxTrials;
-history = lum.newHistory(maxTrials);
-data = initialiseDataFields(maxTrials);
-valveCache = struct('amount', NaN, 'times', [0 0], 'centreAmount', NaN, 'centreTime', NaN);
-queue = stimulusSet.TrialPattern;
-
-% Trigger states open the window in which MATLAB may prepare the next trial. Every
-% trial passes through exactly one of these, and each leaves at least the ITI
-% afterwards for the work to finish in.
-runner = lum.SessionRunner(devices.emulated, lum.triggerStates(S));
-fprintf('LuminoseFM: running in %s mode, %s runtime window.\n', runner.Mode, lower(windowMode));
-
-[S, spec, sma, valveCache, queue, ledCurrent, history] = prepareTrial(S, rig, devices, history, ...
-    stimulusSet, queue, sounds, cueComponents, stimulusComponents, 1, valveCache, runtime);
-% What the first trials will deliver is known now, so it is shown before trial 1 starts
-% rather than after it ends.
-plots.showNext(spec, queue);
-runtime.showStatus(sprintf('Session started  |  %s', runningText(spec, stimulusSet)));
-nextSpec = spec;
-nextLEDCurrent = ledCurrent;
-startup.lap('first trial');
-fprintf('LuminoseFM: %s.\n', startup.describe());
-startupRecord = startup.record();  % Data.Session.Startup, written with trial 1
-clear startup
 
 %% Trial loop
 % Wrapped, because a session that fails part way through must still be torn down:
@@ -283,6 +303,7 @@ try
     for currentTrial = 1:maxTrials
         spec = nextSpec;
         ledCurrent = nextLEDCurrent;
+        trialGUI = nextGUI;
 
         runner.awaitPrepareWindow();
         if BpodSystem.Status.BeingUsed == 0; break; end
@@ -292,6 +313,7 @@ try
             [S, nextSpec, sma, valveCache, queue, nextLEDCurrent, history] = prepareTrial(S, rig, ...
                 devices, history, stimulusSet, queue, sounds, cueComponents, stimulusComponents, ...
                 currentTrial + 1, valveCache, runtime);
+            nextGUI = S.GUI;
         else
             nextSpec = [];
         end
@@ -327,22 +349,22 @@ try
             % AddTrialEvents builds Data.Info from scratch on the first trial, so
             % session-level annotations have to be added after it, not before.
             BpodSystem.Data.Info.EmulatorMode = devices.emulated;
-            BpodSystem.Data.Session = sessionRecord(S, rig, stimulusSet, runner, devices, startTime, ...
-                                                    barcode, barcodeSent, windowMode);
+            BpodSystem.Data.Session = sessionRecord(startSettings, rig, stimulusSet, runner, devices, ...
+                                                    startTime, barcode, barcodeSent, windowMode);
             BpodSystem.Data.Session.SyncFit = syncFit;
             BpodSystem.Data.Session.Startup = startupRecord;
         end
 
         result = lum.scoreTrial(BpodSystem.Data.RawEvents.Trial{currentTrial}, spec, rig);
         history = lum.updateHistory(history, currentTrial, spec, result);
-        data = recordTrial(data, currentTrial, spec, result, S);
+        data = recordTrial(data, currentTrial, spec, result, trialGUI);
         data.CameraTime(currentTrial) = cameraTime;
         data.LEDCurrentA(currentTrial) = ledCurrent(1);
         data.LEDCurrentB(currentTrial) = ledCurrent(2);
         data.HouseLight(currentTrial) = houseLightAtStart(devices.houseLight, currentTrial, arrivedAt);
 
         plotTimer = tic;
-        plots.update(currentTrial, spec, result, nextSpec, queue, S.GUI.RewardAmount);
+        plots.update(currentTrial, spec, result, nextSpec, queue, trialGUI.RewardAmount);
         runtime.showStatus(statusLine(currentTrial, result, nextSpec, stimulusSet));
         plotSeconds = toc(plotTimer);
 
@@ -484,25 +506,46 @@ end
 ledCurrent = devices.doricLED.applyPending(trialNumber);
 
 [spec, queue] = lum.nextTrialSpec(S, stimulusSet, queue, history, trialNumber);
+history = lum.HoldShaping.notePrepared(history, spec);  % Shaping grows the next from this one
 
-% Valve times come from a calibration lookup, so they are recomputed only when the
-% operator changes the reward volume rather than on every trial.
+% Valve times come from the liquid calibration, so they are recomputed only when the
+% operator changes the volume rather than on every trial. A volume the calibration
+% cannot give (lum.valveTimes) is refused: the reward stays as it was, and the runtime
+% window is put back to it.
 if valveCache.amount ~= S.GUI.RewardAmount
-    valveCache.times = GetValveTimes(S.GUI.RewardAmount, rig.SidePorts);
-    valveCache.amount = S.GUI.RewardAmount;
+    try
+        [valveCache.times, valveNote] = lum.valveTimes(S.GUI.RewardAmount, rig.SidePorts);
+        valveCache.amount = S.GUI.RewardAmount;
+        if ~isempty(valveNote)
+            fprintf('LuminoseFM: note: reward %g uL: %s\n', valveCache.amount, valveNote);
+        end
+    catch valveError
+        if isnan(valveCache.amount)
+            rethrow(valveError);  % The first trial: checked before the session started
+        end
+        warning('lum:LuminoseFM:rewardKept', 'The reward stays at %g uL: %s', ...
+                valveCache.amount, valveError.message);
+        S.GUI.RewardAmount = valveCache.amount;
+        S = runtime.sync(S);
+    end
 end
-% The centre valve's, only on trials with a centre reward. Without a calibration for it
-% the session goes on without the centre reward, and says so once per amount.
+% The centre valve's, only on trials with a centre reward. Without a calibration for it,
+% or for a volume it cannot give, the session goes on without the centre reward, and
+% says so once per amount.
 if spec.CentreReward
     if valveCache.centreAmount ~= S.GUI.CentreRewardAmount
         valveCache.centreAmount = S.GUI.CentreRewardAmount;
         try
-            valveCache.centreTime = GetValveTimes(S.GUI.CentreRewardAmount, rig.Ports.Centre);
+            [valveCache.centreTime, valveNote] = lum.valveTimes(S.GUI.CentreRewardAmount, rig.Ports.Centre);
+            if ~isempty(valveNote)
+                fprintf('LuminoseFM: note: centre reward %g uL: %s\n', valveCache.centreAmount, valveNote);
+            end
         catch valveError
             valveCache.centreTime = NaN;
             warning('lum:LuminoseFM:noCentreValveTime', ...
-                    ['No centre reward: valve %d has no usable liquid calibration (%s). '...
-                     'Calibrate it from the Bpod console.'], rig.Ports.Centre, valveError.message);
+                    ['No centre reward: valve %d cannot give %g uL (%s). '...
+                     'Calibrate it from the Bpod console.'], rig.Ports.Centre, ...
+                    S.GUI.CentreRewardAmount, valveError.message);
         end
     end
     if ~(valveCache.centreTime > 0)
@@ -600,10 +643,11 @@ names = {'StimulusGroup', 'PatternIndex', 'CorrectSide', 'Choice', 'Correct', 'R
          'CentreReward', 'ResponseRetries', 'CentreHoldTime'};
 
 
-function data = recordTrial(data, trialNumber, spec, result, S)
-% Store one trial. Only scalars and the runtime settings tier: the stimulus set, the
-% rig map and the frozen settings are stored once per session, and each trial holds
-% indices into them (docs/data-format.md).
+function data = recordTrial(data, trialNumber, spec, result, gui)
+% Store one trial. Only scalars and the runtime settings tier (gui: S.GUI as the trial
+% was prepared, not as the next one was): the stimulus set, the rig map and the frozen
+% settings are stored once per session, and each trial holds indices into them
+% (docs/data-format.md).
 data.StimulusGroup(trialNumber) = spec.StimulusGroup;
 data.PatternIndex(trialNumber) = spec.PatternIndex;
 data.CorrectSide(trialNumber) = spec.CorrectSide;
@@ -626,7 +670,7 @@ data.EarlyWithdrawals(trialNumber) = result.EarlyWithdrawals;
 data.CentreReward(trialNumber) = result.CentreRewarded * spec.CentreRewardAmount;
 data.ResponseRetries(trialNumber) = result.ResponseRetries;
 data.CentreHoldTime(trialNumber) = result.CentreHoldTime;
-data.RuntimeSettings{trialNumber} = S.GUI;
+data.RuntimeSettings{trialNumber} = gui;
 
 
 function sessionData = publishTrialFields(sessionData, data, nTrials)
@@ -675,7 +719,29 @@ record.StoppedReason = '';  % Filled in at teardown if the session ended in an e
 record.Barcode = struct('Value', barcode.Value, 'Hex', barcode.Hex, 'Kind', barcode.Kind, ...
                         'Sent', barcodeSent, 'Params', barcode.Params);
 record.ProtocolVersion = lum.version();
+record.LiquidCalibration = liquidCalibration(rig);
 
+
+function record = liquidCalibration(rig)
+% The liquid calibration the valve times came from, for valves 1 to 3 (side and centre
+% ports): each valve's measurements (ms, uL) and the fit GetValveTimes uses. Empty when
+% Bpod keeps it in a form other than its calibration file's struct.
+global BpodSystem %#ok<GVMIS>
+record = struct('Valve', {}, 'Table', {}, 'Coeffs', {});
+try
+    cal = BpodSystem.CalibrationTables.LiquidCal;
+catch
+    return
+end
+if ~isstruct(cal)
+    return
+end
+for valve = sort([rig.SidePorts rig.Ports.Centre])
+    if numel(cal) >= valve
+        record(end+1) = struct('Valve', valve, 'Table', cal(valve).Table, ...
+                               'Coeffs', cal(valve).Coeffs); %#ok<AGROW>
+    end
+end
 
 function logs = deviceLogs(devices)
 % What each device did, or would have done. Small, and the only record of an emulated
@@ -764,6 +830,20 @@ catch closeError
     warning('lum:LuminoseFM:windowNotClosed', 'The %s window did not close cleanly: %s', ...
             name, closeError.message);
 end
+
+
+function abandonSetup(devices, runtime, plots, runner, cameraWindow, ledWindow)
+% Undo a setup that failed before trial 1: every window closed, the trial manager
+% deleted, the video stopped and every device released, warning rather than failing, so
+% the error that caused it is the one the operator reads.
+closeWindow(cameraWindow, 'camera');
+closeWindow(ledWindow, 'LED');
+closeWindow(runtime, 'runtime');
+closeWindow(plots, 'plots');
+if ~isempty(runner)
+    runner.close();
+end
+closeDevices(devices);  % The cameras' close stops the recording
 
 
 function closeDevices(devices)

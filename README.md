@@ -155,7 +155,7 @@ lit during the response window in habituation (the *guide light*, set per side).
 
 **Centre reward (habituation only).** To teach a new animal that the centre port is worth
 visiting, the first trials of a habituation session also give water at the **centre port** as the
-hold is completed: `CentreRewardAmount` µL (1 by default) on trials 1 to `CentreRewardTrials` (10 by
+hold is completed: `CentreRewardAmount` µL (1.2 by default, valve 2's smallest measured volume; 1 µL is extrapolated and still allowed) on trials 1 to `CentreRewardTrials` (10 by
 default). Both are runtime parameters (*Trial* tab, *Centre reward* panel, and the setup dialog's
 Runtime tab): raise the trial count during the session to go on, set it (or the amount) to 0 to
 stop. Trials whose hold was never completed count towards it too. The valve time comes from
@@ -166,11 +166,22 @@ plots count centre water apart from side water. It is ignored in Training and Ex
 Choosing a stage also sets the session up the way that stage is normally run, the moment it is
 chosen:
 
-| Stage | Light pattern | Stimulus air | Automatic shaping |
-|-------|---------------|--------------|-------------------|
-| Habituation | **off** | **on**, for the whole stimulus window | **on** |
-| Training | on | off | **on** |
-| Experiment | on | off | **off** |
+| Stage | Light pattern | Stimulus air | Centre light cue | Automatic shaping |
+|-------|---------------|--------------|------------------|-------------------|
+| Habituation | **off** | **on**, for the whole stimulus window | **on** | **on** |
+| Training | on | off | as it was (on by default) | **on** |
+| Experiment | on | off | as it was (on by default) | **off** |
+
+A habituation trial with the defaults:
+1. The centre light comes on at trial start and stays on through the hold.
+2. The animal pokes and holds; the air runs during the hold, which starts at 0.1 s and grows as
+   holds are completed.
+3. A completed hold on trials 1–10 gives 1.2 µL at the centre port.
+4. The centre light goes off, and both side port lights come on (guide lights, *Habituation only*).
+5. Once the animal has left the centre port, a poke at either side pays 3 µL.
+6. After the drinking grace and the ITI, the next trial starts.
+
+The centre light cue is left alone when the centre light is a stimulus component.
 
 Habituation therefore delivers **air alone**: the hold is exactly as long and as salient as it
 will be later, and carries nothing to discriminate. Habituation and Training shape the centre hold
@@ -213,6 +224,11 @@ While it is on, the *shaping method* says how:
   during the latency is never forgiven.
 
 - *Both* — the two together.
+
+Each trial is prepared while the one before it runs, so shaping follows the animal one trial late:
+trial *n*+1's hold is trial *n*'s, grown if trial *n*−1 completed its hold. With every hold
+completed and the defaults, the holds run 0.1, 0.1, 0.105, 0.110 … s, reaching 1 s after about 50
+completed holds.
 
 With automatic shaping off, the animal holds for the whole stimulus window on every trial. The
 shaping parameters are tuned during the session from the runtime window. The hold each trial
@@ -284,9 +300,12 @@ equal ratios are equally hard at any total, equal differences are not.
   after this one as well.
 - **Bias correction and the run limit** reorder the order, never change it: to offer the side
   the animal avoids, or to break a run of `MaxSameSide` trials on one side, the next trial is
-  swapped with a later one within 50 trials that pays the needed side. Every group is still
-  delivered as often as it was balanced. The flip side is that correction can front-load a
-  side for a few dozen trials but cannot hold one side above the set's own share for hundreds.
+  swapped with the next later one in the session's order that pays the needed side. Every group
+  is still delivered as often as it was balanced. Bias correction takes precedence over the run
+  limit. A run on the side it is pushing towards may go past `MaxSameSide`; a run on the other
+  side is still broken at the limit. So correction holds its target for as long as the order has
+  trials paying that side. Against an animal that always goes left, and a 1000-trial order, that
+  was about 600 trials at strength 0.5. After that, the rest of the order pays the other side.
 - **What a session refuses.** Every stretch of light on a channel costs one Bpod global timer
   (the rig has 16, the emulator 5; the hold window always takes one, and grace shaping or timed
   components take more). The families' defaults fit both; settings that need more are refused,
@@ -299,7 +318,8 @@ equal ratios are equally hard at any total, equal differences are not.
 flash and a tone (a different frequency for each group), each timed from stimulus onset. The
 **Left** and **Right** tabs set outputs delivered on trials rewarded on that side — the side
 port's light and a side tone, each timed from stimulus onset — and the guide light. A component
-on for the whole window is free; one that starts late or ends early uses a global timer. Sounds
+on for the whole window is free, and stays on until the hold ends — through any post-stimulus hold
+too; one that starts late or ends early uses a global timer. Sounds
 never do: a delayed tone is loaded with silence in front of it. The same holds for the cue once
 the stimulus starts: a cue light or air that goes off part way through the stimulus uses a timer,
 the cue tone does not. The HiFi module plays **one sound at a time** — a new sound cuts off the
@@ -362,6 +382,12 @@ units, limits held as values are typed, and a header saying how the last trial e
 running now. Under the emulator the reduced form opens instead — Bpod's own single-page parameter
 window, relabelled. `Runtime window` on the Experiment tab can force either.
 
+- *Reward*: `RewardAmount` µL at the side port (3 by default), the valve time from Bpod's liquid
+  calibration of valves 1 and 3. 0 opens no valve. A volume the calibration cannot give — beyond the
+  point where its fitted curve stops rising (about 15 µL with the rig's calibration of 2026-09-24) —
+  is refused: at the start the session does not begin; during it the reward stays as it was and the
+  window is put back. A volume outside the measured ones (1.2–13.5 µL on the rig) is extrapolated,
+  and the console says so. The same goes for the centre reward on valve 2, which is dropped instead.
 - *Punishment* is two choices: which mistakes are punished (none / early withdrawal / incorrect
   choice / both; *None* by default) and how (timeout / white noise / both). An incorrect choice
   that is not punished lets the animal go on to the correct port (see *An incorrect choice* in §3).
@@ -374,7 +400,12 @@ window, relabelled. `Runtime window` on the Experiment tab can force either.
 - *Bias correction* pushes trials towards the side the animal has been avoiding. If it chose left
   on a fraction *f* of its last `BiasWindow` choices, the next trial pays left with chance
   0.5 + strength × (0.5 − *f*), kept within 0.1–0.9, by bringing forward a trial that pays that side:
-  0 is off, 1 full compensation. Every group is still delivered as often; only the order changes.
+  0 is off, 1 full compensation. `BiasWindow` counts the animal's choices; trials with no side
+  poke are skipped. Every group is still delivered as often; only the order changes. It takes
+  precedence over `MaxSameSide` (see *Bias correction and the run limit* in §4). In simulation,
+  an always-left animal got 74–84% right-paying trials at strength 0.5 (target 75%) and 86–92% at
+  strength 1 (target 90%), for 500–600 trials of a 1000-trial order. With an unbiased animal,
+  chance leanings in the window let runs reach 4–5 in 1000 trials.
 
 Every parameter describes itself on the help line at the foot of the window (a tooltip in the
 compact window).

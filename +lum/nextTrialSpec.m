@@ -7,15 +7,22 @@ function [spec, queue] = nextTrialSpec(S, stimulusSet, queue, history, trialNumb
 % by swapping the next pattern with a later one, so that every group is still
 % delivered as often as the generator balanced it:
 %
-%   Run limit        After S.Task.MaxSameSide trials rewarded on one side, the next
-%                    trial must be rewarded on the other.
 %   Bias correction  When the animal favours one side, a side is drawn biased
 %                    towards the one it avoids (strength S.GUI.BiasCorrection over
-%                    the last S.GUI.BiasWindow choices) and the next pattern that
-%                    can pay it is brought forward.
+%                    the animal's last S.GUI.BiasWindow choices; trials with no choice
+%                    are skipped) and the next pattern that can pay it is brought
+%                    forward, from anywhere in the rest of the session's order.
+%   Run limit        After S.Task.MaxSameSide trials rewarded on one side, the next
+%                    trial must be rewarded on the other, unless bias correction is
+%                    pushing towards that side: bias correction takes precedence, so an
+%                    animal avoiding the right gets as many right trials in a row as the
+%                    correction draws. A run on the side the correction is not pushing
+%                    towards is still broken at the limit.
 %
-% Swaps look at most 50 trials ahead, so each decision is constant time and the
-% queue changes only locally.
+% A swap searches the rest of the queue (at most the session's MaxTrials, a vectorised
+% test), so bias correction keeps its target for as long as the session holds trials
+% that pay the side it asks for; until 0.9.4 it looked 50 trials ahead and faded once
+% those were used up.
 %
 % The function is pure — it reads settings, the set, the queue and history, and
 % returns a spec and the queue — so the whole trial-generation policy is testable
@@ -61,8 +68,6 @@ function [spec, queue] = nextTrialSpec(S, stimulusSet, queue, history, trialNumb
 %
 % See also: lum.pattern.stimulusSet, lum.newHistory, lum.buildTrialSM, lum.scoreTrial
 
-lookahead = 50;
-
 if trialNumber > numel(queue)
     error('lum:nextTrialSpec:queueExhausted', ...
           'Trial %d is past the end of the %d-trial stimulus order.', trialNumber, numel(queue));
@@ -81,16 +86,27 @@ if S.GUI.BiasCorrection > 0
         pLeftTarget = min(max(pLeftTarget, 0.1), 0.9);  % Never starve one side entirely
     end
 end
+favouredSide = [];   % The side bias correction pushes towards, if any
+if pLeftTarget < 0.5
+    favouredSide = 2;
+elseif pLeftTarget > 0.5
+    favouredSide = 1;
+end
 
 %% The side the next trial should pay, if any policy asks for one
+% Bias correction takes precedence over the run limit: a run on the side it is pushing
+% towards may go past MaxSameSide, and the side is drawn by the correction instead.
 forcedSide = sideForcedByRunLimit(S, history);
+if ~isempty(forcedSide) && isequal(forcedSide, 3 - favouredSide)
+    forcedSide = [];
+end
 wantedSide = forcedSide;
-if isempty(wantedSide) && pLeftTarget ~= 0.5
+if isempty(wantedSide) && ~isempty(favouredSide)
     wantedSide = 1 + (rand >= pLeftTarget);
 end
 
 if ~isempty(wantedSide) && ~canPay(pLeftOf(queue(trialNumber)), wantedSide)
-    ahead = trialNumber + 1:min(numel(queue), trialNumber + lookahead);
+    ahead = trialNumber + 1:numel(queue);
     swapWith = ahead(find(canPay(pLeftOf(queue(ahead)), wantedSide), 1));
     if ~isempty(swapWith)
         queue([trialNumber swapWith]) = queue([swapWith trialNumber]);
@@ -175,14 +191,13 @@ end
 
 
 function recent = recentChoices(history, window)
-% The last `window` trials' choices, with no-response trials dropped.
+% The animal's last `window` choices, skipping trials with no choice.
+recent = [];
 if history.nTrials == 0 || window < 1
-    recent = [];
     return
 end
-first = max(1, history.nTrials - floor(window) + 1);
-recent = history.choice(first:history.nTrials);
-recent = recent(~isnan(recent));
+choices = history.choice(1:history.nTrials);
+recent = choices(find(~isnan(choices), floor(window), 'last'));
 
 
 function side = sideForcedByRunLimit(S, history)

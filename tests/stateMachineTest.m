@@ -495,6 +495,46 @@ verifyEqual(testCase, sma.OutputMatrix(stateIndex(sma, 'WaitForResponse'), leftC
             S.GUI.PortLightIntensity);
 end
 
+function testHabituationFromTheDefaultsIsWhatTheOperatorExpects(testCase)
+% The defaults with Habituation chosen: the centre light on from trial start through the
+% hold, air during the hold, the hold shaped from its start, both side ports lit in the
+% response window and both paying 3 uL, the centre reward 1.2 uL, then the next trial.
+global BpodSystem %#ok<GVMIS>
+rig = RigConfig;
+S = lum.defaultSettings;
+S.Cue.Components(strcmp({S.Cue.Components.Type}, 'CentreLight')).Enabled = false;  % Turned back on
+S = lum.stageDefaults(S, 1);
+S.Task.TrainingStage = 1;
+verifyEqual(testCase, [S.GUI.RewardAmount, S.GUI.CentreRewardAmount, S.GUI.CentreRewardTrials], [3 1.2 10]);
+verifyTrue(testCase, S.Task.AutoShaping, 'Hold shaping on');
+verifyFalse(testCase, S.Session.UseOpto, 'No light pattern');
+S.Session.MaxTrials = 20;
+lum.validateSettings(S, RigConfig);
+stimulusSet = lum.pattern.stimulusSet(S, lum.timerBudget(S, RigConfig), 2);
+spec = lum.nextTrialSpec(S, stimulusSet, stimulusSet.TrialPattern, lum.newHistory(10), 1);
+verifyEqual(testCase, sort(spec.RewardedSides), [1 2]);
+verifyEqual(testCase, spec.HoldDuration, S.GUI.HoldStart, 'AbsTol', 1e-12);
+verifyTrue(testCase, spec.CentreReward);
+sma = lum.buildTrialSM(makeTestContext('Settings', S, 'Spec', spec));
+channel = @(name) find(strcmp(BpodSystem.StateMachineInfo.OutputChannelNames, name));
+level = @(state, name) sma.OutputMatrix(stateIndex(sma, state), channel(name));
+verifyEqual(testCase, level('WaitForCentrePoke', rig.LED.Centre), S.GUI.PortLightIntensity, 'Centre light cue');
+verifyEqual(testCase, level('CentreHold', rig.LED.Centre), S.GUI.PortLightIntensity, 'Through the hold');
+verifyEqual(testCase, level('CentreHold', rig.Valve.Air), 1, 'Air during the hold');
+verifyEqual(testCase, stateTimer(sma, 'CentreHold'), S.GUI.HoldStart, 'AbsTol', 1e-12, 'The shaped hold');
+verifyEqual(testCase, tupTargetOf(sma, 'CentreHold'), 'CentreReward');
+verifyEqual(testCase, level('CentreReward', rig.Valve.Centre), 1);
+for state = {'WaitForCentreExit', 'WaitForResponse'}
+    verifyEqual(testCase, level(state{1}, rig.LED.Left), S.GUI.PortLightIntensity, [state{1} ': left lit']);
+    verifyEqual(testCase, level(state{1}, rig.LED.Right), S.GUI.PortLightIntensity, [state{1} ': right lit']);
+    verifyEqual(testCase, level(state{1}, rig.LED.Centre), 0, [state{1} ': centre off']);
+    verifyEqual(testCase, level(state{1}, rig.Valve.Air), 0, [state{1} ': air off']);
+end
+verifyEqual(testCase, targetOf(sma, 'WaitForResponse', rig.PokeIn.Left), 'LeftRewardDelay');
+verifyEqual(testCase, targetOf(sma, 'WaitForResponse', rig.PokeIn.Right), 'RightRewardDelay');
+verifyEqual(testCase, tupTargetOf(sma, 'ITI'), '>exit', 'Then the next trial');
+end
+
 %% Punishment --------------------------------------------------------------------
 
 function testPunishmentSettingsChangeTimersNotStates(testCase)

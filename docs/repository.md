@@ -25,6 +25,7 @@ LuminoseFM/
 │   ├── HoldShaping.m             automatic shaping of the centre hold, and what a broken hold does
 │   ├── scoreTrial.m              outcome classification
 │   ├── punishmentFor.m           which mistakes are punished, and how
+│   ├── valveTimes.m              valve open times for a volume, refusing one the liquid calibration cannot give
 │   ├── launchSubject.m           the subject the session was launched for
 │   ├── validateSettings.m        everything that must hold before a session starts
 │   ├── stageDefaults.m           the session shape a training stage assumes
@@ -57,6 +58,7 @@ LuminoseFM/
 ├── tests/
 │   ├── runLuminoseTests.m        the whole suite; needs no hardware
 │   ├── startMouse.m              plays scripted pokes into an emulated state machine
+│   ├── startSessionMouse.m       plays an animal through a whole emulated session, one behaviour per trial
 │   └── Stub*.m                   test doubles: HiFi, PulsePal, SpinCam's CameraManager
 └── docs/
     ├── architecture.md           design decisions and the map from design to code
@@ -145,6 +147,20 @@ What it covers:
   played as the animal (`startMouse`): the side reward, the centre reward when valve 2 is calibrated
   (and none, with a warning, when it is not, as on the development machine), `CentreHoldTime`, and
   automatic shaping starting the hold at `HoldStart`.
+- `animalSessionTest` — three whole behaviour sessions under `Bpod('EMU')` played by an animal
+  (`startSessionMouse`), one behaviour per trial, reaching every outcome path: correct, retried,
+  withdrawn and restarted, no poke, every hold broken, no side poke, never leaving the centre port,
+  rapid pokes while drinking; with *End trial*, timeout and noise, a latency and a reward delay:
+  leaving before the reward, in the latency and in the hold, a punished wrong choice; and habituation
+  with grow hold and shrink grace together, the centre reward and a step back. Each saved trial is
+  re-scored from its raw events and checked against its settings: `TrialSettings{k}` against the ITI
+  the trial ran (the ITI and reward are typed into the runtime window mid-session), holds, the light
+  pattern's timers, the centre valve's time, and the shaping sequence the session's order must give.
+  About two minutes.
+- `valveTimesTest` — `lum.valveTimes`: 0 µL opens no valve, a volume past the calibration fit's peak
+  is refused, one within it gives Bpod's times, one outside the measurements is noted.
+- `holdShapingTest` also replays the session's order (trial *k*+1 prepared before trial *k* is
+  recorded): one growth step and one grace step per completed hold, and a single step back.
 - `settingsTest` also covers where the subject comes from (`lum.launchSubject`), the house light's
   move out of the runtime tier, and a 0.9.2 file's 700 mA LED limit becoming 1000 mA.
 - `barcodeTest` also samples fitted barcodes frame by frame at 25–150 Hz, at every phase and with

@@ -141,6 +141,20 @@ names.
 | — | `GUIMeta.<name>.Help` for every runtime parameter; help line in the setup and runtime windows |
 | — | **▶ Play** buttons for the session's sounds in the setup dialog (`lum.testSounds`) |
 
+### 0.9.3 → 0.9.4 — validation fixes: shaping per completed hold, each trial's own settings, reward volumes the calibration can give, bias correction before the run limit
+
+Found by the pre-deployment validation of 2026-09-24 (`docs/validation-2026-09-24.md`).
+
+| 0.9.3 | 0.9.4 |
+|-------|-------|
+| automatic shaping grew trial *k*+1's hold from trial *k*-1's, so odd and even trials shaped apart: with every hold completed the hold grew one step every **second** trial (0.1, 0.1, 0.105, 0.105 … s), and an animal completing every other hold kept the other half of its trials at the start hold (0.1, 0.105, 0.1, 0.11 …). Grace shrank the same way, and with the two halves apart the hold rarely stepped back | grown from trial *k*'s hold (the trial running while *k*+1 is prepared, `lum.HoldShaping.notePrepared`): one growth step for every completed hold, one trial late (0.1, 0.1, 0.105, 0.11 …); one step back for `HoldStepBackAfter` early withdrawals, never twice for the same ones. At the same `HoldGrowth` the hold now reaches its target in about half the trials |
+| `TrialSettings{k}` held the runtime settings as trial *k*+1 was prepared, so a value changed during trial *k* was recorded against trial *k*; `Session.Settings` held trial 2's runtime settings; the plots' water total counted a changed reward from one trial early | `TrialSettings{k}` is what trial *k* was prepared with and ran; `Session.Settings` is the settings trial 1 was prepared with; the water total uses each trial's own reward |
+| the reward's valve time was Bpod's fit whatever the volume: 0 µL still opened the valve for the fit's intercept (6–8 ms on this rig), past the fit's peak (about 15 µL here) a larger volume opened it for less time, and from about 31 µL Bpod's negative time stopped the session in its prepare window | `lum.valveTimes`: 0 µL opens no valve; a volume where the fit no longer rises is refused — at the start the session does not begin, mid-session the reward stays as it was and the runtime window is put back; a volume outside the measured ones is printed as a note. `Session.LiquidCalibration` records the valves' calibrations |
+| bias correction brought forward a trial paying the side it drew only from the next 50, and the run limit came first: against a persistent bias the correction faded to chance after about 100 trials, then broke the run limit anyway once the other side's trials within reach were used up. `BiasWindow` took the last N trials and dropped those without a choice | it searches the rest of the order, and **takes precedence over the run limit**: a run on the side it pushes towards may pass `MaxSameSide`; a run on the other side is still broken at the limit. It holds its target while the order has trials paying that side. `BiasWindow` is the last N **choices** (as its help always said) |
+| `S.GUI.CentreRewardAmount` 1 µL by default | **1.2 µL**, valve 2's smallest measured volume; 1 µL still runs, extrapolated, with a note. Settings files keep the value they hold |
+| choosing *Habituation* switched the light off and the stimulus air on | also switches the centre light cue on (unless the centre light is a stimulus component) |
+| an error between opening the devices and trial 1 (behaviour), or before the first block, or any error during the blocks other than PulsePal or the LED (sleep and ePhys), left the windows, the video and the devices open, and a sleep recording unsaved at its end | torn down as a failure in the behaviour trial loop is: saved (sleep and ePhys), windows closed, video stopped, devices released, then the error |
+
 ### 0.9.2 → 0.9.3 — the LED to its rating, calibrations added to
 
 | 0.9.2 | 0.9.3 |

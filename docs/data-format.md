@@ -54,7 +54,12 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
 ### `SessionData.Session` — written once
 
 - `Type` — `'Behaviour'`
-- `Settings` — the frozen settings struct
+- `Settings` — the settings struct as trial 1 was prepared (from 0.9.4; before, its runtime tier
+  `GUI` was trial 2's). Each trial's own runtime tier is `TrialSettings{k}`
+- `LiquidCalibration` — the liquid calibration the valve times came from (0.9.4): one element per
+  valve 1–3 with `Valve`, `Table` (ms, µL, as measured) and `Coeffs` (the fit Bpod's `GetValveTimes`
+  uses, µL to ms). A side reward's open time is also `diff(RawEvents.Trial{k}.States.LeftReward)`
+  (or `RightReward`), and the centre reward's `CentreReward`
 - `StimulusSet` — the session's light patterns and trial order (below)
 - `Subject` — the subject the session was launched for (`lum.launchSubject`)
 - `Rig` — the channel map
@@ -120,7 +125,8 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
 `ReactionTime`, `OptoOn`, `SoundOn`, `HouseLight`, `SyncMode`, `SyncPulseWidth`, `BiasTargetPLeft`,
 `TrainingStage`, `HoldDuration`, `HoldGrace`, `HoldBreaks`, `HoldAttempts`, `EarlyWithdrawals`,
 `CameraTime`, `LEDCurrentA`, `LEDCurrentB`, `CentreReward`, `ResponseRetries` and `CentreHoldTime`,
-plus `TrialSettings` (the runtime parameters only) and `OutcomeNames` for decoding `Outcome`.
+plus `TrialSettings` (the runtime parameters only, `S.GUI` as trial *k* was prepared: the values it
+ran with) and `OutcomeNames` for decoding `Outcome`.
 
 Outcome codes are never renumbered. `HoldAttempts` counts how many times the stimulus started on
 that trial; `EarlyWithdrawals` how many times the animal left the centre port before the hold was
@@ -383,6 +389,16 @@ the null device shims swallowed is recorded in `Data.Session.DeviceLog`. See
   incorrect choices (`PunishCondition` 3). A noise-only punishment of an incorrect choice, or of an
   early withdrawal that ended the trial, was cut off by the ITI one state machine cycle after it
   started on the rig.
+- **Sessions before 0.9.4**: `TrialSettings{k}` is the runtime tier as trial *k*+1 was prepared, not
+  trial *k*'s: a value changed in the runtime window during trial *k* shows from `TrialSettings{k}`
+  but took effect from trial *k*+1. Read trial *k*'s value from `TrialSettings{k-1}` (trial 1's from
+  `Session.Settings.GUI`, which is trial 2's; trial 1 and 2 differ only when the value was changed
+  during trial 1), or, for the reward, from the reward state's duration. With automatic shaping,
+  `HoldDuration` and `HoldGrace` grew from the trial two before (odd and even trials apart). A reward
+  volume of 0 µL still opened the side valves for the calibration fit's intercept. There is no
+  `Session.LiquidCalibration`. Bias correction swapped only within the next 50 trials and gave way
+  to the run limit, and `BiasWindow` counted trials rather than choices (`BiasTargetPLeft` is what it
+  aimed for either way).
 - **Sessions before 0.9.3** ran with each LED channel's limit at 700 mA unless the operator raised it
   (`Session.DoricLED.Settings.MaxCurrentmA`), and their calibrations were measured to 700 mA at most,
   so an irradiance beyond the 700 mA reading ran at 700 mA with a note. From 0.9.3 the limit is

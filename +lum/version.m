@@ -69,7 +69,7 @@ function text = version()
 %
 % See also: LuminoseFM
 
-release = '0.9.3';
+release = '0.9.4';
 text = release;
 
 try

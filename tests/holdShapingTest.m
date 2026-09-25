@@ -213,6 +213,43 @@ history.withdrawalsAtHold = 13;
 verifyEqual(testCase, lum.HoldShaping.next(S, history), first, 'AbsTol', 1e-12);
 end
 
+function testInTheSessionsOrderEveryCompletedHoldGrowsTheHoldOnce(testCase)
+% The session prepares trial k+1 while trial k runs, so k+1 knows trial k-1's outcome and
+% trial k's hold. Every completed hold is one growth step, one trial late; before 0.9.4
+% odd and even trials grew apart, every second trial.
+S = shaped('Grow hold');
+S.GUI.HoldGrowth = 10;
+S.GUI.HoldTarget = 10;
+holds = replaySession(S, true(1, 8));
+verifyEqual(testCase, holds, 0.1 * 1.1 .^ [0 0 1 2 3 4 5 6], 'AbsTol', 1e-4);
+holds = replaySession(S, logical(mod(1:8, 2)));   % Every other hold completed
+verifyTrue(testCase, all(diff(holds) >= -1e-9), 'The hold never drops back without withdrawals');
+verifyEqual(testCase, holds(end), 0.1 * 1.1 ^ 3, 'AbsTol', 1e-4, 'Trials 1, 3 and 5 grew it');
+end
+
+function testInTheSessionsOrderGraceShrinksOnceForEveryCompletedHold(testCase)
+S = shaped('Shrink grace');
+S.GUI.GraceStart = 0.4;
+S.GUI.GraceShrink = 50;
+[~, graces] = replaySession(S, true(1, 5));
+verifyEqual(testCase, graces, [0.4 0.4 0.2 0.1 0.05], 'AbsTol', 1e-4);
+end
+
+function testInTheSessionsOrderTheHoldStepsBackOnceForItsWithdrawals(testCase)
+S = shaped('Grow hold');
+S.GUI.HoldGrowth = 10;
+S.GUI.HoldStepBackAfter = 4;
+completed = [true(1, 4), false(1, 6)];
+holds = replaySession(S, completed, 2);   % Two early withdrawals on each failed trial
+verifyEqual(testCase, holds(1:6), 0.1 * 1.1 .^ [0 0 1 2 3 4], 'AbsTol', 1e-4);
+grown = holds(6);
+stepped = 6 + find(holds(7:end) < grown - 1e-6, 1);
+verifyNotEmpty(testCase, stepped, 'Four withdrawals at one hold step it back');
+verifyEqual(testCase, holds(stepped), grown / 1.1, 'AbsTol', 1e-4, 'One growth step');
+verifyEqual(testCase, holds(stepped + 1), holds(stepped), 'AbsTol', 1e-9, ...
+            'The trial still running at the old hold cannot step it back a second time');
+end
+
 function testASettingsFileWithoutShapingMigratesToTheSwitch(testCase)
 old = lum.defaultSettings;
 old.Task = rmfield(old.Task, 'AutoShaping');
@@ -253,6 +290,44 @@ S = lum.defaultSettings;
 S.Task.AutoShaping = ~strcmp(mode, 'Off');
 if ~strcmp(mode, 'Off')
     S.Task.HoldShaping = mode;
+end
+end
+
+function [holds, graces] = replaySession(S, completed, withdrawals)
+% Replays the session loop's order: trial k+1 prepared (lum.nextTrialSpec's shaping,
+% then notePrepared) before trial k is recorded. completed(k) says whether trial k's hold
+% was completed; a failed trial lapses with `withdrawals` early withdrawals (default 1).
+if nargin < 3
+    withdrawals = 1;
+end
+n = numel(completed);
+history = lum.newHistory(n);
+holds = NaN(1, n);
+graces = NaN(1, n);
+[holds(1), graces(1)] = lum.HoldShaping.next(S, history);
+history = lum.HoldShaping.notePrepared(history, struct('TrialNumber', 1, ...
+    'HoldDuration', holds(1), 'HoldGrace', graces(1)));
+for k = 1:n
+    if k < n
+        [holds(k + 1), graces(k + 1)] = lum.HoldShaping.next(S, history);
+        history = lum.HoldShaping.notePrepared(history, struct('TrialNumber', k + 1, ...
+            'HoldDuration', holds(k + 1), 'HoldGrace', graces(k + 1)));
+    end
+    spec = struct('PatternIndex', 1, 'StimulusGroup', 1, 'CorrectSide', 1, ...
+                  'HoldDuration', holds(k), 'HoldGrace', graces(k));
+    result = struct('Choice', 1, 'Correct', 1, 'Rewarded', 1, 'ReactionTime', 0.3, ...
+                    'Outcome', lum.Outcome.Correct, 'HoldBreaks', 0, 'HoldAttempts', 1, ...
+                    'EarlyWithdrawals', 0, 'CentreRewarded', 0, 'ResponseRetries', 0, ...
+                    'CentreHoldTime', 1);
+    if ~completed(k)
+        result.Outcome = lum.Outcome.HoldNotCompleted;
+        result.Choice = NaN;
+        result.Correct = NaN;
+        result.Rewarded = 0;
+        result.EarlyWithdrawals = withdrawals;
+        result.HoldAttempts = withdrawals;
+    end
+    history = lum.updateHistory(history, k, spec, result);
 end
 end
 

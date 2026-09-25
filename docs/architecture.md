@@ -243,9 +243,11 @@ sync widths use — independent of when the set was built.
 - The old hand-written stimulus table (`S.Task.StimulusNames`, `LeftProbability`,
   `StimulusWeights`, `S.Stimulus.Patterns`, `lum.pattern.fromSpec`, `dictionary`) is retired;
   `lum.mergeSettings` removes it from old settings files and says so.
-- Bias correction can front-load the avoided side only as far as the next 50 trials supply
-  it; over hundreds of trials it cannot push one side above the set's own share (see open
-  questions).
+- Bias correction brings forward the next trial in the rest of the order that pays the side
+  it draws (from 0.9.4; before, only from the next 50, and it faded after about 100 trials). It
+  holds its target for as long as the order has trials paying that side. It takes precedence
+  over the run limit, which then only breaks runs on the side the correction is not pushing
+  towards.
 - A pattern with many stretches of light fits the rig's 16 timers and not the emulator's 5;
   both are checked against the connected machine.
 - The generator is pure and tested (`generateTest`, `stimulusSetTest`); the designer and
@@ -268,9 +270,16 @@ must not vary with the animal's performance.
   back** one growth step (`lastHold / (1 + growth)`, never below `HoldStart`).
   `lum.updateHistory` keeps the count (`history.withdrawalsAtHold`, O(1)): visits to
   `EarlyWithdrawal` are added, a completed hold clears it, a hold different from the previous
-  trial's starts it again. Because trial *n+1* is prepared from trial *n-1*, the step is computed
-  from the last recorded trial's hold, so the trial still running when it is decided cannot make
-  the hold step back twice.
+  trial's starts it again.
+- **Timing (0.9.4).** Trial *n+1* is prepared while trial *n* runs, so it knows trial *n-1*'s
+  outcome and trial *n*'s hold and grace (`lum.HoldShaping.notePrepared` keeps them in the history).
+  It grows, shrinks or steps back **from trial *n*'s values**: one step per completed hold, one
+  trial late. It steps back only while trial *n* has the hold the counted withdrawals were made at
+  (the last recorded trial's), so the withdrawals that stepped it back cannot do so twice. Up to
+  0.9.3 each step was taken from trial *n-1*'s values, which made odd and even trials two shaping
+  sequences: every completed hold grew only its own half, the hold grew every second trial, an
+  animal completing every other hold kept half its trials at the start, and with the two halves
+  apart the withdrawal count was reset nearly every trial.
 - **Shrink grace** lets the animal leave during the hold and return within `HoldGrace`
   seconds. The graph always contains `HoldBreak` and `CentreHoldResumed`:
 
@@ -931,7 +940,7 @@ are reached only when the runtime settings ask for them (the centre reward can a
 again later in a session, below):
 
 - **`CentreReward`**, between a completed hold and `WaitForCentreExit`. On trials 1 to
-  `S.GUI.CentreRewardTrials` (10) of a habituation session, with `S.GUI.CentreRewardAmount` (1 µL)
+  `S.GUI.CentreRewardTrials` (10) of a habituation session, with `S.GUI.CentreRewardAmount` (1.2 µL since 0.9.4; 1 µL before)
   above 0, the end of the hold (`CentreHold`'s timer, or the hold clock from `CentreHold`,
   `HoldBreak` or `CentreHoldResumed`) leads there; it opens the centre valve (`rig.Valve.Centre`,
   valve 2) for the calibrated time and puts the response configuration up as `WaitForCentreExit`

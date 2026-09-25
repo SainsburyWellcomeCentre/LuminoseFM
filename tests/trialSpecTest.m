@@ -57,8 +57,6 @@ end
 
 function testBiasCorrectionPushesAgainstTheAnimalsPreference(testCase)
 % An animal that always chooses left should be offered more right-rewarded trials.
-% Correction reorders a balanced session, so it can front-load the avoided side only
-% as far as the next 50 trials supply it: tested over the stretch where it can.
 [S, stimulusSet] = fixture(testCase);
 S.GUI.BiasCorrection = 1;
 S.GUI.BiasWindow = 20;
@@ -115,6 +113,73 @@ for i = 1:1500
 end
 % p(left) is clamped to [0.1, 0.9], so the avoided side keeps appearing.
 verifyGreaterThan(testCase, mean(sides == 1), 0.03);
+end
+
+function testBiasCorrectionHoldsItsTargetThroughTheSession(testCase)
+% Until 0.9.3 swaps looked 50 trials ahead, and against a persistent bias the correction
+% faded to chance after about 100 trials. It now searches the rest of the order, so it
+% holds its target (0.25 left at strength 0.5 against an animal always going left) for
+% as long as the session has right-paying trials left: here 1000 of them in 2000.
+[S, stimulusSet] = fixture(testCase);
+S.GUI.BiasCorrection = 0.5;
+history = leftBiasedHistory();
+queue = stimulusSet.TrialPattern;
+rng(12);
+sides = zeros(1, 600);
+for i = 1:600
+    [spec, queue] = lum.nextTrialSpec(S, stimulusSet, queue, history, 20 + i);
+    sides(i) = spec.CorrectSide;
+    verifyEqual(testCase, spec.BiasTargetPLeft, 0.25, 'AbsTol', 1e-12);
+end
+verifyEqual(testCase, mean(sides(1:300) == 2), 0.75, 'AbsTol', 0.06, 'Trials 1-300');
+verifyEqual(testCase, mean(sides(301:600) == 2), 0.75, 'AbsTol', 0.06, 'Trials 301-600');
+end
+
+function testBiasCorrectionTakesPrecedenceOverTheRunLimit(testCase)
+% Three right-paying trials in a row, and an animal that keeps going left: the correction
+% pushes right, so the run limit does not force left and the run may go on.
+[S, stimulusSet] = fixture(testCase);
+S.GUI.BiasCorrection = 1;
+S.Task.MaxSameSide = 3;
+history = leftBiasedHistory();
+history.correctSide(18:20) = 2;
+rng(13);
+sides = zeros(1, 200);
+for i = 1:200
+    spec = lum.nextTrialSpec(S, stimulusSet, stimulusSet.TrialPattern, history, 21);
+    sides(i) = spec.CorrectSide;
+end
+verifyEqual(testCase, mean(sides == 2), 0.9, 'AbsTol', 0.06, ...
+            'Right is drawn at the correction''s target, past the run limit');
+end
+
+function testTheRunLimitStillBreaksARunTheCorrectionDoesNotWant(testCase)
+% Three left-paying trials in a row while the correction pushes right: the limit and the
+% correction agree, and the next trial pays right every time.
+[S, stimulusSet] = fixture(testCase);
+S.GUI.BiasCorrection = 0.2;
+S.Task.MaxSameSide = 3;
+history = leftBiasedHistory();
+history.correctSide(18:20) = 1;
+rng(14);
+for i = 1:100
+    spec = lum.nextTrialSpec(S, stimulusSet, stimulusSet.TrialPattern, history, 21);
+    verifyEqual(testCase, spec.CorrectSide, 2);
+end
+end
+
+function testTheBiasWindowCountsChoicesNotTrials(testCase)
+% Ten right choices, then ten trials with none: a window of 5 looks at the last five
+% choices (all right), not the last five trials (none).
+[S, stimulusSet] = fixture(testCase);
+S.GUI.BiasCorrection = 1;
+S.GUI.BiasWindow = 5;
+history = lum.newHistory(100);
+history.nTrials = 20;
+history.choice(1:10) = 2;
+history.correctSide(1:20) = repmat([1 2], 1, 10);
+spec = lum.nextTrialSpec(S, stimulusSet, stimulusSet.TrialPattern, history, 21);
+verifyEqual(testCase, spec.BiasTargetPLeft, 0.9, 'AbsTol', 1e-12, 'Pushed left, clamped at 0.9');
 end
 
 function testTheRunLimitBreaksLongSameSideRuns(testCase)

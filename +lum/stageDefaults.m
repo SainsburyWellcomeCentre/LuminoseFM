@@ -6,7 +6,10 @@ function [S, changed] = stageDefaults(S, stage)
 % centre port starts a trial and the side ports pay, before there is anything to
 % discriminate: it therefore delivers **no light** and **air alone** during the hold,
 % so that the hold is exactly as long and as salient as it will be later while
-% carrying no information. Training and Experiment deliver the light pattern.
+% carrying no information, and it switches the centre light cue on (on from trial start
+% to the end of the hold, the cue's default), unless the centre light is a stimulus
+% component. Training and Experiment deliver the light pattern and leave the cue as it
+% is.
 %
 % Automatic shaping follows the stage too: Habituation and Training switch it on, so the
 % centre hold is grown from S.GUI.HoldStart as the animal learns (lum.HoldShaping) — in
@@ -72,6 +75,16 @@ if any(air)
 end
 
 % Shaping: on in habituation and training (stages 1 and 2), never in an experiment (3).
+% The centre light as the cue, so the animal sees where to poke. Left alone when the
+% centre light is a stimulus component, which the cue would clash with (cueClash).
+cueLight = find(strcmp({S.Cue.Components.Type}, 'CentreLight'), 1);
+stimulusLight = strcmp({S.Stimulus.Components.Type}, 'CentreLight');
+if habituation && ~isempty(cueLight) && ~S.Cue.Components(cueLight).Enabled ...
+        && ~any([S.Stimulus.Components(stimulusLight).Enabled])
+    S.Cue.Components(cueLight).Enabled = true;
+    changed{end+1} = describe('the centre light cue', true);
+end
+
 if isscalar(stage) && ismember(stage, 1:3)
     wantShaping = stage ~= 3;
     if ~isequal(logical(S.Task.AutoShaping), wantShaping)

@@ -204,42 +204,54 @@ if lightOn
     lines(2:3) = rig.Opto.Channels;
 end
 
-plots = lum.sleep.Plots(S, 'Subject', subject, 'MaxPulses', size(syncPulses, 1), 'Plan', plan, ...
-                        'HouseLight', devices.houseLight, 'Kind', kind, 'Sync', sync, ...
-                        'Description', description);
+% From here to the first block a failure (a window, the barcode) is torn down before the
+% error is shown: windows closed, video stopped, devices released.
+plots = [];
 cameraWindow = [];
-if S.Camera.ShowWindow && devices.cameras.canPreview()
-    cameraWindow = lum.gui.CameraWindow(devices.cameras, S.Camera, 'Subject', subject);
-end
 ledWindow = [];
-if S.Doric.ShowWindow && lightOn
-    ledWindow = lum.gui.DoricWindow(devices.doricLED, S, 'Subject', subject, 'Editable', ~isEphys, ...
-                                    'Calibrations', cals);
-end
-startup.lap('windows');
+try
+    plots = lum.sleep.Plots(S, 'Subject', subject, 'MaxPulses', size(syncPulses, 1), 'Plan', plan, ...
+                            'HouseLight', devices.houseLight, 'Kind', kind, 'Sync', sync, ...
+                            'Description', description);
+    if S.Camera.ShowWindow && devices.cameras.canPreview()
+        cameraWindow = lum.gui.CameraWindow(devices.cameras, S.Camera, 'Subject', subject);
+    end
+    if S.Doric.ShowWindow && lightOn
+        ledWindow = lum.gui.DoricWindow(devices.doricLED, S, 'Subject', subject, 'Editable', ~isEphys, ...
+                                        'Calibrations', cals);
+    end
+    startup.lap('windows');
 
-%% Session barcode
-startTime = datetime('now');
-barcode = lum.sync.barcode(lum.sync.barcodeValue(startTime), S.Sync.Barcode, kind);
-barcodeSent = false;
-if S.Session.UseSync && S.Sync.Barcode.Enabled
-    barcodeSent = devices.flex.sendBarcode(barcode);
-end
-plots.showBarcode(barcode, barcodeSent);
-fprintf('LuminoseFM: %s session, %.4g min, a %s sync pulse every %g s%s.\n', label, ...
-        durationSeconds / 60, lower(S.Sync.ModeNames{sync.Mode}), sync.Interval, ...
-        barcodeText(barcode, barcodeSent));
-if lightOn
-    fprintf('LuminoseFM: light on channels A and B through PulsePal; LED A %s, B %s.\n  %s\n', ...
-            lum.led.describe(cals{1}, devices.doricLED.CurrentmA(1)), ...
-            lum.led.describe(cals{2}, devices.doricLED.CurrentmA(2)), ...
-            strjoin(description, sprintf('\n  ')));
-end
+    %% Session barcode
+    startTime = datetime('now');
+    barcode = lum.sync.barcode(lum.sync.barcodeValue(startTime), S.Sync.Barcode, kind);
+    barcodeSent = false;
+    if S.Session.UseSync && S.Sync.Barcode.Enabled
+        barcodeSent = devices.flex.sendBarcode(barcode);
+    end
+    plots.showBarcode(barcode, barcodeSent);
+    fprintf('LuminoseFM: %s session, %.4g min, a %s sync pulse every %g s%s.\n', label, ...
+            durationSeconds / 60, lower(S.Sync.ModeNames{sync.Mode}), sync.Interval, ...
+            barcodeText(barcode, barcodeSent));
+    if lightOn
+        fprintf('LuminoseFM: light on channels A and B through PulsePal; LED A %s, B %s.\n  %s\n', ...
+                lum.led.describe(cals{1}, devices.doricLED.CurrentmA(1)), ...
+                lum.led.describe(cals{2}, devices.doricLED.CurrentmA(2)), ...
+                strjoin(description, sprintf('\n  ')));
+    end
 
-startup.lap('barcode');
-fprintf('LuminoseFM: %s.\n', startup.describe());
-startupRecord = startup.record();  % Data.Session.Startup, written with the first block
-clear startup
+    startup.lap('barcode');
+    fprintf('LuminoseFM: %s.\n', startup.describe());
+    startupRecord = startup.record();  % Data.Session.Startup, written with the first block
+    clear startup
+catch setupError
+    closeWindow(cameraWindow, 'camera');
+    closeWindow(ledWindow, 'LED');
+    closeWindow(plots, 'plots');
+    closeDevices(devices);  % The cameras' close stops the recording
+    BpodSystem.Status.BeingUsed = 0;
+    rethrow(setupError);
+end
 
 %% Blocks
 nSync = size(syncPulses, 1);
@@ -261,85 +273,99 @@ saveEveryNBlocks = 6;   % About a minute of 10 s blocks
 stoppedReason = '';
 cursor = struct('Time', 0, 'End', round(durationSeconds / cycle), 'NextSync', 1, 'NextEpoch', 1);
 sessionTimer = tic;
-while BpodSystem.Status.BeingUsed == 1 && cursor.Time < cursor.End
-    [block, cursor] = lum.sleep.nextBlock(plan, syncPulses, cursor, rig.Limits.MaxStates);
-    if block.Step > 0
-        % The step's carrier goes to PulsePal between blocks, with every line low, and
-        % only to a PulsePal that still answers; an ePhys step's LED current goes to the
-        % driver at the same moment, and the driver must take it.
-        carrier = plan.Steps(block.Step).Carrier;
-        try
-            if devices.pulsePal.needsReprogramming(carrier)
-                devices.pulsePal.checkConnection();
-                devices.pulsePal.configure(carrier);
-            end
-            if isEphys
-                devices.doricLED.setCurrents(plan.Steps(block.Step).CurrentmA, nBlocks + 1);
-            end
-        catch deviceError
-            stoppedReason = deviceError.message;
-            break
-        end
-    end
-    % A current asked for from the LED window, sent while every line is low.
-    ledCurrents = devices.doricLED.applyPending(nBlocks + 1);
-    SendStateMachine(lum.sleep.blockStateMachine(block, lines));
-    rawEvents = RunStateMachine;
-    arrivedAt = devices.houseLight.sessionTime();  % For the block's house light level
-    if isempty(fieldnames(rawEvents))
-        break  % Stopped before the block began; nothing to record
-    end
-
-    BpodSystem.Data = AddTrialEvents(BpodSystem.Data, rawEvents);
-    nBlocks = nBlocks + 1;
-    if nBlocks <= numel(cameraTimes)
-        cameraTimes(nBlocks) = devices.cameras.mark('BlockEnd', nBlocks);
-        houseLights(nBlocks) = double(houseLightAtStart(devices.houseLight, nBlocks, arrivedAt));
-    end
-    if nBlocks == 1
-        % AddTrialEvents builds Data.Info on the first block, so session-level
-        % annotations go in after it.
-        BpodSystem.Data.Info.EmulatorMode = devices.emulated;
-        BpodSystem.Data.Session = sessionRecord(S, rig, devices, startTime, barcode, ...
-                                                barcodeSent, syncChannel, plan);
-        BpodSystem.Data.Session.SyncFit = syncFit;
-        BpodSystem.Data.Session.Startup = startupRecord;
-    end
-    trial = BpodSystem.Data.RawEvents.Trial{nBlocks};
-    trialStart = BpodSystem.Data.TrialStartTimestamp(nBlocks);
-    [syncOnsets, syncBlocks, nSyncSent] = recordStarts(syncOnsets, syncBlocks, nSyncSent, ...
-        trial, trialStart, block.SyncIndices, block.SyncStates, block.StateNames, nBlocks);
-    firstNew = nSegmentsSent + 1;
-    [segmentOnsets, segmentBlocks, nSegmentsSent] = recordStarts(segmentOnsets, segmentBlocks, ...
-        nSegmentsSent, trial, trialStart, block.SegmentIndices, block.SegmentStates, ...
-        block.StateNames, nBlocks);
-    newRows = firstNew:nSegmentsSent;
-    segmentCurrents(newRows) = ledCurrents(plan.Segments(newRows, 3));
-    plots.update(struct('Onset', syncOnsets, 'Width', syncWidths, 'n', nSyncSent), ...
-                 struct('Onset', segmentOnsets, 'n', nSegmentsSent), toc(sessionTimer), ...
-                 cursor.Time * cycle);
-
-    HandlePauseCondition;
-    if mod(nBlocks, saveEveryNBlocks) == 0
-        if lightOn
+% Wrapped, as the behaviour trial loop is: an error part way through a recording (a lost
+% link to the state machine, a window) must still save what was sent, merge the analog
+% stream, stop the video and release the devices below, rather than leave them open.
+failed = false;
+try
+    while BpodSystem.Status.BeingUsed == 1 && cursor.Time < cursor.End
+        [block, cursor] = lum.sleep.nextBlock(plan, syncPulses, cursor, rig.Limits.MaxStates);
+        if block.Step > 0
+            % The step's carrier goes to PulsePal between blocks, with every line low, and
+            % only to a PulsePal that still answers; an ePhys step's LED current goes to the
+            % driver at the same moment, and the driver must take it.
+            carrier = plan.Steps(block.Step).Carrier;
             try
-                devices.pulsePal.checkConnection();
-            catch pulsePalError
-                stoppedReason = pulsePalError.message;
+                if devices.pulsePal.needsReprogramming(carrier)
+                    devices.pulsePal.checkConnection();
+                    devices.pulsePal.configure(carrier);
+                end
+                if isEphys
+                    devices.doricLED.setCurrents(plan.Steps(block.Step).CurrentmA, nBlocks + 1);
+                end
+            catch deviceError
+                stoppedReason = deviceError.message;
+                break
             end
         end
-        BpodSystem.Data = publishPulses(BpodSystem.Data, syncOnsets, syncWidths, syncBlocks, ...
-            nSyncSent, plan, segmentOnsets, segmentBlocks, segmentCurrents, nSegmentsSent, lightOn);
-        BpodSystem.Data.CameraTime = cameraTimes(1:min(nBlocks, numel(cameraTimes)));
-        BpodSystem.Data.HouseLight = houseLights(1:min(nBlocks, numel(houseLights)));
-        SaveBpodSessionData;
-        if ~isempty(stoppedReason)
-            break
+        % A current asked for from the LED window, sent while every line is low.
+        ledCurrents = devices.doricLED.applyPending(nBlocks + 1);
+        SendStateMachine(lum.sleep.blockStateMachine(block, lines));
+        rawEvents = RunStateMachine;
+        arrivedAt = devices.houseLight.sessionTime();  % For the block's house light level
+        if isempty(fieldnames(rawEvents))
+            break  % Stopped before the block began; nothing to record
+        end
+
+        BpodSystem.Data = AddTrialEvents(BpodSystem.Data, rawEvents);
+        nBlocks = nBlocks + 1;
+        if nBlocks <= numel(cameraTimes)
+            cameraTimes(nBlocks) = devices.cameras.mark('BlockEnd', nBlocks);
+            houseLights(nBlocks) = double(houseLightAtStart(devices.houseLight, nBlocks, arrivedAt));
+        end
+        if nBlocks == 1
+            % AddTrialEvents builds Data.Info on the first block, so session-level
+            % annotations go in after it.
+            BpodSystem.Data.Info.EmulatorMode = devices.emulated;
+            BpodSystem.Data.Session = sessionRecord(S, rig, devices, startTime, barcode, ...
+                                                    barcodeSent, syncChannel, plan);
+            BpodSystem.Data.Session.SyncFit = syncFit;
+            BpodSystem.Data.Session.Startup = startupRecord;
+        end
+        trial = BpodSystem.Data.RawEvents.Trial{nBlocks};
+        trialStart = BpodSystem.Data.TrialStartTimestamp(nBlocks);
+        [syncOnsets, syncBlocks, nSyncSent] = recordStarts(syncOnsets, syncBlocks, nSyncSent, ...
+            trial, trialStart, block.SyncIndices, block.SyncStates, block.StateNames, nBlocks);
+        firstNew = nSegmentsSent + 1;
+        [segmentOnsets, segmentBlocks, nSegmentsSent] = recordStarts(segmentOnsets, segmentBlocks, ...
+            nSegmentsSent, trial, trialStart, block.SegmentIndices, block.SegmentStates, ...
+            block.StateNames, nBlocks);
+        newRows = firstNew:nSegmentsSent;
+        segmentCurrents(newRows) = ledCurrents(plan.Segments(newRows, 3));
+        plots.update(struct('Onset', syncOnsets, 'Width', syncWidths, 'n', nSyncSent), ...
+                     struct('Onset', segmentOnsets, 'n', nSegmentsSent), toc(sessionTimer), ...
+                     cursor.Time * cycle);
+
+        HandlePauseCondition;
+        if mod(nBlocks, saveEveryNBlocks) == 0
+            if lightOn
+                try
+                    devices.pulsePal.checkConnection();
+                catch pulsePalError
+                    stoppedReason = pulsePalError.message;
+                end
+            end
+            BpodSystem.Data = publishPulses(BpodSystem.Data, syncOnsets, syncWidths, syncBlocks, ...
+                nSyncSent, plan, segmentOnsets, segmentBlocks, segmentCurrents, nSegmentsSent, lightOn);
+            BpodSystem.Data.CameraTime = cameraTimes(1:min(nBlocks, numel(cameraTimes)));
+            BpodSystem.Data.HouseLight = houseLights(1:min(nBlocks, numel(houseLights)));
+            SaveBpodSessionData;
+            if ~isempty(stoppedReason)
+                break
+            end
         end
     end
+catch sessionError
+    stoppedReason = sessionError.message;
+    failed = true;
 end
 completed = isempty(stoppedReason) && nSyncSent == nSync && nSegmentsSent == nSegments;
-if ~isempty(stoppedReason)
+if failed
+    warning('lum:sleep:run:failed', ...
+            ['The %s session ended early on an error, after %d of %d gates of light and %d of %d '...
+             'sync pulses: %s\nWhat was sent is saved.'], label, nSegmentsSent, nSegments, ...
+            nSyncSent, nSync, stoppedReason);
+elseif ~isempty(stoppedReason)
     warning('lum:sleep:run:pulsePalStopped', ...
             ['The %s session stopped early, after %d of %d gates of light, because PulsePal or the '...
              'LED driver stopped answering: %s\nWhat was sent is saved.'], label, nSegmentsSent, ...

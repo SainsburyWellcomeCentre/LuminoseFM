@@ -35,6 +35,10 @@ function history = newHistory(capacity)
 %   .centreRewardAgainFrom  First trial of the centre reward the operator asked for
 %                  again (S.GUI.CentreRewardAgain), 0 when none is running
 %                  (lum.centreRewardAgain)
+%   .preparedTrial, .preparedHold, .preparedGrace  The trial last prepared and its hold
+%                  and grace: the trial running while the next is prepared, which
+%                  automatic shaping grows from (lum.HoldShaping.notePrepared); 0, NaN,
+%                  NaN before the first
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
@@ -48,4 +52,5 @@ history = struct('capacity', capacity, 'nTrials', 0, ...
                  'holdGrace', blank, 'holdBreaks', blank, 'holdAttempts', blank, ...
                  'earlyWithdrawals', blank, 'centreRewarded', blank, ...
                  'responseRetries', blank, 'centreHoldTime', blank, 'withdrawalsAtHold', 0, ...
-                 'centreRewardAgainFrom', 0);
+                 'centreRewardAgainFrom', 0, 'preparedTrial', 0, 'preparedHold', NaN, ...
+                 'preparedGrace', NaN);

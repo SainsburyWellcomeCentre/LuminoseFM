@@ -55,15 +55,17 @@ box). Permission covers that request only. Close nothing of theirs: if the MATLA
 light, hearing sound, poking, moving a cable. The operator works remotely at times, so run those checks
 the next time they say they are at the rig. That doc also says how to run a headless session on the
 rig: do what `RunProtocol` does, open `_ANLG.dat` and reset the session clock. **Pending now (all need
-eyes at the rig): P4 calibrating the 2-to-19 bundle (the 4-to-19 is done: orange A and blue B re-measured
-2026-09-23; green A has a replaced dark point — never replace a lit point without a measurement); P5
-valve 2's calibration, the centre reward and the punishment noise heard to its end; P6 the End button with
-the camera and LED windows open (it froze MATLAB before 0.8.1); P7 the startup line, to see where the
-time goes; P8 the 0.9.0 stimulus families at the fiber tips, the designer in a desktop MATLAB, and
-centre reward again; P9 the driver's knob at 1000 mA and every calibration extended to 800–1000 mA.** (P1–P3 passed on 2026-09-21; the 0.9.0 families' light timers were checked on
-the state machine on 2026-09-22, with virtual pokes written to its serial port; on 2026-09-23 the
-spread mixture, alternating sleep probes and the 4-to-19 calibrations ran in behaviour, sleep and ePhys
-sessions. Channel B gives about 58% of A's irradiance on every cable.)
+eyes at the rig): P4 calibrating the 2-to-19 bundle (the 4-to-19 is done to 1000 mA; green A still has its
+0.9.0 points to 700 mA with a replaced dark point, and black A's 1000 mA reading wants a second look —
+never replace a lit point without a measurement); P5 water at each port and air from valve 4 (the valves
+ran for their calibrated times on 2026-09-24), the centre reward and the punishment noise heard to its
+end; P6 the End button with the camera and LED windows open (it froze MATLAB before 0.8.1); P7 the
+startup line in a desktop launch; P8 the 0.9.0 stimulus families at the fiber tips, the designer in a
+desktop MATLAB, and centre reward again; P9 the driver's knob at 1000 mA and the LED head's temperature;
+P10 the 0.9.4 reward refusal and shaping seen in a desktop session.** (P1–P3 passed on 2026-09-21; on
+2026-09-24 the pre-deployment validation ran every device and a behaviour, sleep and ePhys session on
+the rig with video — `docs/validation-2026-09-24.md`. Channel B gives about 58% of A's irradiance on
+every cable.)
 
 ## Stay inside the working folder
 
@@ -177,8 +179,14 @@ stops the session part way through as though the End button had been pressed.
   `EvidenceName`), the contingency's boundary in the u_A–u_B plane (`Boundary`), the single-cue
   ceilings (`Shortcuts`) and `Descriptors.ASegments`/`BSegments`; `SweepName`/`SweepValues` are
   gone. `S.Task.GroupPLeft` empty means the family's contingency.
-- `Data.Session.StoppedReason` is `''` for a session that ran to its end or was stopped from
-  the console, and the error message for one that failed. `Session.StimulusSet.GroupPLeft` is
+- `Data.TrialSettings{k}` is `S.GUI` as trial *k* was prepared — what it ran with. The loop syncs S
+  for trial *k*+1 before trial *k* is recorded, so the session keeps each trial's runtime tier beside
+  its spec (`nextGUI`/`trialGUI` in `LuminoseFM.m`); record from those, never from the current `S`
+  (0.9.3 and earlier recorded trial *k*+1's). `Session.Settings` is S as trial 1 was prepared;
+  `Session.LiquidCalibration` the valves' calibrations (0.9.4).
+- `Data.Session.StoppedReason` is `''` for a behaviour session that ran to its end or was stopped from
+  the console, and the error message for one that failed; sleep and ePhys sessions keep theirs in
+  `Session.TestPulses.StoppedReason` / `Session.Ephys.StoppedReason`. `Session.StimulusSet.GroupPLeft` is
   the contingency as run, `BasePLeft` the one typed in, `Reversed` says whether
   `S.Task.ReverseContingency` swapped them.
 - Trial pulses in sessions from 0.2 to 0.5.0 are ~100 us glitches, not the recorded widths
@@ -409,8 +417,9 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   recordingMinutes)`); the default schedule is one such step. Otherwise, with test pulses on, the
   recording lasts as long as the schedule.
 - **The training stage shapes the session (`lum.stageDefaults`).** Choosing *Habituation* in the
-  setup dialog switches the light pattern off (`S.Session.UseOpto`, `S.GUI.OptoOn`) and the
-  stimulus air on for the whole window; choosing *Training* or *Experiment* does the reverse.
+  setup dialog switches the light pattern off (`S.Session.UseOpto`, `S.GUI.OptoOn`), the
+  stimulus air on for the whole window and the centre light cue on (unless the centre light is a
+  stimulus component); `stateMachineTest` checks a habituation trial built from the defaults; choosing *Training* or *Experiment* does the reverse.
   *Habituation* and *Training* also switch automatic shaping on, *Experiment* off. Defaults, applied only on the
   dropdown's change, never during a session and never enforced by validation — the operator may
   untick anything afterwards — **except** automatic shaping in an Experiment session, which
@@ -420,7 +429,9 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   `S.Task.HoldShaping`, which has no *Off* any more (old files are migrated in `lum.mergeSettings`).
   Grow hold starts at 0.1 s, targets 1 s, and steps back one growth step after
   `S.GUI.HoldStepBackAfter` (10) early withdrawals at one hold; the count is
-  `history.withdrawalsAtHold`, kept by `lum.updateHistory`. Future difficulty shaping goes under the
+  `history.withdrawalsAtHold`, kept by `lum.updateHistory`. Each step is taken from the hold of the
+  trial still running (`lum.HoldShaping.notePrepared`, called in the prepare window after
+  `nextTrialSpec`), so every completed hold is one step, one trial late. Future difficulty shaping goes under the
   same switch.
 - **House light (D15).** PulsePal's, not Bpod's: **PulsePal OUT3** → BNC splitter → the light's LED
   driver, and the copy into **Bpod BNC input 1** (`rig.HouseLight`: `PulsePalChannel` 3, `Voltage` 5,
@@ -509,7 +520,10 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   windows closed, the devices released and `RunProtocol('Stop')` called (which flushes the serial
   link), and only then is the error warned about, with `Data.Session.StoppedReason` recording it.
   `lum.SessionRunner` reports a lost Bpod link as `lum:SessionRunner:linkLost`. Anything added to
-  the loop must keep working when it is entered part way through.
+  the loop must keep working when it is entered part way through. The setup from opening the devices
+  to trial 1 is wrapped too (`abandonSetup`: windows closed, video stopped, devices released, then the
+  error), and so are `lum.sleep.run`'s setup and block loop (an error there is the session's
+  `StoppedReason`, and the normal teardown saves what was sent); put new setup steps inside them.
 - **Namespacing**: put reusable code in a MATLAB package (`+lum/...`) or clearly named
   helper folders; the protocol file stays a thin session script. `hardware/` holds rig
   utilities usable outside a session (e.g. `TestHiFiSound.m`).
@@ -586,7 +600,8 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
     (`set(h,'YData',...)`) and use `drawnow limitrate` at most once per trial. The setup
     dialog and designer may redraw freely; they never run during a session.
   - Keep per-trial cost O(1): maintain running stats, don't re-scan `BpodSystem.Data`.
-    `lum.nextTrialSpec` looks at most 50 trials ahead of the queue.
+    `lum.nextTrialSpec` searches the rest of the queue for a swap (a vectorised test over at most
+    `MaxTrials` indices, microseconds); bias correction takes precedence over the run limit.
   - Don't store large per-trial copies; store a session-level set plus per-trial indices.
   - Reprogram PulsePal / HiFi during the inter-trial window, never mid-stimulus. Sounds are
     loaded once (`lum.loadSounds`, only those the session can play).
@@ -707,6 +722,7 @@ where it can be tested with no hardware.
 | `+lum/triggerStates.m` | The states that open the prepare window, by break mode |
 | `+lum/scoreTrial.m` | Outcome classification from states and events, including hold breaks and attempts |
 | `+lum/punishmentFor.m` | Which mistakes are punished, and how; whether a wrong choice may be retried |
+| `+lum/valveTimes.m` | Valve open times for a volume from Bpod's liquid calibration: 0 µL opens nothing, a volume past the fit's peak is refused, one outside the measurements noted. Every valve time goes through it |
 | `+lum/SyncMode.m` | How trials drive the sync TTL; codes are part of the data format |
 | `+lum/SessionRunner.m` | TrialManager on the rig, blocking in the emulator (D3) |
 | `+lum/StartupTimes.m` | How long the session took to start, step by step (`Data.Session.Startup`) |
@@ -829,6 +845,17 @@ where it can be tested with no hardware.
 - MATLAB resolves a package function from the **current folder** before the path, so a copy of a
   `+lum` file on the path does not override the repository's while MATLAB's current folder is the
   repository (it cost a diagnostic run: a scratch opener meant to force real cameras was ignored).
+- **A condition on a BNC input reads the inverted level** on firmware 23 (found 2026-09-24): a
+  condition `BNC1` = 1 is true with 0 V on BNC input 1, while `BNC1High`/`BNC1Low` events follow the
+  voltage. Port lines are not inverted (a condition `Port2` = 0 is true with the centre port clear).
+  Nothing here uses a BNC condition; test one on the rig before relying on it.
+- **Bpod's liquid calibration is a quadratic fit with no range check** (`GetValveTimes`): 0 µL gives
+  its intercept (6–8 ms on this rig), past its peak (about 15 µL here) more µL gives less time, and
+  further on Bpod errors on a negative time. Get every valve time through `lum.valveTimes`.
+- **Trial *k*+1 is prepared before trial *k* is recorded** (both runners). A policy that steps from
+  the last *recorded* trial's value splits the session into odd and even chains — automatic shaping
+  did until 0.9.4. Step from the trial still running (`history.prepared*`, `lum.HoldShaping.notePrepared`)
+  and test in the session's order.
 - A `GlobalTimer<k>_Start` / `_End` pair in the trial record proves the *timer* ran, not that
   the *channel* moved. If a line is dead while its timer's events are there, look for a state
   that writes the same channel, not at the timer.
@@ -858,8 +885,11 @@ any behaviour change; the pure functions (`+lum/*.m`, `+lum/+pattern/`, `+lum/+s
 the cheap place to do it. `windowsTest` builds windows invisibly (`'Visible', 'off'`, and
 `'Wait', false` for the modal ones) and skips the uifigure tests where MATLAB cannot make one.
 `emulatorSessionTest` runs a whole behaviour session headless, `habituationSessionTest` a
-habituation session with one trial played as the animal (centre reward; valve 2 is not calibrated on
-this machine, so it checks the fallback), `sleepSessionTest` two sleep
+habituation session with one trial played as the animal (centre reward, or its fallback on a machine
+without valve 2's calibration), `animalSessionTest` three whole sessions played as an animal
+(`startSessionMouse`: one behaviour per trial, the paying side read from the running state matrix,
+runtime values typed into the compact window) reaching every outcome path and rebuilding each trial
+from the saved file, `sleepSessionTest` two sleep
 sessions, with and without test pulses, and `ephysSessionTest` an ePhys calibration session — all
 with video and the LED window off. `ledTest` (pure), `doricTest` (the LED on DoricLED's simulated
 driver, and `TestDoricLED` under the emulator) and `ephysTest` (pure) cover D17 and D18; the Doric
@@ -868,6 +898,37 @@ and ePhys session tests are skipped without the DoricLED package. `cameraTest` c
 (skipped without SpinCam). `stateMachineTest` plays whole trials as the animal with `startMouse`
 (scripted `'V'` override bytes from a timer, a few hundred ms apart, never `ManualOverride`): use it
 for anything that depends on pokes.
+
+### Validation procedure
+
+Before a version is used for experiments, validate it the way `docs/validation-2026-09-24.md` did, and
+write the report beside it:
+
+1. **Inventory.** Walk `lum.defaultSettings` (every field and default), the state graph
+   (`buildTrialSM`, `lum.sleep.blockStateMachine`), `RigConfig` and every file read or written. Every
+   item gets a test or a reason it cannot be tested remotely.
+2. **Suite.** `runLuminoseTests` in one `-batch` MATLAB (running it twice in one process breaks
+   `emulatorSessionTest`); zero failures, zero lint.
+3. **Played sessions.** `animalSessionTest` covers every outcome path; add a behaviour to
+   `startSessionMouse`'s lists for any new path. Replay the policies in the session's order (trial
+   *k*+1 prepared before trial *k* is recorded) — `holdShapingTest`'s `replaySession` is the pattern: a
+   pure test of one step at a time missed the odd/even shaping of 0.9.3.
+4. **Boundaries.** Build a trial at each runtime parameter's `GUIMeta.Limits` (and each menu entry),
+   with and without shaping, and check the state timers equal the parameters.
+5. **Statistics.** Simulate `lum.nextTrialSpec` over a whole session with biased and unbiased animals:
+   group balance, P(left) per group, bias correction's effect per 100 trials, the run limit.
+6. **Calibrations, read only.** Every `calibration/*.mat` rises with current, `IrradiancemWmm2` =
+   `PowermW` / `Area`, coverage passes; the liquid calibration's fit rises over the volumes in use.
+   Never change either; flag a suspect point.
+7. **Rig** (with the operator's permission, no animal): the headless recipe in `docs/rig-checks.md`,
+   in separate `-batch` processes, each ending with `EndBpod`: `CheckRig`; port and valve lines from a
+   state machine (valves once each, at their calibrated times); `TestHouseLight`, `TestDoricLED`,
+   `TestHiFiSound`; then short behaviour, sleep and ePhys sessions with video and virtual pokes
+   (`BpodSystem.SerialPort.write(['V' ch-1 level], 'uint8')` from a timer on a fixed cycle), checked
+   from the saved files: light timers against the stimulus set, reward states against
+   `GetValveTimes(TrialSettings{k}.RewardAmount)`, `TrialStart` against `SyncPulseWidth`, and each
+   camera's `TTL_State` decoded (`lum.sync.decodeBarcode`) and matched pulse by pulse. Record it all
+   in `docs/rig-checks.md`.
 
 MATLAB and test gotchas that have already cost time:
 
@@ -907,6 +968,8 @@ Keep documentation current in the same change that alters behaviour:
 - `docs/emulator.md` — what the emulator does and does not reproduce.
 - `docs/rig-checks.md` — what has been checked on the rig, with session names, and the checks
   pending until the operator is at the rig.
+- `docs/validation-<date>.md` — a pre-deployment validation: inventory, results, fixes, open
+  questions (see *Validation procedure* under Tests).
 - `docs/repository.md` — the repository layout and what the test suite covers.
 - `CLAUDE.md` (= `AGENTS.md`) — anything an agent needs: paths, conventions, hardware map,
   naming, new APIs or architectural decisions.
