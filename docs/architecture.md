@@ -267,8 +267,10 @@ switches it on and *Experiment* off (`lum.stageDefaults`), and `lum.validateSett
 an Experiment session — the one stage default that is enforced, because an experiment's trials
 must not vary with the animal's performance.
 
-- **Grow hold** sets the `CentreHold` state timer per trial: from `HoldStart` (0.1 s), grown by
-  `HoldGrowth` percent after each trial whose hold was completed, up to `HoldTarget` (1 s). After
+- **Grow hold** sets the `CentreHold` state timer per trial: from `HoldStart` (0.2 s), grown by
+  `HoldGrowth` percent (1%) after each trial whose hold was completed, up to `HoldTarget` (0.6 s;
+  0.1 s, 5% and 1 s until 0.9.7, when the operator asked for a gentler climb after LUMS0014 broke
+  870 holds in a session at 0.78–1 s). A `HoldStart` above the target starts at the target. After
   `HoldStepBackAfter` (10) early withdrawals at one hold with no completed hold since, it **steps
   back** one growth step (`lastHold / (1 + growth)`, never below `HoldStart`).
   `lum.updateHistory` keeps the count (`history.withdrawalsAtHold`, O(1)): visits to
@@ -325,7 +327,9 @@ withdrawing is not asked for more.
   `lum.HoldShaping.nextSessionStart(S, lastHold)` (90% of its last trial's `HoldDuration`, to the ms,
   capped at `HoldTarget`) into the settings file at teardown, so the next session starts a step below
   where the animal stopped. It is kept in the settings file, not looked up in earlier data files
-  (data move to the cloud), and stays an ordinary runtime value the operator can overwrite.
+  (data move to the cloud), and stays an ordinary runtime value the operator can overwrite. The
+  other shaping values travel the same way, as the session last ran them; the defaults only seed a
+  new settings file.
 
 ### D7 — A session barcode before the first trial
 
@@ -627,6 +631,11 @@ pulse, and with the train's pulses for a burst.
 **Consequences.**
 
 - Sleep block states are `Level001`… (were `Pulse001`/`Gap001`); `lum.sleep.pulsesPerBlock` is gone.
+- A session stopped from the console mid-block (0.9.7): `RunStateMachine` returns no events for the
+  running block, though its pulses and light up to the stop went out, so its plan is stored as
+  `Session.StoppedBlock` (offsets from the block's start, widths, channels, currents, the camera time
+  of the stop) for analysis to match against the pulses the recordings caught. Found on the rig
+  (2026-09-26): the cameras logged 1–4 sync pulses more than the file held.
 - Every epoch must be followed by the longest sync pulse plus 1 ms of darkness, and one session holds
   at most 500,000 gates.
 - Intervals across a block boundary are longer by the time spent between blocks (upload, plot, and
@@ -807,6 +816,23 @@ settings it ran with.
 **Consequences.**
 
 - Closing a plot window during a session hides it; it is still updated and saved.
+- **The session takes `BpodSystem` out of the base workspace as its last step (0.9.7)**, after
+  `RunProtocol('Stop')`, in behaviour, sleep and ePhys sessions (`unlinkFromBaseWorkspace`, a local
+  function of `LuminoseFM.m`, since `+lum` is off the path by then). The global and every function
+  that declares it are untouched. Why: in a desktop MATLAB R2025b whose base workspace lists
+  `BpodSystem` (as `Bpod()` leaves it), the Workspace browser, once the prompt returns, works through
+  the changes the session made to the object, on a background thread (`datatools_view_core.dll`,
+  `mwwsb_startup_impl.dll`: `workspace_browser_startup`, `PubSubDSImpl::sizeUpdated`,
+  `WSViewModel`), with memory in proportion to the session. On the rig (2026-09-26): 2-minute
+  sessions peaked at 10–30 GB for under a minute, a 5-minute one passed 141 GB, and LUMS0014's
+  93-minute sessions ended in "Out of memory." (~180 GB). It happened whatever the object held
+  (every property emptied: still 10 GB), with the cameras and the LED off, not with `Bpod()` alone,
+  and never with `BpodSystem` absent from the base workspace at the prompt; hiding it during the
+  session and declaring it again before the prompt did not help. It came with behaviour on the rig,
+  which runs through `BpodTrialManager` (a 10 ms timer updating `BpodSystem`): 2–3 minute sleep and
+  ePhys sessions, which run blocking state machines, and emulated behaviour did not show it with
+  `BpodSystem` left listed; they take the same last step. The same 5-minute session with the
+  variable removed stayed at 1.9 GB. `-batch` runs, having no Workspace browser, never showed it.
 - The protocol runs through MATLAB's `run`, which makes the protocol folder the current folder, so
   `+lum` still resolves in a teardown that follows the End button's `rmpath`.
 - Windows with a timer are not protocol figures (0.8.1). The End button's callback can run inside

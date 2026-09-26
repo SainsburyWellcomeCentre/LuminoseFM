@@ -53,9 +53,15 @@ classdef OnlinePlots < handle
     % water total are in bold colour, the rest muted.
     %
     % Habituation rewards both side ports (lum.trainingStageNote), so a choice there has no
-    % right or wrong side: every panel that scores choices scores them by whether they were
-    % rewarded (green) or not (a choice that left before the valve opened), and says so.
-    % The data file keeps Correct as the side the group pays, as in every stage.
+    % right or wrong side, and what is learnt is to finish the trial: the header, Performance
+    % and By side score every trial by whether it was rewarded, so a trial with no choice
+    % (no poke, a hold not completed, no side poke in time) counts as not rewarded. Outcomes
+    % marks a choice rewarded (green) or not (it left before the valve opened) and a trial
+    % with no choice grey; Evidence scores choices by the reward. In training and experiment
+    % the score is the choice's side: fraction correct of the choices made, since a trial
+    % without a choice says nothing about the discrimination; the water line counts the
+    % side rewards, of every trial. The data file keeps Correct as the side the group pays,
+    % as in every stage.
     %
     % Closing the figure only hides it: the session saves it as an image beside the data
     % file at teardown (lum.gui.savePlotsImage), and close() is what deletes it.
@@ -115,7 +121,8 @@ classdef OnlinePlots < handle
         barTrials = zeros(1, 2)   % Left-rewarded, right-rewarded
         barCorrect = zeros(1, 2)
         nChoices = 0
-        nCorrect = 0
+        nScored = 0               % Trials the score counts: choices, or in habituation every trial
+        nCorrect = 0              % ... of them correct, or in habituation rewarded
         nRewarded = 0
         water = 0                 % Side rewards, uL
         nCentreRewards = 0
@@ -330,12 +337,15 @@ classdef OnlinePlots < handle
             % summaryParts(n) is the summary in four pieces: the trial, the performance,
             % the water total and the rest, so the header can emphasise the first and third.
             elapsed = toc(obj.clock);
-            if obj.nChoices == 0
+            if obj.bothSidesPay && obj.nScored > 0
+                performance = sprintf('%.0f%% of %d trials rewarded (%d choices)', ...
+                                      100 * ratio(obj.nCorrect, obj.nScored), obj.nScored, ...
+                                      obj.nChoices);
+            elseif obj.nScored == 0
                 performance = 'no choices yet';
             else
-                performance = sprintf('%.0f%% %s of %d choices', ...
-                                      100 * obj.nCorrect / obj.nChoices, obj.scoreWord(), ...
-                                      obj.nChoices);
+                performance = sprintf('%.0f%% correct of %d choices', ...
+                                      100 * obj.nCorrect / obj.nScored, obj.nScored);
             end
             waterDetail = sprintf(': %d side rewards, %.0f uL', obj.nRewarded, obj.water);
             if obj.nCentreRewards > 0
@@ -369,10 +379,11 @@ classdef OnlinePlots < handle
         function recordTrial(obj, n, spec, result, rewardAmount)
             % Fold one trial into the per-trial series and the running aggregates.
             obj.lastTrial = n;
-            % What a choice scores: the side the group pays, or in habituation, where both
-            % sides pay, whether it was rewarded.
+            % What a trial scores: a choice's side (NaN without a choice), or in
+            % habituation, where both sides pay, whether the trial was rewarded; a trial
+            % there without a choice was not.
             scored = result.Correct;
-            if obj.bothSidesPay && ~isnan(result.Choice)
+            if obj.bothSidesPay
                 scored = double(result.Rewarded == 1);
             end
             y = obj.rasterOfPattern(spec.PatternIndex);
@@ -434,20 +445,24 @@ classdef OnlinePlots < handle
             obj.leftPerformanceY(n) = meanOfScored(correct(sides == 1));
             obj.rightPerformanceY(n) = meanOfScored(correct(sides == 2));
 
-            if isnan(scored) || isnan(result.Choice)
-                % No choice, no information about performance or bias: left out of every
-                % aggregate rather than counted as an error. The bias line carries its
-                % last value across, so it does not break at every missed trial.
+            if ~isnan(scored)
+                obj.nScored = obj.nScored + 1;
+                obj.nCorrect = obj.nCorrect + scored;
+                side = spec.CorrectSide;
+                obj.barTrials(side) = obj.barTrials(side) + 1;
+                obj.barCorrect(side) = obj.barCorrect(side) + scored;
+            end
+            if isnan(result.Choice)
+                % No choice, no information about the discrimination or bias: outside
+                % habituation left out of every aggregate rather than counted as an error.
+                % The bias line carries its last value across, so it does not break at
+                % every missed trial.
                 if obj.nChoices > 0
                     obj.biasLeftY(n) = obj.biasLeftY(n - 1);
                 end
                 return
             end
             obj.nChoices = obj.nChoices + 1;
-            obj.nCorrect = obj.nCorrect + scored;
-            side = spec.CorrectSide;
-            obj.barTrials(side) = obj.barTrials(side) + 1;
-            obj.barCorrect(side) = obj.barCorrect(side) + scored;
 
             obj.choseLeft(obj.nChoices) = double(result.Choice == 1);
             window = obj.choseLeft(max(1, obj.nChoices - obj.biasWindow + 1):obj.nChoices);
@@ -531,12 +546,13 @@ classdef OnlinePlots < handle
             end
         end
 
-        function word = scoreWord(obj)
-            % What a scored choice is: correct, or in habituation rewarded.
+        function label = scoreAxisLabel(obj)
+            % What Performance and By side plot: the fraction of choices correct, or in
+            % habituation the fraction of trials rewarded.
             if obj.bothSidesPay
-                word = 'rewarded';
+                label = 'Fraction of trials rewarded';
             else
-                word = 'correct';
+                label = 'Fraction correct';
             end
         end
 
@@ -669,7 +685,7 @@ classdef OnlinePlots < handle
             obj.handles.performance = line(ax, x, obj.performanceY, 'Color', t.Ink, 'LineWidth', 2);
             set(ax, 'YLim', [0 1], 'XLim', [0 20]);
             xlabel(ax, 'Trial');
-            ylabel(ax, ['Fraction ' obj.scoreWord()]);
+            ylabel(ax, obj.scoreAxisLabel());
             panelLegend(ax, [obj.handles.performance, obj.handles.leftPerformance, ...
                              obj.handles.rightPerformance], {'all', 'left-rewarded', 'right-rewarded'}, t);
         end
@@ -761,7 +777,7 @@ classdef OnlinePlots < handle
             end
             set(ax, 'YLim', [0 1.12], 'XLim', [0.4 2.6], 'XTick', 1:2, ...
                 'XTickLabel', {'left-rewarded', 'right-rewarded'}, 'XGrid', 'off');
-            ylabel(ax, ['Fraction ' obj.scoreWord()]);
+            ylabel(ax, obj.scoreAxisLabel());
         end
 
         function buildBiasPanel(obj, ax, x)

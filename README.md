@@ -222,8 +222,9 @@ Stage 1 (*Habituation*) rewards **both** side ports, whichever way the animal go
 that the side ports pay before it has to learn which one. By default the rewarded ports are also
 lit during the response window in habituation (the *guide light*, set per side). Stages 2
 (*Training*) and 3 (*Experiment*) reward only the correct side. With both sides paying there is no
-wrong side, so in habituation the plots score a choice by whether it was rewarded (§6); the data
-file still records `Correct` as the side the stimulus group pays.
+wrong side, so in habituation the plots score every trial by whether it was rewarded, a trial
+without a choice as not rewarded (§6); the data file still records `Correct` as the side the
+stimulus group pays.
 
 **Centre reward (habituation only).** To teach a new animal that the centre port is worth
 visiting, the first trials of a habituation session also give water at the **centre port** as the
@@ -246,8 +247,8 @@ chosen:
 
 A habituation trial with the defaults:
 1. The centre light comes on at trial start and stays on through the hold.
-2. The animal pokes and holds; the air runs during the hold, which starts at 0.1 s and grows as
-   holds are completed.
+2. The animal pokes and holds; the air runs during the hold, which starts at 0.2 s and grows as
+   holds are completed, up to 0.6 s.
 3. A completed hold on trials 1–10 gives 1.2 µL at the centre port.
 4. The centre light goes off, and both side port lights come on (guide lights, *Habituation only*).
 5. Once the animal has left the centre port, a poke at either side pays 3 µL.
@@ -280,9 +281,10 @@ hold* panel): off by default, switched on by choosing *Habituation* or *Training
 choosing *Experiment*; it may be used in either of the first two.
 While it is on, the *shaping method* says how:
 
-- *Grow hold* (the default) — the hold starts short (`HoldStart`, **0.1 s**) and grows by
-  `HoldGrowth` percent after every trial on which the animal completed it, up to `HoldTarget`
-  (**1 s**), normally the stimulus window plus the post-stimulus hold. After a shorter hold the
+- *Grow hold* (the default) — the hold starts short (`HoldStart`, **0.2 s**) and grows by
+  `HoldGrowth` percent (**1%**) after every trial on which the animal completed it, up to
+  `HoldTarget` (**0.6 s**). The target can be as long as the stimulus window plus the
+  post-stimulus hold, or longer; the defaults stop short of the 1 s window. After a shorter hold the
   light still plays to its end, so every trial delivers its whole pattern and the hold only
   decides how long the animal must stay before it may leave. When the animal **withdraws early `HoldStepBackAfter` times (10) at one hold
   without completing it**, the hold **steps back** one growth step — to the hold it last
@@ -303,12 +305,17 @@ settings file becomes **10% less than the hold its last trial asked for** (to th
 `HoldTarget`), so the animal's next session starts a little below where it stopped instead of at
 the beginning; the session log says so (`the next session's hold starts at 0.78 s …`). It is an
 ordinary value on the setup dialog's Runtime tab (*Shaping*): type another start to override it.
-Headless sessions, and sessions whose hold does not grow, leave it as it was.
+Headless sessions, and sessions whose hold does not grow, leave it as it was. The other shaping
+values (growth, target, step back, grace) are kept in the settings file as the session last ran
+them, runtime changes included, so each session starts with what the one before it ended with;
+change any of them on the same tab before *Start*. The defaults above apply to a new settings
+file only: a subject's file keeps its own values. A start longer than the target is not used: the
+hold starts at the target, and the setup dialog says so.
 
 Each trial is prepared while the one before it runs, so shaping follows the animal one trial late:
 trial *n*+1's hold is trial *n*'s, grown if trial *n*−1 completed its hold. With every hold
-completed and the defaults, the holds run 0.1, 0.1, 0.105, 0.110 … s, reaching 1 s after about 50
-completed holds.
+completed and the defaults, the holds run 0.2, 0.2, 0.202, 0.204 … s, reaching 0.6 s after about
+110 completed holds.
 
 With automatic shaping off, every trial asks for the same hold: the whole stimulus (the default)
 or the fixed hold. The
@@ -531,6 +538,14 @@ rewards and centre rewards apart), the **centre hold** the running trial asks fo
 hold), and session time — and the **House light** box. The trial number and the water total
 are in bold colour so they read at a glance.
 
+**What the performance counts.** In training and experiment it is *% correct of the choices made*
+(`72% correct of 80 choices`): a trial without a choice (no poke, a hold not completed, no side
+poke in time) says nothing about which side the animal thinks is right, so it is left out, as in
+Performance, By side and the psychometric panel. How many trials paid is in the water line
+(*side rewards*). In habituation both side ports pay, so what the animal learns is to finish the
+trial: the header, Performance and By side count **every trial**, and one without a choice counts
+as not rewarded (`57% of 140 trials rewarded (80 choices)`).
+
 **The house light** (the white light inside the box) is switched with that box, and it changes **at
 once**, in either direction, whatever the trial is doing. It starts as set on the setup dialog's
 Experiment tab, and the level you leave it at is kept for the next session; it goes off when the
@@ -549,11 +564,12 @@ Panels, in the order they are read:
     session starts
   - **Outcomes** — each trial's choice by stimulus group (by the B share of its light when the
     mixture draws amounts every trial): correct, incorrect or no choice. In habituation, where both
-    side ports pay, *rewarded* (green) or *not rewarded* (a choice that left before the valve
-    opened), and the header, Performance, Evidence and By side panels count rewarded choices the
-    same way
+    side ports pay, a choice is *rewarded* (green) or *not rewarded* (it left before the valve
+    opened), and a trial with no choice is grey; the header, Performance and By side count every
+    trial, a trial with no choice as not rewarded, and Evidence scores choices by the reward
 - Middle row
-  - **Performance** — fraction correct over a moving window, for all, left- and right-rewarded trials
+  - **Performance** — fraction correct of the choices over a moving window, for all, left- and
+    right-rewarded trials; in habituation the fraction of trials rewarded
   - **Psychometric** — P(choose left) with error bars along the family's evidence: the B share of
     the light (mixture), A flashes minus B flashes (sequence), or the deciding channel's amount (the
     mixture's controls), a point per value, or eight bins when the amounts are drawn every trial;
@@ -568,7 +584,8 @@ Panels, in the order they are read:
     mixture's controls, none for order and words). Light-off trials sit at the origin, and a small
     fixed jitter keeps repeated patterns visible.
 - Bottom row
-  - **By side** — fraction correct on left- and right-rewarded trials
+  - **By side** — fraction correct on left- and right-rewarded trials (in habituation, fraction of
+    each side's trials rewarded); the number above each bar is the trials it counts
   - **Side bias** — P(chose left) over the last `BiasWindow` choices (as set when the session
     started), with the P(left) that bias correction aimed for on each trial
   - **Reaction time** — by side chosen, with a running median, on a log axis (0.1 to 10 s at least,
@@ -604,7 +621,10 @@ window; the **sleep setup dialog** then asks only for what a sleep recording nee
 
 When started, the session sends the sleep barcode, then one sync pulse every interval — and the
 test pulses, on their schedule — until the recording is over or the session is stopped from the
-console.
+console. Stopping it from the console (**End**) cuts the running block of about 10 s short: the
+pulses and light it sent before the stop reach the cameras and the ePhys recording but not the
+data file's pulse lists, so the file keeps what that block was to send (`Session.StoppedBlock`,
+[`docs/data-format.md`](docs/data-format.md)). Letting the recording run to its end avoids this.
 
 ### Test pulses
 
@@ -970,8 +990,15 @@ trials that completed, merges the analog stream and releases the rig.
 
 MATLAB's memory is recorded with every save (`SessionData.Timing.memoryGB`, GB) and printed when the
 session ends. If it grows past twice what it was at trial 1 (and past 8 GB) the session warns once;
-end the session before MATLAB runs out of memory. (LUMS0014's first session, 2026-09-25, ended with
-MATLAB out of memory after everything had been saved; the cause is not known yet.)
+end the session before MATLAB runs out of memory.
+
+**After a session `BpodSystem` is no longer listed in MATLAB's Workspace panel** (0.9.7). With it
+listed, MATLAB R2025b's Workspace browser went through every change the session had made to it once
+the session ended, and ran MATLAB out of memory a few minutes later (LUMS0014's sessions of
+2026-09-25 and -26). The session removes it from the base workspace as its last step; Bpod keeps it,
+so `EndBpod`, the console and the next session work as before. For four minutes after a desktop
+session a small background process also writes `<data file name>_memory.csv` beside the data file,
+MATLAB's memory once a second; it can be deleted.
 
 Every field, and what to watch for in files from older versions, is in
 [`docs/data-format.md`](docs/data-format.md).

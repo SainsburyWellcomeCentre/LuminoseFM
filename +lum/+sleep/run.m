@@ -280,6 +280,7 @@ sessionTimer = tic;
 % link to the state machine, a window) must still save what was sent, merge the analog
 % stream, stop the video and release the devices below, rather than leave them open.
 failed = false;
+stoppedBlock = [];  % Session.StoppedBlock: the block the End button cut short, if any
 try
     while BpodSystem.Status.BeingUsed == 1 && cursor.Time < cursor.End
         [block, cursor] = lum.sleep.nextBlock(plan, syncPulses, cursor, rig.Limits.MaxStates);
@@ -307,7 +308,11 @@ try
         rawEvents = RunStateMachine;
         arrivedAt = devices.houseLight.sessionTime();  % For the block's house light level
         if isempty(fieldnames(rawEvents))
-            break  % Stopped before the block began; nothing to record
+            % Stopped while the block ran (the End button): its sync pulses and light went
+            % out up to the stop, but no events come back, so it is kept as planned.
+            stoppedBlock = stoppedBlockRecord(block, syncPulses, plan, cycle, ledCurrents, ...
+                nBlocks + 1, devices.cameras.mark('BlockStopped', nBlocks + 1));
+            break
         end
 
         BpodSystem.Data = AddTrialEvents(BpodSystem.Data, rawEvents);
@@ -412,6 +417,7 @@ try
             BpodSystem.Data.Session.TestPulses.Completed = testPulses.Enabled && completed;
             BpodSystem.Data.Session.TestPulses.StoppedReason = stoppedReason;
         end
+        BpodSystem.Data.Session.StoppedBlock = stoppedBlock;
     end
     BpodSystem.Data = devices.flex.mergeAnalogData(BpodSystem.Data);
     if nBlocks > 0
@@ -482,6 +488,9 @@ end
 if nBlocks > 0
     fprintf('  Data: %s\n', BpodSystem.Path.CurrentDataFile);
 end
+if ~headless && nBlocks > 0
+    lum.watchMemoryAfterSession(BpodSystem.Path.CurrentDataFile);  % As after a behaviour session
+end
 
 
 function releaseLED(led)
@@ -530,6 +539,29 @@ for j = 1:numel(rows)
     onsets(rows(j)) = trialStart + trial.States.(name)(1);
     blocks(rows(j)) = block;
     nSent = rows(j);
+end
+
+
+function record = stoppedBlockRecord(block, syncPulses, plan, cycle, ledCurrents, blockNumber, ...
+                                     cameraTime)
+% What a block stopped part way through was to send, for Session.StoppedBlock: its sync
+% pulses and gates of light as offsets from the block's start, in seconds, so the pulses a
+% recording caught after the last recorded block can be matched to them. How far it got is
+% not known; CameraTime (camera clock, NaN without video) is when the stop was noticed.
+syncRows = syncPulses(block.SyncIndices, :);
+record = struct('Block', blockNumber, 'Step', block.Step, ...
+                'Duration', (block.End - block.Start) * cycle, ...
+                'SyncOffset', (syncRows(:, 1)' - block.Start) * cycle, ...
+                'SyncWidth', syncRows(:, 2)' * cycle, ...
+                'LightOffset', zeros(1, 0), 'LightDuration', zeros(1, 0), ...
+                'LightChannel', zeros(1, 0), 'LightCurrentmA', zeros(1, 0), ...
+                'CameraTime', cameraTime);
+if ~isempty(block.SegmentIndices)
+    segments = plan.Segments(block.SegmentIndices, :);
+    record.LightOffset = (segments(:, 1)' - block.Start) * cycle;
+    record.LightDuration = segments(:, 2)' * cycle;
+    record.LightChannel = segments(:, 3)';
+    record.LightCurrentmA = reshape(ledCurrents(segments(:, 3)), 1, []);
 end
 
 

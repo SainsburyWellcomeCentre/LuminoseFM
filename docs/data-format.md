@@ -13,6 +13,7 @@ D:\luminoseData\<subject>\LuminoseFM\Session Data\<subject>_LuminoseFM_<YYYYMMDD
 D:\luminoseData\<subject>\LuminoseFM\Session Settings\<settings name>.mat
 D:\luminoseData\<subject>\LuminoseFM\Session Data\<...>_ANLG.dat   (Flex analog stream, raw)
 D:\luminoseData\<subject>\LuminoseFM\Session Data\<...>_plots.png  (the online figure at the end)
+D:\luminoseData\<subject>\LuminoseFM\Session Data\<...>_memory.csv  (MATLAB's memory after a desktop session)
 D:\luminoseData\<subject>\LuminoseFM\Session Videos\<view>_<data file name>.avi   (video, one per camera)
 D:\luminoseData\<subject>\LuminoseFM\Session Videos\<view>_<data file name>.csv   (one row per frame)
 D:\luminoseData\<subject>\LuminoseFM\Session Videos\<data file name>_events.csv  (marks, host clock)
@@ -46,6 +47,15 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
 - At teardown the online figure is saved as `<data file name>_plots.png` beside the data file
   (`lum.gui.savePlotsImage`), before the final save, which records its path in
   `Session.PlotsImage` (`''` if it could not be written; the console says why).
+- As a desktop session ends (0.9.7, not headless), `lum.watchMemoryAfterSession` starts a separate
+  PowerShell process that writes `<data file name>_memory.csv` for four minutes: comment lines with
+  the MATLAB timers still running, then one row a second with MATLAB's private and resident memory
+  (`PrivateGB`, `WorkingSetGB`), its thread count, the CPU seconds MATLAB's own thread used in that
+  second (`MainThreadCPUSeconds`) and the busiest other thread (`BusiestThreadId`,
+  `BusiestThreadCPUSeconds`). It is a diagnostic: it found the cause of the "Out of memory" that
+  followed LUMS0014's sessions of 2026-09-25 and 2026-09-26 (MATLAB's Workspace browser; the session
+  now takes `BpodSystem` out of the base workspace as it ends). Nothing reads it, and it may be
+  deleted.
 
 ---
 
@@ -233,8 +243,10 @@ How long each trial's prepare, send, plot and save steps took, in seconds (`prep
 (`Settings.Session.SaveEveryNTrials`) and on the last trial as the session ended, NaN on the others
 and off Windows.
 
-In habituation (`TrainingStage` 1) both side ports pay, and the online plots score a choice by
-`Rewarded`; `Correct` stays the side the trial's group pays, as in every stage.
+In habituation (`TrainingStage` 1) both side ports pay, and the online plots score every trial by
+`Rewarded` (a trial with no choice has `Rewarded` 0); `Correct` stays the side the trial's group
+pays, as in every stage. The fraction of trials rewarded is `mean(Rewarded)`; the fraction correct
+of the choices is `mean(Correct(~isnan(Choice)))`.
 
 The settings file's `Camera.Crops` (0.9.6) holds the cameras' crops per session type
 (`Behaviour`, `Sleep`, `EphysCalibration`, each a list of `Serial` and `Roi`); the crops a session
@@ -267,6 +279,16 @@ sent, start and end time, barcode, `TestPulses`, version, PulsePal and Flex logs
   count, and each step's PulsePal carrier and train), the schedule's `Duration`, `UntilEnd` (0.9.2:
   true when its last step went on until the recording ended, so `Duration` is the recording's),
   whether it `Completed`, and a `StoppedReason` when PulsePal stopped answering.
+- `Session.StoppedBlock` (0.9.7) — `[]` unless the session was stopped from the console while a block
+  ran. `RunProtocol('Stop')` ends that state machine and no events come back for it, so none of its
+  pulses are in `SyncPulses` or `LightSegments`, although those sent before the stop reach the
+  cameras and any electrophysiology recording. The block's plan is kept instead: `Block` (the number
+  it would have had), `Step`, `Duration` (s), `SyncOffset` and `SyncWidth` (s, from the block's
+  start), `LightOffset`, `LightDuration`, `LightChannel` and `LightCurrentmA` (one per gate), and
+  `CameraTime` (camera clock when the stop was noticed; `NaN` without video; also a `BlockStopped`
+  row in `_events.csv`). The pulses a recording shows after the last recorded one are this block's
+  first ones, in order: match them by width to `SyncWidth`, then place its light from `LightOffset`.
+  How far the block got before the stop is not known otherwise.
 
 - `SessionData.CameraTime` — one value per block: seconds on the video's host clock when the
   block's events reached MATLAB (`NaN` without video); `Session.Cameras` as for behaviour.
@@ -285,7 +307,8 @@ Per-pulse carrier copies are never stored: the compiled steps are written once.
 
 Laid out as a sleep session with test pulses (D18): `Session.Type` is `'EphysCalibration'`,
 `Session.Barcode.Kind` is `'EphysCalibration'`, and `SyncPulses`, `LightSegments` (with `CurrentmA`),
-`CameraTime`, `HouseLight`, `Session.DoricLED` and the logs are as above. In place of `TestPulses`:
+`CameraTime`, `HouseLight`, `Session.DoricLED`, `Session.StoppedBlock` and the logs are as above. In
+place of `TestPulses`:
 
 - `Session.Ephys` — `Settings` (`S.Ephys`), `Steps`, `Duration`, `Completed` and `StoppedReason`
   (when PulsePal or the LED driver stopped answering). Each step has, beside the fields of a probe
@@ -417,6 +440,9 @@ the null device shims swallowed is recorded in `Data.Session.DeviceLog`. See
   top unless the operator renamed the views (LUMS0014's first session, 2026-09-25, was renamed and is
   right). Go by the serial, not the name: each camera's `CameraID` column in its `.csv`, and
   `Session.Cameras.Settings.Cameras` / the `_session.json`; 24226887 is the top view.
+- **Sleep and ePhys sessions before 0.9.7** have no `Session.StoppedBlock`. One stopped from the
+  console may show a few sync pulses (and any light the block sent) in the recordings after the last
+  recorded pulse; they belong to the block that was running, which the file does not describe.
 - **Sessions before 0.9.6** scored a side poke made after the response window ran out (in the ITI)
   as the trial's choice: `Choice`, `Correct` and `ReactionTime` were set, `Outcome` was `Correct` or
   `Incorrect`, and `Rewarded` was 0, with a `NoResponse` state in the trial. Rescore them with the

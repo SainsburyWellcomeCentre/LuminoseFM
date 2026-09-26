@@ -36,6 +36,7 @@ end
 function testTheNextSessionStartsTenPercentBelowTheLastHold(testCase)
 % LUMS0014 ended its first session at a 0.866 s hold; the next starts at 0.779 s.
 S = shaped('Grow hold');
+S.GUI.HoldTarget = 1;  % As that session ran
 verifyEqual(testCase, lum.HoldShaping.nextSessionStart(S, 0.8663), 0.780, 'AbsTol', 1e-12);
 S.GUI.HoldTarget = 0.5;
 verifyEqual(testCase, lum.HoldShaping.nextSessionStart(S, 0.8663), 0.5, 'Never past the target');
@@ -222,10 +223,11 @@ S = lum.defaultSettings;
 verifyFalse(testCase, S.Task.AutoShaping, 'Automatic shaping is off by default');
 verifyEqual(testCase, lum.HoldShaping.activeMode(S), 'Off');
 verifyEqual(testCase, S.Task.HoldShaping, 'Grow hold', 'Grow hold is the default method');
-verifyEqual(testCase, [S.GUI.HoldStart, S.GUI.HoldTarget, S.GUI.HoldStepBackAfter], [0.1 1 10]);
+verifyEqual(testCase, [S.GUI.HoldStart, S.GUI.HoldTarget, S.GUI.HoldGrowth, ...
+                       S.GUI.HoldStepBackAfter], [0.2 0.6 1 10], ...
+            'From 0.2 s to 0.6 s, 1% longer per completed hold (0.9.7)');
 S.Task.AutoShaping = true;
-verifyEqual(testCase, lum.HoldShaping.activeMode(S), 'Grow hold');
-verifyEqual(testCase, lum.HoldShaping.next(S, lum.newHistory(5)), 0.1, 'AbsTol', 1e-12);
+verifyEqual(testCase, lum.HoldShaping.next(S, lum.newHistory(5)), 0.2, 'AbsTol', 1e-12);
 end
 
 function testTheMethodIsIgnoredWhileShapingIsOff(testCase)
@@ -303,6 +305,7 @@ function testInTheSessionsOrderEveryCompletedHoldGrowsTheHoldOnce(testCase)
 % trial k's hold. Every completed hold is one growth step, one trial late; before 0.9.4
 % odd and even trials grew apart, every second trial.
 S = shaped('Grow hold');
+S.GUI.HoldStart = 0.1;
 S.GUI.HoldGrowth = 10;
 S.GUI.HoldTarget = 10;
 holds = replaySession(S, true(1, 8));
@@ -322,6 +325,7 @@ end
 
 function testInTheSessionsOrderTheHoldStepsBackOnceForItsWithdrawals(testCase)
 S = shaped('Grow hold');
+S.GUI.HoldStart = 0.1;
 S.GUI.HoldGrowth = 10;
 S.GUI.HoldStepBackAfter = 4;
 completed = [true(1, 4), false(1, 6)];
@@ -434,4 +438,30 @@ history.nTrials = 1;
 history.holdDuration(1) = holdDuration;
 history.holdGrace(1) = grace;
 history.outcome(1) = outcome;
+end
+
+function testASettingsFileKeepsItsShapingOverTheDefaults(testCase)
+% The defaults (0.2 s to 0.6 s, 1% per completed hold) apply to new settings files. A
+% subject's file keeps the shaping it was last run with and the start handed on from its
+% last session, so the operator changes them in the setup dialog, not the code.
+saved = lum.defaultSettings;
+saved.GUI.HoldStart = 0.9;   % Handed on: 90% of the last session's 1 s
+saved.GUI.HoldTarget = 1;
+saved.GUI.HoldGrowth = 2;
+saved.GUI.HoldStepBackAfter = 5;
+S = lum.mergeSettings(lum.defaultSettings, saved);
+verifyEqual(testCase, [S.GUI.HoldStart, S.GUI.HoldTarget, S.GUI.HoldGrowth, ...
+                       S.GUI.HoldStepBackAfter], [0.9 1 2 5]);
+end
+
+function testAStartAboveTheTargetStartsAtTheTargetWithANote(testCase)
+% A file handed on 0.9 s, then the operator lowers the target to 0.6 s: the first trial
+% asks for 0.6 s, and the setup dialog says why the start is not used.
+S = shaped('Grow hold');
+S.GUI.HoldStart = 0.9;
+S.GUI.HoldTarget = 0.6;
+verifyEqual(testCase, lum.HoldShaping.next(S, lum.newHistory(5)), 0.6, 'AbsTol', 1e-12);
+verifyEqual(testCase, lum.HoldShaping.nextSessionStart(S, 0.6), 0.54, 'AbsTol', 1e-12);
+[~, ~, notes] = lum.validateSettings(S, RigConfig());
+verifyTrue(testCase, any(contains(notes, 'hold starts at the target')), strjoin(notes, newline));
 end

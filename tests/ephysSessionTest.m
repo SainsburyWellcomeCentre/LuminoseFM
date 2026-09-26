@@ -33,6 +33,7 @@ session = testCase.TestData.sessionData.Session;
 verifyEqual(testCase, session.Type, 'EphysCalibration');
 verifyTrue(testCase, session.Emulated);
 verifyTrue(testCase, session.Ephys.Completed);
+verifyEmpty(testCase, session.StoppedBlock, 'Run to its end: no block was stopped');
 verifyEmpty(testCase, session.Ephys.StoppedReason);
 verifyEqual(testCase, numel(session.Ephys.Steps), numel(testCase.TestData.plan.Steps));
 verifyFalse(testCase, isfield(session, 'TestPulses'), 'Not a sleep session');

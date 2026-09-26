@@ -64,7 +64,8 @@ startup line in a desktop launch; P8 the 0.9.0 stimulus families at the fiber ti
 desktop MATLAB, and centre reward again; P9 the driver's knob at 1000 mA and the LED head's temperature;
 P10 the 0.9.4 reward refusal and shaping seen in a desktop session; P11 the 0.9.5 light playing on
 after a short hold, from the saved file and at the fiber tips; P12 the 0.9.6 mouse-drawn crop, crops
-per session type, carried hold and habituation plots in a desktop session.** (P1–P3 passed on 2026-09-21; on
+per session type, carried hold, habituation plots (every trial counted, 0.9.7) and the `_memory.csv` written
+after a desktop session.** (P1–P3 passed on 2026-09-21; on
 2026-09-24 the pre-deployment validation ran every device and a behaviour, sleep and ePhys session on
 the rig with video — `docs/validation-2026-09-24.md`. Channel B gives about 58% of A's irradiance on
 every cable.)
@@ -165,7 +166,10 @@ stops the session part way through as though the End button had been pressed.
   `Data.Session.TestPulses` (with `Completed` and `StoppedReason`) — never per-pulse carrier copies.
   ePhys calibration sessions store the same, with `Data.Session.Ephys` (`Settings`, `Steps` with
   `Protocol`, `Label`, `CurrentmA`, `IrradiancemWmm2`, `InterPulseInterval`; `Completed`,
-  `StoppedReason`) in place of `TestPulses`.
+  `StoppedReason`) in place of `TestPulses`. Both store `Data.Session.StoppedBlock` (0.9.7): `[]`, or
+  the plan of the block the End button cut short (`Block`, `Step`, `Duration`, `SyncOffset`/`SyncWidth`,
+  `LightOffset`/`LightDuration`/`LightChannel`/`LightCurrentmA`, `CameraTime`), since `RunStateMachine`
+  returns no events for it while its pulses up to the stop reach the recordings (rig, 2026-09-26).
 - Every session stores `Data.Session.DoricLED` (`lum.led.sessionRecord`: `Controlled`, `Mode`,
   `Settings`, `LightPaths`, `Calibrations` as used, `Intensity` (0.9.1, `lum.led.intensity`: asked for
   and started at), `Device` with every current sent in `Changes`) and `DeviceLog.DoricLED`. LED
@@ -195,11 +199,24 @@ stops the session part way through as though the End button had been pressed.
   `lum.scoreTrial`); a poke after the window ran out is not one (up to 0.9.5 it was, scored
   `Correct`/`Incorrect` with `Rewarded` 0 — rescore old files with `lum.scoreTrial`).
 - `Data.Timing.memoryGB` (0.9.6): MATLAB's memory (`memory`, Windows only, ~6 ms) at every save and
-  as the session ends; a one-time warning past twice trial 1's and 8 GB. LUMS0014's first session
-  (`LUMS0014_LuminoseFM_20260925_132300`) ended in "Out of memory" after its teardown had saved
-  everything; Windows logged MATLAB committing 180 GB two minutes later. Cause not found: a mock
-  recording with the camera window stayed flat at 2.1 GB, and nothing of ours runs after the
-  teardown. Look at `memoryGB` and the Windows System log (event 2004) if it happens again.
+  as the session ends; a one-time warning past twice trial 1's and 8 GB.
+- **"Out of memory." after a desktop session: MATLAB's Workspace browser (fixed in 0.9.7).** Both of
+  LUMS0014's sessions (`..._20260925_132300`, `..._20260926_134530`) ended normally, then MATLAB
+  committed ~180 GB and printed "Out of memory." about two minutes later. Reproduced on the rig on
+  2026-09-26 (`docs/rig-checks.md`): with `BpodSystem` listed in the base workspace (as `Bpod()` leaves
+  it) the R2025b Workspace browser, once the prompt returns, works through the changes the session
+  made to the object on a background thread (stacks in `datatools_view_core.dll` /
+  `mwwsb_startup_impl.dll`), with memory in proportion to the session's length and not to what the
+  object holds. It came with rig behaviour sessions, which run through `BpodTrialManager` (a 10 ms
+  timer that updates `BpodSystem`); 2–3 minute sleep and ePhys sessions (blocking runs) and emulated
+  behaviour did not show it with `BpodSystem` left in the base workspace, but take the same last step. So the session's last step, after `RunProtocol('Stop')`, is `unlinkFromBaseWorkspace`
+  (local to `LuminoseFM.m`): `clear BpodSystem` in the base workspace; the global stays. Keep it last
+  in every session path, and do not put `BpodSystem` back in the base workspace from our code.
+  A desktop session also ends by starting `lum.watchMemoryAfterSession` (a separate PowerShell sampler,
+  `<data file>_memory.csv`: timers still running, then memory and MATLAB's own thread's CPU per second
+  for 4 min), which is how the cause was found; memory growing with `MainThreadCPUSeconds` ~0 means a
+  background thread. No debugger is installed on the rig PC; a thread's stack can be read with
+  `dbghelp`'s `StackWalk64` from PowerShell (suspend the thread, walk, resume), as was done here.
 - `Data.Session.StoppedReason` is `''` for a behaviour session that ran to its end or was stopped from
   the console, and the error message for one that failed; sleep and ePhys sessions keep theirs in
   `Session.TestPulses.StoppedReason` / `Session.Ephys.StoppedReason`. `Session.StimulusSet.GroupPLeft` is
@@ -451,7 +468,8 @@ values, and never renumber a stored code (`lum.Outcome`, `lum.SyncMode`, punishm
   settings file only, never from earlier data files. `S.Task.AutoShaping` (off by default) switches it; decide everything
   through `lum.HoldShaping.activeMode(S)` / `growsHold(S)` / `hasGrace(S)`, never by reading
   `S.Task.HoldShaping`, which has no *Off* any more (old files are migrated in `lum.mergeSettings`).
-  Grow hold starts at 0.1 s, targets 1 s, and steps back one growth step after
+  Grow hold starts at 0.2 s, grows 1% per completed hold, targets 0.6 s (0.9.7; a settings file keeps
+  its own values), and steps back one growth step after
   `S.GUI.HoldStepBackAfter` (10) early withdrawals at one hold; the count is
   `history.withdrawalsAtHold`, kept by `lum.updateHistory`. Each step is taken from the hold of the
   trial still running (`lum.HoldShaping.notePrepared`, called in the prepare window after
@@ -782,7 +800,8 @@ where it can be tested with no hardware.
 | `+lum/SyncMode.m` | How trials drive the sync TTL; codes are part of the data format |
 | `+lum/SessionRunner.m` | TrialManager on the rig, blocking in the emulator (D3) |
 | `+lum/StartupTimes.m` | How long the session took to start, step by step (`Data.Session.Startup`) |
-| `+lum/OnlinePlots.m` | The behaviour session's live figure: now and next, outcomes; performance, psychometric (along the family's evidence, or by group), evidence (u_A vs u_B: fraction of the window each channel is lit, with the contingency's boundary); by side, side bias, reaction time (log axis), centre hold (time in the port vs asked for); header: water (side and centre) and the running hold. In habituation (both sides pay) every scored panel counts a choice by `Rewarded`, labelled *rewarded*/*not rewarded*. Every key goes through `panelLegend`: one row under the axis label, never over data |
+| `+lum/watchMemoryAfterSession.m` | A separate process sampling MATLAB's memory and threads for 4 min after a desktop session (`<data file>_memory.csv`) |
+| `+lum/OnlinePlots.m` | The behaviour session's live figure: now and next, outcomes; performance, psychometric (along the family's evidence, or by group), evidence (u_A vs u_B: fraction of the window each channel is lit, with the contingency's boundary); by side, side bias, reaction time (log axis), centre hold (time in the port vs asked for); header: water (side and centre) and the running hold. In habituation (both sides pay) the header, performance and by side count every trial by `Rewarded` (a trial without a choice is not rewarded, 0.9.7) and evidence scores choices by it, labelled *rewarded*/*not rewarded*; elsewhere the score is correct of the choices made. Every key goes through `panelLegend`: one row under the axis label, never over data |
 | `+lum/loadSounds.m` | The session's sounds, loaded once |
 | `+lum/testSounds.m`, `toneFrequencies.m` | A session sound as `TestHiFiSound` arguments, for the Play buttons; group tone spacing |
 | `+lum/fiberBundles.m`, `experimentChoices.m` | Bundle cables and spot counts; the Experiment tab's lists |
@@ -988,6 +1007,14 @@ write the report beside it:
 
 MATLAB and test gotchas that have already cost time:
 
+- `animalSessionTest/testNoSessionWarnedOrFailed` failed once in a full run (2026-09-26) on a warning
+  from DoricLED's own code as the simulated LED closed (`doric.LightSource/disconnect`: "The specified
+  key is not present in this container"); it passed on the rerun and in every other run. DoricLED's,
+  not ours: note it, do not change DoricLED from here.
+- A test that stops a session as the End button does (`RunProtocol('Stop')` from a timer) must run
+  `LuminoseFM` from the repository folder, as the launch manager's `run()` does, or `+lum` is gone
+  when Stop removes the path (`sleepSessionTest`'s `runSleepSession`); and must press it while a
+  block runs (`Status.InStateMatrix`), or nothing is cut short.
 - `functiontests` takes **every** local function whose name starts with `test` as a test, so a
   helper called `testPulses()` breaks the whole file. Name helpers otherwise.
 - A `uitable`'s `Enable` wants `'on'`/`'off'` text, not the `OnOffSwitchState` that

@@ -33,6 +33,7 @@ LuminoseFM/
 │   ├── SyncMode.m                how trials drive the sync TTL
 │   ├── SessionRunner.m           TrialManager on the rig, blocking in the emulator
 │   ├── StartupTimes.m            how long a session took to start, step by step (Session.Startup)
+│   ├── watchMemoryAfterSession.m MATLAB's memory sampled for 4 min after a desktop session (_memory.csv)
 │   ├── OnlinePlots.m             the live figure
 │   ├── loadSounds.m              the session's sounds, loaded once
 │   ├── testSounds.m              a sound of the session as a test, for the setup dialog's Play buttons
@@ -184,6 +185,13 @@ What it covers:
   pointer back to the help line; `cameraTest` — crops kept per session type and typed crops read;
   `settingsTest` — an old file's crops kept for its last session type only; `holdShapingTest` — the
   next session's hold 10% below the last; `emulatorSessionTest` — `Timing.memoryGB`.
+- Added after LUMS0014's second session (0.9.7): `windowsTest` — habituation's header, Performance
+  and By side count every trial, a trial without a choice as not rewarded, while training counts
+  choices only; `holdShapingTest` — the new shaping defaults, a settings file keeping its own shaping,
+  and a start above the target starting at the target with a note; `memoryWatchTest` — the memory
+  sampler lists the running timers and writes a row a second (Windows only); `sleepSessionTest` — a
+  session stopped by `RunProtocol('Stop')` from a callback mid-block keeps that block's plan
+  (`Session.StoppedBlock`), and one run to its end has none; `ephysSessionTest` likewise.
 - `ledTest` — light paths and fiber areas (cables by colour, swapped between channels), calibrations
   (units, refusals, saving and replacing, one per cable and channel, a cable keeping two calibrations,
   a 0.9.0 per-cable file read only on its channel, a damaged file, readings too few or too low to be

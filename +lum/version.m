@@ -75,10 +75,16 @@ function text = version()
 % next session (10% below the last), keeps the cameras' crops per session type
 % (S.Camera.Crops), lets them be drawn with the mouse in the Cameras tab, and names 24226887
 % topview and 24226657 sideview, as checked on the rig (the defaults had them swapped).
+% 0.9.7 scores every habituation trial by its reward in the plots (a trial with no choice
+% was not rewarded), grows the hold from 0.2 s to 0.6 s by 1% per completed hold by default,
+% watches MATLAB's memory for four minutes after a desktop session (<data file>_memory.csv),
+% takes BpodSystem out of the base workspace as a session ends (MATLAB's Workspace browser ran
+% out of memory working through a session's changes to it), and keeps the plan of a sleep or
+% ePhys block the End button cut short (Session.StoppedBlock).
 %
 % See also: LuminoseFM
 
-release = '0.9.6';
+release = '0.9.7';
 text = release;
 
 try

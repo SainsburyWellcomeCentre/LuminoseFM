@@ -11,6 +11,7 @@ tests = functiontests(localfunctions);
 end
 
 function setupOnce(testCase)
+global BpodSystem %#ok<GVMIS> % Read by the End button's timer below
 ensureEmulator();
 testCase.TestData.dataFolder = fullfile(tempdir, 'LuminoseFM_sleep_test_data');
 if ~isfolder(testCase.TestData.dataFolder)
@@ -35,6 +36,35 @@ S = withTestPulses(baseSettings(testCase));
 testCase.TestData.lightPlan = lum.sleep.testPulsePlan(S.Sleep.TestPulses);
 testCase.TestData.lightSessionData = runSleepSession(testCase, S, ...
                                                      'testSubject_LuminoseFM_sleep_light_test.mat');
+
+% The same session, ended as the console's End button ends it: RunProtocol('Stop') from a
+% callback 0.2 s into a block after the first.
+endButton = timer('Name', 'sleepSessionTest End button', 'ExecutionMode', 'fixedSpacing', ...
+                  'Period', 0.1, 'TimerFcn', @pressEndInSecondBlock);
+endButton.UserData = NaN;
+start(endButton);
+stopButton = onCleanup(@() delete(endButton));
+testCase.TestData.stoppedSessionData = runSleepSession(testCase, S, ...
+                                                       'testSubject_LuminoseFM_sleep_stopped_test.mat');
+stop(endButton);
+delete(stopButton);
+
+    function pressEndInSecondBlock(button, ~)
+        % Only while a block runs: stopped between blocks, nothing is cut short.
+        if ~(isfield(BpodSystem.Data, 'nTrials') && BpodSystem.Data.nTrials >= 1)
+            return
+        end
+        if BpodSystem.Status.InStateMatrix ~= 1
+            button.UserData = NaN;
+            return
+        end
+        if isnan(button.UserData)
+            button.UserData = tic;
+        elseif toc(button.UserData) > 0.2
+            stop(button);
+            RunProtocol('Stop');
+        end
+    end
 
     function tf = blockUnderWay()
         % True from half a second after the clicker first sees a block running.
@@ -147,6 +177,40 @@ verifyEmpty(testCase, sessionData.Session.TestPulses.StoppedReason);
 verifyNumElements(testCase, sessionData.Session.TestPulses.Steps, 3);
 end
 
+function testASessionThatRanToItsEndStoppedNoBlock(testCase)
+verifyEmpty(testCase, testCase.TestData.lightSessionData.Session.StoppedBlock);
+end
+
+function testTheBlockTheEndButtonStoppedIsKeptAsPlanned(testCase)
+% RunProtocol('Stop') mid-block returns no events for the block, though its pulses went out
+% up to the stop; the session keeps what it was to send (found on the rig 2026-09-26: the
+% cameras logged 3-4 sync pulses more than the file held).
+sessionData = testCase.TestData.stoppedSessionData;
+stopped = sessionData.Session.StoppedBlock;
+plan = testCase.TestData.lightPlan;
+verifyNotEmpty(testCase, stopped, 'The block running when the session was stopped is kept');
+verifyEqual(testCase, stopped.Block, sessionData.nTrials + 1, 'It is the block after the last recorded');
+verifyFalse(testCase, sessionData.Session.TestPulses.Completed);
+verifyEmpty(testCase, sessionData.Session.TestPulses.StoppedReason, 'Stopping is not a failure');
+verifyGreaterThan(testCase, numel(stopped.SyncOffset), 0);
+verifyEqual(testCase, numel(stopped.SyncWidth), numel(stopped.SyncOffset));
+verifyGreaterThanOrEqual(testCase, min(stopped.SyncOffset), 0);
+verifyLessThanOrEqual(testCase, max(stopped.SyncOffset), stopped.Duration);
+verifyTrue(testCase, all(stopped.SyncWidth > 0));
+verifyLessThanOrEqual(testCase, numel(sessionData.SyncPulses.Onset) + numel(stopped.SyncOffset), ...
+                      numel(testCase.TestData.sessionData.SyncPulses.Onset) * 3, ...
+                      'No more pulses than the schedule holds');
+nLight = numel(stopped.LightOffset);
+verifyEqual(testCase, [numel(stopped.LightDuration), numel(stopped.LightChannel), ...
+                       numel(stopped.LightCurrentmA)], [nLight nLight nLight]);
+verifyLessThanOrEqual(testCase, numel(sessionData.LightSegments.Onset) + nLight, size(plan.Segments, 1));
+if nLight > 0
+    verifyTrue(testCase, all(ismember(stopped.LightChannel, [1 2])));
+    verifyTrue(testCase, all(stopped.LightOffset >= 0 & stopped.LightOffset <= stopped.Duration));
+end
+verifyTrue(testCase, isnan(stopped.CameraTime), 'No video in this session: no camera time');
+end
+
 function testAPairOfProbesKeepsItsOrderAndChannels(testCase)
 % The emulator runs its states from a MATLAB loop and keeps no millisecond time, so an
 % emulated interval can only be checked from below: a state never ends before its timer.
@@ -231,7 +295,12 @@ BpodSystem.Path.CurrentDataFile = fullfile(testCase.TestData.dataFolder, fileNam
 
 setappdata(0, 'LuminoseFM_Headless', true);
 
+% From the repository, as the launch manager's run() does: the End button's RunProtocol('Stop')
+% takes the protocol folder off the path mid-session, and +lum then resolves from here.
+previous = cd(root);
+back = onCleanup(@() cd(previous));
 LuminoseFM;
+delete(back);
 
 % RunProtocol('Stop') took the protocol folder off the path on its way out.
 addpath(root, fullfile(root, 'hardware'), fullfile(root, 'tests'));

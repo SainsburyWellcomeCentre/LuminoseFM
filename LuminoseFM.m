@@ -96,6 +96,7 @@ if ismember(S.Session.Type, {'Sleep', 'EphysCalibration'})
     if BpodSystem.Status.BeingUsed == 1
         RunProtocol('Stop');
     end
+    unlinkFromBaseWorkspace();
     return
 end
 
@@ -493,6 +494,11 @@ fprintf('LuminoseFM: session ended after %d trial(s); MATLAB is using %.1f GB.\n
 if nCompleted > 0
     fprintf('  %s\n  Data: %s\n', summary, BpodSystem.Path.CurrentDataFile);
 end
+if ~headless && nCompleted > 0
+    % A desktop MATLAB has twice run out of memory minutes after a session ended; the
+    % sampler records what it was doing (lum.watchMemoryAfterSession).
+    lum.watchMemoryAfterSession(BpodSystem.Path.CurrentDataFile);
+end
 
 % If the loop ran to completion, or ended in an error rather than at the console's
 % stop button, end the session the way the stop button does: release the ports, flush
@@ -501,6 +507,8 @@ end
 if BpodSystem.Status.BeingUsed == 1 || ~isempty(stoppedReason)
     RunProtocol('Stop');
 end
+
+unlinkFromBaseWorkspace();
 
 if ~isempty(stoppedReason)
     % After the teardown, so the rig is already free when the operator reads it.
@@ -828,8 +836,13 @@ if isnan(start)
     return
 end
 S.GUI.HoldStart = start;
-fprintf(['LuminoseFM: the next session''s hold starts at %g s, 10%% below this session''s '...
-         'last (%.3g s).\n'], start, lastHold);
+if start < lum.HoldShaping.NextSessionFraction * lastHold - 5e-4
+    fprintf(['LuminoseFM: the next session''s hold starts at %g s, the target hold (this '...
+             'session''s last: %.3g s).\n'], start, lastHold);
+else
+    fprintf(['LuminoseFM: the next session''s hold starts at %g s, 10%% below this session''s '...
+             'last (%.3g s).\n'], start, lastHold);
+end
 
 
 function gigabytes = matlabMemoryGB()
@@ -900,6 +913,28 @@ if ~isempty(runner)
     runner.close();
 end
 closeDevices(devices);  % The cameras' close stops the recording
+
+
+function unlinkFromBaseWorkspace()
+% Takes BpodSystem out of the base workspace as the session ends; the global itself, and
+% every function that declares it, are untouched. MATLAB R2025b's Workspace browser
+% otherwise works through every change the session made to the BpodSystem object once the
+% prompt returns, on a background thread (datatools_view_core, mwwsb_startup_impl), with
+% memory in proportion to the session: 30 GB after 2 minutes, 141 GB after 5, and "Out
+% of memory." after LUMS0014's 93-minute sessions (found on the rig 2026-09-26; see the
+% "Out of memory" note in CLAUDE.md). With BpodSystem gone from the base workspace when the
+% prompt returns, the browser has nothing to redraw. A local function, because it runs
+% after RunProtocol('Stop') has removed +lum from the path.
+try
+    if evalin('base', 'exist(''BpodSystem'', ''var'')') == 1
+        evalin('base', 'clear BpodSystem');
+        fprintf(['LuminoseFM: BpodSystem is no longer listed in the base workspace: MATLAB''s '...
+                 'Workspace browser runs out of memory on it after a session. EndBpod and the '...
+                 'next session work as usual.\n']);
+    end
+catch
+    % No base workspace to tidy (a deployed or unusual MATLAB): nothing to do.
+end
 
 
 function closeDevices(devices)

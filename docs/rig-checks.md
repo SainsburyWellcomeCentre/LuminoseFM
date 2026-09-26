@@ -26,11 +26,12 @@ The pieces are tested under the emulator; these need the desktop MATLAB and the 
    lines say where the next session's hold starts, and the next session's Runtime tab shows it as
    *Hold at start*.
 4. **Habituation plots.** Every rewarded side poke is a green dot in *Outcomes*, the header says
-   "% rewarded", and reaction times sit on a log axis.
-5. **Memory.** The end-of-session line prints MATLAB's memory. If "Out of memory" appears again, note
-   what was done after the session ended (windows opened, files loaded) and keep the session's
-   `Timing.memoryGB`; Windows' System log (Resource-Exhaustion-Detector, event 2004) names the
-   process and how much it committed.
+   "% of N trials rewarded (M choices)", counting the trials with no choice as not rewarded (0.9.7),
+   and reaction times sit on a log axis.
+5. **Memory.** Found and fixed on 2026-09-26 (see *Done*). In the next desktop session, from the
+   launch manager: the log's last lines say `BpodSystem is no longer listed in the base workspace`,
+   the Workspace panel is empty, MATLAB stays responsive after the session, and
+   `<data file>_memory.csv` stays flat (about 2 GB) for its 4 minutes. `EndBpod` still works.
 
 ### P11. The light playing on after a short hold (0.9.5)
 
@@ -48,7 +49,7 @@ running timer on state entry, and `WaitForLightEnd` relies on a condition on the
    console. Poke, leave after the hold and choose at once: the light carries on to the end of the
    window while the side port is poked and the water is given. Poke and leave before the hold: the
    light stops at once.
-3. A Training session with automatic shaping: early trials (0.1 s holds) still show the whole pattern.
+3. A Training session with automatic shaping: early trials (0.2 s holds) still show the whole pattern.
 
 ### P4. Calibrate the 2-to-19 bundle (0.9.1)
 
@@ -137,6 +138,48 @@ there is what this check is for.
    calibration, P5).
 
 ## Done
+
+### 2026-09-26 — "Out of memory" after a session found and fixed (0.9.7), no animal, run by an agent with the operator's permission
+
+LUMS0014's sessions of 2026-09-25 and 2026-09-26 ended normally, then MATLAB committed ~180 GB and
+printed "Out of memory." two minutes later. Reproduced on the rig in a desktop MATLAB launched by
+the agent: headless habituation sessions as `FakeSubject` (files in `%TEMP%\LuminoseFM_rigcheck`),
+virtual pokes, ended by `RunProtocol('Stop')` from a timer as the End button does, then MATLAB left
+at the prompt with the memory sampler (`lum.watchMemoryAfterSession`) running. Peak private memory
+in the minute or minutes after the session:
+
+| Run | What differed | After the session |
+|-----|---------------|-------------------|
+| r1 | 5 min, 42 trials, all devices and video | 3 → **141 GB** in 5 min, still climbing (stopped) |
+| e1 | emulator, 1 min | flat, 1.3 GB |
+| b1 | `Bpod('COM3')` only, no session | flat, 1.1 GB |
+| r3 | 2 min, all devices | 15 GB within 20 s |
+| r2, r13 | 2 min, `BpodSystem` cleared from the base workspace before the prompt (r13: another variable there instead) | flat, 1.8 / 1.6 GB |
+| r4, r6, r7, r8, r9 | 2 min, `BpodSystem` kept but `Data.Analog`, `Data`, the analog port, half, then nearly all of its properties emptied | 10–17 GB, over in 25–45 s |
+| r10, r11 | 2 min, video off; then video and the Doric LED off | 17.6 / 27.5 GB |
+| r12, r15 | cleared and declared again before the prompt; hidden during the session and declared again after | 27.7 / 26.4 GB |
+| r14 | stacks of the busy thread sampled (`dbghelp` `StackWalk64`) | every sample in `datatools_view_core.dll` / `mwwsb_startup_impl.dll` (`workspace_browser_startup`, `PubSubDSImpl::sizeUpdated`, `WSViewModel::updateStatsSettings`): MATLAB's Workspace browser |
+| **r16** | **r1 again (5 min, 42 trials, all devices and video) with the fix** | **flat, 1.85 GB for 3 min** |
+| s1, s2 | sleep, test pulses (alternating probes), video; s1 ran its 3 min, s2 stopped at 2 min; fix | flat, 1.74 / 1.81 GB for 2 min |
+| p1, p3 | ePhys calibration, defaults (16 steps, 0–1000 mA on A in mA, 2-to-19 uncalibrated), video; p1 ran to its end, p3 stopped at 1.5 min; fix | flat, 1.75 / 1.77 GB |
+| s3, p2 | sleep and ePhys stopped at 2 min, `BpodSystem` put back in the base workspace (no fix) | flat, 1.8 GB: blocking sessions did not trigger it in this time |
+
+Cause: MATLAB R2025b's Workspace browser, after a session, works through the session's changes to
+the `BpodSystem` object listed in the base workspace, taking memory in proportion to the session's
+length. It came with rig behaviour, which runs through Bpod's trial manager (a 10 ms timer updating
+`BpodSystem`); sleep and ePhys sessions, emulated behaviour and `Bpod()` alone did not trigger it.
+Fix: every session's last step removes `BpodSystem` from the base workspace (D16). Not yet seen: a
+launch from the launch manager (P12).
+
+The sleep and ePhys files were checked as well:
+
+| Session | Result |
+|---------|--------|
+| s1 `FakeSubject_LuminoseFM_20260926_194942` (sleep, 3 min, ran to its end) | 18 blocks; 180 of 180 sync pulses, 20–99 ms, 1.00–1.26 s apart; 12 of 12 gates, 10 ms, A and B alternating, pairs 50 ms apart every ~30 s, 100 mA (2-to-19 uncalibrated: mA); `TestPulses.Completed` 1; analog 184 s; both cameras 18,818 frames, none missed, barcode `0CAC40FF` read as Sleep, 180 of 180 pulses, widths within 10.2 ms (one frame), onsets within 5.4 ms |
+| p1 `..._200431` (ePhys, defaults, ran to its end) | 16 blocks = 16 steps; 160 sync pulses; 240 of 240 gates, 5 ms on A; each step's gates at its asked current: input-output 0, 143, 286 … 1000 mA, then pairs 20–500 ms at 100 mA; `Ephys.Completed` 1; both cameras 16,784 frames, barcode `0CAC4466` read as EphysCalibration, 160 of 160 pulses within one frame |
+| s2 `..._195554`, p2 `..._201006` (stopped at 2 min, before 0.9.7's `StoppedBlock`) | 9 blocks each, `Completed` 0, `StoppedReason` empty; the cameras logged 4 and 3 sync pulses after the last recorded one: the block running at the stop, recorded nowhere. Led to `Session.StoppedBlock` |
+| p3 `..._202123` (ePhys stopped at 1.5 min, with `StoppedBlock`) | 6 blocks recorded, `StoppedBlock` = block 7 (step 7, 10 pulses 1 s apart, 10 gates at 857 mA), `BlockStopped` in `_events.csv` 0.98 s after block 6 ended; both cameras logged 1 pulse after the recorded ones, 41 ms wide against the first planned 47 ms |
+
 
 ### 2026-09-24 — pre-deployment validation (0.9.4), no animal, fibers terminated, run by an agent with the operator's permission
 

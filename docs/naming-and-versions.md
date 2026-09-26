@@ -144,6 +144,32 @@ names.
 | — | `GUIMeta.<name>.Help` for every runtime parameter; help line in the setup and runtime windows |
 | — | **▶ Play** buttons for the session's sounds in the setup dialog (`lum.testSounds`) |
 
+### 0.9.6 → 0.9.7 — after LUMS0014's second session: every habituation trial scored, a gentler hold
+
+Found auditing `LUMS0014_LuminoseFM_20260926_134530` (habituation, 140 trials, 93 min, ended
+with the End button). The file is complete and consistent: 140 trials with every series filled;
+`Rewarded` matches the reward states visited (80: 45 `Correct`, 35 `Incorrect`, both sides paying),
+60 trials without a choice (10 `NoInitiation`, 47 `HoldNotCompleted`, 3 `NoResponse`); side valve
+states 25.6/26.6 ms and centre 16.0 ms, as valves 1, 3 and 2's calibrations give for 3 and 1.2 µL;
+centre reward on trials 1–10 and, after *Centre reward again* at trial 77, 77–85 (trial 86 of the run
+completed no hold); the hold carried in at 0.775 s (90% of the first session's last), grew 2% per
+completed hold to 1 s, stepped back twice, and the settings file hands on 0.9 s; the Flex stream has
+5,578,993 samples (5579 s); both cameras logged and wrote 556,903 frames with none missed or dropped,
+the barcode `0CABEBB4` decodes from each camera's `TTL_State`, and the 140 trial pulses after it
+match `TrialStartTimestamp` to 5.3 ms and `SyncPulseWidth` to one frame (a 141st pulse is the trial
+the End button cut short). The house light was off all session, as set. MATLAB's memory stayed at
+3.95–4.16 GB throughout, and "Out of memory." again came about two minutes after the session had
+ended: reproduced on the rig the same day and traced to MATLAB's Workspace browser
+(`docs/rig-checks.md`, D16).
+
+| 0.9.6 | 0.9.7 |
+|-------|-------|
+| habituation's header, Performance and By side scored only the choices made, by their reward: LUMS0014's header read "100% rewarded of 80 choices" with 60 of 140 trials unrewarded | they count every trial, and a trial with no choice as not rewarded: "57% of 140 trials rewarded (80 choices)", the y axis *Fraction of trials rewarded*. Training and experiment keep *% correct of the choices*, which the header now says as "72% correct of 80 choices" |
+| automatic shaping's defaults: `HoldStart` 0.1 s, `HoldGrowth` 5%, `HoldTarget` 1 s | 0.2 s, 1%, 0.6 s. Settings files keep their own values (LUMS0014's: 0.9 s handed on, 2%, 1 s); change them on the setup dialog's Task tab (*Shaping*). A `HoldStart` above `HoldTarget` starts at the target, and the setup dialog notes it; the log line says when the handed-on start was capped at the target |
+| a sleep or ePhys session stopped from the console mid-block recorded nothing of that block, though its pulses and light up to the stop reached the recordings (1–4 extra sync pulses on the cameras in rig tests) | the block's plan is kept as `Session.StoppedBlock` (offsets, widths, channels, LED currents, the camera time of the stop) and marked `BlockStopped` in `_events.csv` |
+| after a desktop session MATLAB's Workspace browser worked through the session's changes to `BpodSystem` (listed in the base workspace since `Bpod()`), taking memory in proportion to the session: LUMS0014's sessions ended in "Out of memory." | the session's last step removes `BpodSystem` from the base workspace (the global stays; `EndBpod` and the next session are unaffected) |
+| — | a desktop session ends by starting `lum.watchMemoryAfterSession`, which samples MATLAB's memory and threads for 4 min into `<data file>_memory.csv` |
+
 ### 0.9.5 → 0.9.6 — after LUMS0014's first session: choices inside the response window, crops per session type
 
 Found auditing `LUMS0014_LuminoseFM_20260925_132300`, the first animal's first (habituation)

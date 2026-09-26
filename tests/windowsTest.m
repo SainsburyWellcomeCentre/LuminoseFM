@@ -127,41 +127,86 @@ end
 
 function testHabituationScoresChoicesByTheReward(testCase)
 % Both side ports pay in habituation, so a rewarded choice of the other side is green
-% and counts towards the performance, not against it.
+% and counts towards the performance, not against it; and every trial counts, so a trial
+% with no choice is not rewarded (LUMS0014's header said 100% with 60 of 140 trials
+% unrewarded).
+[plots, cleanup] = playStage(testCase, 1);
+outcomes = axesTitled(plots.Figure, 'Outcomes');
+filled = findobj(outcomes, 'Type', 'line', 'Marker', 'o', 'LineWidth', 0.5);
+open = findobj(outcomes, 'Type', 'line', 'Marker', 'o', 'LineWidth', 1.3);
+verifyEqual(testCase, nnz(~isnan(filled.YData)), 11, 'Every rewarded choice is green');
+verifyEqual(testCase, nnz(~isnan(open.YData)), 1, 'Only the unrewarded choice is not');
+verifySubstring(testCase, plots.summaryText(), '73% of 15 trials rewarded (12 choices)');
+performance = axesTitled(plots.Figure, 'Performance');
+verifyEqual(testCase, performance.YLabel.String, 'Fraction of trials rewarded');
+allLine = findobj(performance, 'Type', 'line', 'LineWidth', 2);
+window = sscanf(performance.Title.String, 'Performance, %d-trial window');
+rewardedTrials = [true(1, 11), false(1, 4)];
+verifyEqual(testCase, allLine.YData(15), mean(rewardedTrials(end - window + 1:end)), 'AbsTol', 1e-12, ...
+            'The moving window counts the trials without a choice as not rewarded');
+bySide = axesTitled(plots.Figure, 'By side');
+bars = findobj(bySide, 'Type', 'bar');
+counts = findobj(bySide, 'Type', 'text');
+[~, order] = sort(arrayfun(@(c) c.Position(1), counts));
+trials = str2double({counts(order).String});
+verifyEqual(testCase, sum(trials), 15, 'By side counts every trial');
+verifyEqual(testCase, sum(bars.YData .* trials), 11, 'AbsTol', 1e-9, ...
+            'and scores each by its reward');
+delete(cleanup);
+end
+
+function testTrainingScoresOnlyChoices(testCase)
+% Outside habituation the score is the discrimination: correct of the choices made; a
+% trial without a choice is left out, and the water line still counts every side reward.
+[plots, cleanup] = playStage(testCase, 2);
+verifySubstring(testCase, plots.summaryText(), 'correct of 12 choices');
+bySide = axesTitled(plots.Figure, 'By side');
+counts = findobj(bySide, 'Type', 'text');
+verifyEqual(testCase, sum(str2double({counts.String})), 12, 'By side counts the choices only');
+performance = axesTitled(plots.Figure, 'Performance');
+verifyEqual(testCase, performance.YLabel.String, 'Fraction correct');
+delete(cleanup);
+end
+
+function [plots, cleanup] = playStage(testCase, stage)
+% Fifteen trials at a training stage: twelve choices alternating sides, the last of them
+% leaving before the valve opened, then three trials without a choice.
 [S, stimulusSet] = sessionFixture(testCase, 'pure');
-S.Task.TrainingStage = 1;
+S.Task.TrainingStage = stage;
 plots = lum.OnlinePlots(S, stimulusSet, 'Visible', 'off', 'RefreshEvery', 1);
 cleanup = onCleanup(@() plots.close());
 history = lum.newHistory(S.Session.MaxTrials);
 queue = stimulusSet.TrialPattern;
 [spec, queue] = lum.nextTrialSpec(S, stimulusSet, queue, history, 1);
-for trial = 1:12
-    choice = 1 + mod(trial, 2);  % Alternating sides: half of them the group's other side
-    rewarded = trial ~= 12;      % The last left before the valve opened
-    result = struct('Outcome', lum.Outcome.Incorrect, 'Choice', choice, ...
-                    'Correct', double(choice == spec.CorrectSide), 'Rewarded', double(rewarded), ...
-                    'ReactionTime', 2, 'HoldBreaks', 0, 'HoldAttempts', 1, 'EarlyWithdrawals', 0, ...
-                    'CentreRewarded', 0, 'ResponseRetries', 0, 'CentreHoldTime', 0.3);
-    if result.Correct == 1
-        result.Outcome = lum.Outcome.Correct;
-    end
-    if ~rewarded
-        result.Outcome = lum.Outcome.CorrectNoReward;
+bothPay = stage == 1;
+for trial = 1:15
+    if trial <= 12
+        choice = 1 + mod(trial, 2);  % Alternating sides: half of them the group's other side
+        correct = double(choice == spec.CorrectSide);
+        rewarded = trial ~= 12 && (bothPay || correct == 1);
+        outcome = lum.Outcome.Incorrect;
+        if correct == 1
+            outcome = lum.Outcome.Correct;
+        end
+        if trial == 12
+            outcome = lum.Outcome.CorrectNoReward;
+            correct = 1;
+        end
+        result = struct('Outcome', outcome, 'Choice', choice, 'Correct', correct, ...
+                        'Rewarded', double(rewarded), 'ReactionTime', 2, 'HoldBreaks', 0, ...
+                        'HoldAttempts', 1, 'EarlyWithdrawals', 0, 'CentreRewarded', 0, ...
+                        'ResponseRetries', 0, 'CentreHoldTime', 0.3);
+    else
+        result = struct('Outcome', lum.Outcome.HoldNotCompleted, 'Choice', NaN, 'Correct', NaN, ...
+                        'Rewarded', 0, 'ReactionTime', NaN, 'HoldBreaks', 0, ...
+                        'HoldAttempts', 3, 'EarlyWithdrawals', 3, 'CentreRewarded', 0, ...
+                        'ResponseRetries', 0, 'CentreHoldTime', 0.1);
     end
     history = lum.updateHistory(history, trial, spec, result);
     [nextSpec, queue] = lum.nextTrialSpec(S, stimulusSet, queue, history, trial + 1);
     plots.update(trial, spec, result, nextSpec, queue, 3);
     spec = nextSpec;
 end
-outcomes = axesTitled(plots.Figure, 'Outcomes');
-filled = findobj(outcomes, 'Type', 'line', 'Marker', 'o', 'LineWidth', 0.5);
-open = findobj(outcomes, 'Type', 'line', 'Marker', 'o', 'LineWidth', 1.3);
-verifyEqual(testCase, nnz(~isnan(filled.YData)), 11, 'Every rewarded choice is green');
-verifyEqual(testCase, nnz(~isnan(open.YData)), 1, 'Only the unrewarded one is not');
-verifySubstring(testCase, plots.summaryText(), '92% rewarded of 12 choices');
-performance = axesTitled(plots.Figure, 'Performance');
-verifyEqual(testCase, performance.YLabel.String, 'Fraction rewarded');
-delete(cleanup);
 end
 
 function testThePanelsAreInThreeRows(testCase)
