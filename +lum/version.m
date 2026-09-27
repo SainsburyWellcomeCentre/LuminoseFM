@@ -89,10 +89,15 @@ function text = version()
 % session's summary plots (Session Plots) and log (Session Logs) as it ends, and records
 % the commit on the rig, where MATLAB cannot run git (read from the repository's .git
 % folder).
+% 0.9.9 counts a hold completed after early withdrawals as a completed hold in every plot, the
+% log and the runtime window (lum.holdMeasures), gives hold attempts a summary plot of their own
+% (09_HoldAttempts: held on the first attempt, after early withdrawals, not completed), and
+% draws every plot with one palette and type scale (lum.gui.theme, lum.gui.styleAxes). The data
+% format is unchanged.
 %
 % See also: LuminoseFM
 
-release = '0.9.8';
+release = '0.9.9';
 text = release;
 
 commit = '';

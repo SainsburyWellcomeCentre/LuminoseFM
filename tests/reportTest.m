@@ -46,8 +46,28 @@ function testATrialWithoutAChoiceSaysWhy(testCase)
 spec = struct('RewardedSides', [1 2], 'CorrectSide', 2);
 result = resultOf(lum.Outcome.HoldNotCompleted, NaN, 0);
 result.HoldAttempts = 14;
+result.EarlyWithdrawals = 14;
+result.HoldCompleted = 0;
 lines = lum.trialStatus(5, spec, result, [], []);
-verifyEqual(testCase, lines, {'Trial 5: hold not completed in the hold window (14 holds)'});
+verifyEqual(testCase, lines, {'Trial 5: hold not completed in the hold window (14 hold attempts)'});
+end
+
+function testAHoldCompletedAfterEarlyWithdrawalsSaysAtWhichAttempt(testCase)
+% The runtime window, the plots and the log count a hold completed after early withdrawals
+% as completed (lum.holdMeasures): the line says so, and at which attempt.
+spec = struct('RewardedSides', [1 2], 'CorrectSide', 2);
+result = resultOf(lum.Outcome.Correct, 2, 1);
+result.EarlyWithdrawals = 2;
+result.HoldCompleted = 1;
+verifyEqual(testCase, lum.trialStatus(6, spec, result, [], []), ...
+            {'Trial 6: rewarded, chose right (held on attempt 3)'});
+result.EarlyWithdrawals = 0;
+verifyEqual(testCase, lum.trialStatus(6, spec, result, [], []), {'Trial 6: rewarded, chose right'});
+ended = resultOf(lum.Outcome.EarlyWithdrawal, NaN, 0);
+ended.EarlyWithdrawals = 1;
+ended.HoldCompleted = 0;
+verifyEqual(testCase, lum.trialStatus(7, spec, ended, [], []), {'Trial 7: early withdrawal'}, ...
+            'Under End trial one attempt ends the trial');
 end
 
 function testTheRunningTrialSaysWhoPays(testCase)
@@ -136,10 +156,50 @@ verifyTrue(testCase, isfile(report.Log));
 end
 
 
+function testTheOnlineFigureAndTheReportsAgreeOnTheHold(testCase)
+% The replayed online figure, the summary plots' numbers and the log read the hold from the
+% same states: a hold completed after early withdrawals is completed in all three, and only
+% the attempts tell it from a first-attempt hold.
+[Data, dataFile] = madeUpSession(testCase, 80, 2, '20260104_100000');
+T = lum.report.sessionTrials(Data);
+for k = 1:T.n
+    measures = lum.holdMeasures(Data.RawEvents.Trial{k}.States);
+    verifyEqual(testCase, [T.holdCompleted(k), T.heldFirstAttempt(k), T.attempts(k)], ...
+                [measures.Completed, measures.FirstAttempt, measures.Attempts]);
+end
+verifyEqual(testCase, T.holdCompleted, double(~isnan(Data.Choice)), ...
+            'Every trial with a choice completed its hold');
+verifyEqual(testCase, T.attempts, Data.HoldAttempts, 'Without a latency, attempts are CentreHold visits');
+retried = find(T.holdCompleted == 1 & T.heldFirstAttempt == 0);
+verifyNotEmpty(testCase, retried, 'The made-up animal completes some holds after early withdrawals');
+
+plots = lum.report.replayOnlinePlots(Data);
+cleanup = onCleanup(@() plots.close());
+holdAxes = findall(plots.Figure, 'Type', 'axes');
+holdAxes = holdAxes(arrayfun(@(a) startsWith(string(a.Title.String), 'Centre hold'), holdAxes));
+completedLine = findobj(holdAxes, 'Type', 'line', 'Marker', '.');
+notLine = findobj(holdAxes, 'Type', 'line', 'Marker', 'x');
+verifyEqual(testCase, find(~isnan(completedLine.YData)), find(T.holdCompleted == 1), ...
+            'The online figure marks the same holds completed');
+verifyEqual(testCase, find(~isnan(notLine.YData)), find(T.holdCompleted == 0));
+verifyEqual(testCase, completedLine.Color, lum.gui.theme().Correct);
+
+[~, lines] = lum.report.sessionLog(Data, dataFile, 'Write', false);
+verifyTrue(testCase, any(startsWith(lines, sprintf('- Hold completed on %d of %d trials', ...
+                                                   sum(T.holdCompleted), T.n))));
+verifyTrue(testCase, any(startsWith(lines, sprintf('- Held on the first attempt on %d trials', ...
+                                                   sum(T.heldFirstAttempt)))));
+verifyFalse(testCase, any(contains(lines, 'early withdrawal 0')), ...
+            'Early withdrawals are not an outcome of their own in the log');
+delete(cleanup);
+end
+
+
 %% Helpers
 
 function result = resultOf(outcome, choice, rewarded)
-result = struct('Outcome', outcome, 'Choice', choice, 'Rewarded', rewarded, 'HoldAttempts', 1);
+result = struct('Outcome', outcome, 'Choice', choice, 'Rewarded', rewarded, 'HoldAttempts', 1, ...
+                'EarlyWithdrawals', 0, 'HoldCompleted', double(~isnan(choice)));
 end
 
 function name = fileNameOf(file)
@@ -220,7 +280,20 @@ for k = 1:n
     Data.TrialSettings{k} = gui;
     visits = [(1:attempts)' * 0.5, (1:attempts)' * 0.5 + 0.1];
     visits(end, 2) = visits(end, 1) + holdSeconds * completed + 0.1 * ~completed;
-    Data.RawEvents.Trial{k} = struct('States', struct('CentreHold', visits), ...
+    % Every attempt but a completed last one ends in EarlyWithdrawal; a completed hold goes on
+    % to WaitForCentreExit, and one never completed to NoInitiation.
+    withdrawals = visits(1:attempts - completed, 2);
+    states = struct('CentreHold', visits, 'EarlyWithdrawal', [withdrawals withdrawals], ...
+                    'WaitForCentreExit', [NaN NaN], 'NoInitiation', [NaN NaN]);
+    if isempty(withdrawals)
+        states.EarlyWithdrawal = [NaN NaN];
+    end
+    if completed
+        states.WaitForCentreExit = visits(end, 2) + [0 0.1];
+    else
+        states.NoInitiation = [3 3];
+    end
+    Data.RawEvents.Trial{k} = struct('States', states, ...
         'Events', struct('Port2In', visits(:, 1)', 'Port1In', 3 + (choice == 1), ...
                          'Port3In', 3 + (choice == 2)));
 end

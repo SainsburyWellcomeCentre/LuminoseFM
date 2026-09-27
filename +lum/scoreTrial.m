@@ -36,6 +36,11 @@ function result = scoreTrial(trialEvents, spec, rig)
 %   .CentreHoldTime  Seconds from the poke that began the trial's last hold (or
 %                  latency) to the animal first leaving the centre port after it;
 %                  NaN if the stimulus never started or the animal never left
+%   .HoldCompleted  1 if the hold was completed, at any attempt (lum.holdMeasures)
+%   .HeldFirstAttempt  1 if it was completed with no early withdrawal before it
+%
+% HoldCompleted and HeldFirstAttempt are what the plots, the log and the runtime window
+% say about the hold; they are not stored per trial, since the states give them back.
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
@@ -47,7 +52,8 @@ events = trialEvents.Events;
 result = struct('Outcome', lum.Outcome.NoResponse, 'Choice', NaN, ...
                 'Correct', NaN, 'Rewarded', 0, 'ReactionTime', NaN, 'HoldBreaks', 0, ...
                 'HoldAttempts', 0, 'EarlyWithdrawals', 0, 'CentreRewarded', 0, ...
-                'ResponseRetries', 0, 'CentreHoldTime', NaN);
+                'ResponseRetries', 0, 'CentreHoldTime', NaN, 'HoldCompleted', 0, ...
+                'HeldFirstAttempt', 0);
 
 %% Which side was poked, and how quickly
 % Only a poke inside the response window is a choice: the one that ended its first visit.
@@ -72,7 +78,10 @@ end
 result.Rewarded = double(visited(states, 'LeftReward') || visited(states, 'RightReward'));
 result.HoldBreaks = nVisits(states, 'HoldBreak');
 result.HoldAttempts = nVisits(states, 'CentreHold');
-result.EarlyWithdrawals = nVisits(states, 'EarlyWithdrawal');
+measures = lum.holdMeasures(states);
+result.EarlyWithdrawals = measures.EarlyWithdrawals;
+result.HoldCompleted = measures.Completed;
+result.HeldFirstAttempt = measures.FirstAttempt;
 result.CentreRewarded = double(visited(states, 'CentreReward'));
 result.ResponseRetries = nVisits(states, 'RetryResponse');
 result.CentreHoldTime = centreHoldTime(states, events, rig);

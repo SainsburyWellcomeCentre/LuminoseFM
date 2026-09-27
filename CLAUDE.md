@@ -39,8 +39,8 @@ before changing the stimulus path, the state graph, sleep blocks or the GUI. The
 
 **Where things stand** is in the docs, not here: the last release's changes in
 `docs/naming-and-versions.md`, the checks waiting for someone at the rig in `docs/rig-checks.md`
-*Pending* (P4–P13 now; all need someone at the rig or a desktop MATLAB, except P11 step 1 and
-P13 step 4, which can run headless with permission). The operator works remotely at times: run a
+*Pending* (P4–P13 now; all need someone at the rig or a desktop MATLAB, except P11 step 1, which
+can run headless with permission; P13 step 4's file checks passed on 2026-09-27). The operator works remotely at times: run a
 pending check the next time they say they are at the rig.
 
 **Working loop.** Read the relevant docs and code → change `+lum` (the protocol file stays thin) →
@@ -155,13 +155,14 @@ can be tested with no hardware. `docs/repository.md` has the full tree.
 | `+lum/SessionRunner.m` | TrialManager on the rig, blocking in the emulator (D3) |
 | `+lum/StartupTimes.m` | How long the session took to start, step by step (`Data.Session.Startup`) |
 | `+lum/watchMemoryAfterSession.m` | A separate process sampling MATLAB's memory and threads for 4 min after a desktop behaviour session (`<data file>_memory.csv`) |
-| `+lum/OnlinePlots.m` | The behaviour session's live figure: now and next, outcomes; performance, psychometric (along the family's evidence, or by group), evidence (u_A vs u_B with the contingency's boundary); by side, side bias, reaction time (log axis), centre hold; header with water and the running hold. Habituation scores every trial by `Rewarded` (a trial without a choice is not rewarded); other stages score correct of the choices made. Every key goes through `panelLegend`: one row under the axis label, never over data |
+| `+lum/OnlinePlots.m` | The behaviour session's live figure, nine panels: now and next, outcomes; performance, psychometric (along the family's evidence, or by group), evidence (u_A vs u_B with the contingency's boundary; *No light in this session* without light); by side, side bias, reaction time (log axis), centre hold (completed at any attempt, or not); header with water and the running hold. Habituation scores every trial by `Rewarded` (a trial without a choice is not rewarded); other stages score correct of the choices made. Hold attempts are not drawn here (no room): they are `09_HoldAttempts`. Every panel goes through `lum.gui.styleAxes` and every key through `lum.gui.panelLegend`: one row under the axis label, never over data |
+| `+lum/holdMeasures.m` | What every plot, the log and the runtime window say about a trial's hold, from its states: hold completed (`CentreReward` or `WaitForCentreExit`), held on the first attempt, hold attempts (early withdrawals + the completed hold). `lum.scoreTrial` returns `HoldCompleted`, `HeldFirstAttempt`; not stored |
 | `+lum/trialStatus.m` | The runtime window's header lines: how the last trial ended and what runs now |
 | `+lum/loadSounds.m`, `testSounds.m`, `toneFrequencies.m` | The session's sounds, loaded once; a sound as `TestHiFiSound` arguments for the Play buttons; group tone spacing |
 | `+lum/fiberBundles.m`, `experimentChoices.m` | Bundle cables and spot counts; the Experiment tab's lists |
 | `+lum/mergeActions.m`, `timerMaskAction.m` | Output-action assembly (see [Gotchas](#bpod-and-firmware)) |
 | `+lum/launchSubject.m`, `trainingStageNote.m` | The subject the session was launched for; one line on what the stage does to rewards |
-| `+lum/+report/` | Summary plots and log (D22): `write` (the behaviour teardown's call; never throws), `summaryPlots`, `sessionLog`, `sessionTrials` (one pass over `SessionData`), `folder`, `fileTag`, `heading`, `replayOnlinePlots`, `fromFile` (a saved session, read only) |
+| `+lum/+report/` | Summary plots and log (D22): `write` (the behaviour teardown's call; never throws), `summaryPlots` (12 plots, `09_HoldAttempts` the only one telling a first attempt from a later), `sessionLog`, `sessionTrials` (one pass over `SessionData`, hold measures included), `folder`, `fileTag`, `heading`, `replayOnlinePlots`, `fromFile` (a saved session, read only) |
 | `+lum/+pattern/` | `generate` (families, groups, order, evidence, boundary) → `stimulusSet` (segments, budget) → `applyContingency` (P(left), reversal, checks, ceilings) → `patternAt`; `families`, `familyDefaults`, `typedPLeft`, `shortcuts`, `describeShortcuts`; `fromStates`, `canonicalise`, `check`, `validate`, `describe`; `withGeneratorDefaults`, `defaultPLeft`, `newSeed`, `prepareSeed` |
 | `+lum/+stim/` | Components: `OptoPattern`, `TimedOutput` → `PortLight`, `Air`; `Sound`; `CueTone`; `build`; `isTimed`, `timerCost` |
 | `+lum/+sync/` | Session barcode: `barcode` (kinds), `markerWidth`, `barcodeKinds`, `sleepMarkerWidth`, `barcodeValue`, `barcodeTime`, `decodeBarcode`, `barcodeStateMachine`; `fitToCameras` (widths the cameras can read) |
@@ -169,7 +170,7 @@ can be tested with no hardware. `docs/repository.md` has the full tree.
 | `+lum/+ephys/` | ePhys calibration: `plan`, `validate`, `describe` |
 | `+lum/+led/` | Light paths (`lightPath`); calibrations per cable and channel (`makeCalibration`, `saveCalibration`, `loadCalibration`, `calibrations`, `calibrationFile`, `calibrationFolder`, `checkCoverage`, `plotCalibration`); conversions (`irradiance`, `current`, `currentFor`, `toUnit`, `fromUnit`, `describe`); session intensity (`intensitySetting`, `intensity`, `keepIntensity`); `validate`; `sessionRecord` |
 | `+lum/+dev/` | Device shims, real and null, selected by `open.m`: `PulsePal`, `HiFi`, `Flex` (also sends the barcode, opens the analog viewer, realigns the analog stream); `DoricLED` (`openDoricLED`); `HouseLight` real/null/disabled (`openHouseLight`); `Cameras` real/null (`openCameras`, `configureCameras`); `openPulsePal` |
-| `+lum/+gui/` | `SessionTypeDialog`, `SetupDialog`, `SleepSetupDialog`, `EphysSetupDialog`, `DoricSetup` (Doric LED tab), `DoricCalibration`, `DoricWindow` (LED window), `IntensityField`, `CameraSetup` (Cameras tab, live preview), `CameraWindow`, `HelpLine`, `ExperimentForm`, `Form`, `StimulusDesigner`, `TestPulseDesigner`, `RuntimeWindow`, `PatternBrowser`, `savePlotsImage`, `houseLightSwitch`, `drawTrialFlow`, `drawTestPulseSchedule`, `drawTestPulseEpoch`, `runtimeFields`, `relabelParameterGUI`, `parseNumbers`, `theme`, `logo` |
+| `+lum/+gui/` | `SessionTypeDialog`, `SetupDialog`, `SleepSetupDialog`, `EphysSetupDialog`, `DoricSetup` (Doric LED tab), `DoricCalibration`, `DoricWindow` (LED window), `IntensityField`, `CameraSetup` (Cameras tab, live preview), `CameraWindow`, `HelpLine`, `ExperimentForm`, `Form`, `StimulusDesigner`, `TestPulseDesigner`, `RuntimeWindow`, `PatternBrowser`, `savePlotsImage`, `houseLightSwitch`, `drawTrialFlow`, `drawTestPulseSchedule`, `drawTestPulseEpoch`, `runtimeFields`, `relabelParameterGUI`, `parseNumbers`, `theme` (colours and the plots' type scale), `styleAxes`, `panelLegend` (every plot panel and key), `logo` |
 | `tests/` | `runLuminoseTests` runs everything; see [Tests and validation](#tests-and-validation) |
 
 ---
@@ -207,6 +208,9 @@ the bias target). Use these, and fix any code, label or doc that does not. The f
 | automatic shaping | performance-driven training under one switch (`S.Task.AutoShaping`): now the centre hold, method `S.Task.HoldShaping`; later trial difficulty | hold shaping *Off* (the 0.5 mode) |
 | step back | automatic shaping shortening the hold one growth step after `HoldStepBackAfter` early withdrawals at one hold | regress, reset (in names too) |
 | early withdrawal | leaving the centre port before the hold is complete, unforgiven (state `EarlyWithdrawal`) | hold break (that is the forgiven kind) |
+| hold completed | the hold ran its full length, at any attempt: `CentreReward` or `WaitForCentreExit` visited (`lum.holdMeasures`); a hold completed after early withdrawals is completed | successful hold, held (alone) |
+| hold attempt | a poke that began a hold: each early withdrawal plus the completed hold; a forgiven break is part of its attempt (equals `Data.HoldAttempts` without a latency) | retry (that is the side choice's), try |
+| held on the first attempt | hold completed with no early withdrawal before it (`HeldFirstAttempt`) | first-try hold, clean hold |
 | centre reward | water at the centre port for a completed hold, habituation's first `CentreRewardTrials` trials (state `CentreReward`, `Data.CentreReward`) | centre drop, initiation reward |
 | centre reward again | the centre reward given again in any stage, `CentreRewardAgainTrials` trials from a tick of `S.GUI.CentreRewardAgain` (`lum.centreRewardAgain`) | reactivated reward, bonus |
 | retry | going on to the correct port after an unpunished incorrect choice (state `RetryResponse`, `Data.ResponseRetries`) | correction trial (it is the same trial) |
@@ -355,8 +359,31 @@ Each rule below is guarded in code; the decision behind it (D*n*) is in `docs/ar
   `TestHiFiSound` argument lists; the dialog's `'SoundPlayer'` option lets tests record them. Group
   tone frequencies come from `lum.toneFrequencies`, shared with `lum.loadSounds`.
 - **Look.** Windows draw with `lum.gui.theme`: light, neutral, colour only for meaning (channel A
-  teal, B coral, sides indigo/ochre, outcomes green/red/grey). Do not copy luminose_hf's dark palette.
+  teal, B coral; left navy `#3E5C76`, right gold `#D4A72C`; correct sage `#78A874` filled,
+  incorrect rust `#A6503F` open (chosen by the operator, 2026-09-27, from rendered options; they
+  differ in lightness so they stay apart for a red-green colour-blind reader); held after early
+  withdrawals pale sage; greys for trials
+  without a choice; `t.Series` near black for a series with no side or outcome, `t.SeriesSoft` for
+  its faint companions). The plot colours were checked with the dataviz skill's validator: rerun it
+  before changing one, and keep a second cue (marker shape) where a pair is close under
+  colour-vision simulation. Plots are for print: white figures (`t.PlotBackground`), dark axes and
+  tick labels (`t.Axis`), marks large (dots 14, lines 1.6–2.4). Every plot panel is styled by
+  `lum.gui.styleAxes` (theme `Font`: one family, title 12, label 11, tick and key 10 points; the
+  live figures, `lum.OnlinePlots` and `lum.sleep.Plots`, use `FontCompact`, title 10, the rest 9;
+  regular-weight sentence-case titles; horizontal gridlines only; no top or right edge) and keyed by
+  `lum.gui.panelLegend`, in the online, sleep and summary plots alike; never style an axis by hand
+  or add a second y-axis. The summary plots print at 150 dpi with the size set on the paper
+  (`PaperPosition`): an invisible figure can apply a new `Position` late. `t.Good`, `t.Bad`,
+  `t.Warn` are text colours for the dialogs, not plot marks. `windowsTest`'s
+  `testOnlinePlotsKeepTheirTextInside` and `testSleepPlotsKeepTheirTextInside` fail when a title,
+  label or key leaves the window or runs into another at the session size: keep them passing when
+  changing type, labels or titles. Do not copy luminose_hf's dark palette.
   The logo comes from `lum.gui.logo(n)` (block-averaged, cached, no toolbox).
+- **The hold in plots (0.9.9, D22).** Every plot, the log and the runtime window read the hold from
+  `lum.holdMeasures` (through `lum.scoreTrial` or `lum.report.sessionTrials`), never from ad hoc
+  state checks or the outcome code: a hold completed after early withdrawals is a completed hold,
+  and early withdrawals are no outcome category or colour of their own. Only `09_HoldAttempts`
+  tells a first attempt from a later one.
 - **Every new uifigure waits for its view** (`lum.gui.Form.waitForView(fig)` straight after
   `uifigure(...)`), and is checked once from a desktop MATLAB ([Gotchas](#matlab-windows-and-tests)).
 
@@ -422,7 +449,11 @@ WaitForCentrePoke → NoInitiation → WaitForLightEnd           (hold window ov
   send time (4–411 ms in LUMS0014's sessions, `Data.Timing.prepare` + `send`). Nothing may rely on
   the ITI for time between trials: a sound, a valve, a line or a punishment that must last lasts in
   its own state (the drinking grace, the punishment states' noise, `NoInitiation` for task-event
-  sync).
+  sync). On the rig, `BpodTrialManager` prints its *inter-trial dead time of >500 microseconds*
+  warning after most trials of a session with light, because the next trial is prepared in the ITI
+  and sent after the trial ends: expected, and not a lost trial (rig check 2026-09-27: 23 warnings
+  in 24 trials, gaps 11–338 ms, none lost). Do not "fix" it by preparing earlier: the prepare window
+  changes LED currents, so it must stay in the ITI (D21).
 - **No reward delay, no withdrawal (0.9.6).** A side valve opens only after a poke at a paying
   port: `WaitForResponse` -`PortNIn`→ `*RewardDelay` -`Tup`→ `*Reward`, and nothing else enters those
   states (`stateMachineTest` checks it). With `S.GUI.RewardDelay` 0 the `*RewardDelay` states leave
@@ -769,7 +800,8 @@ This is the hard constraint of the project.
   `<data file name>_events.csv` and `_session.json`, written by SpinCam; `Data.Session.Cameras` is
   `lum.dev.Cameras.sessionRecord`. `_events.csv` ends `SessionSaved`, `RecordingStop`.
 - **Summary plots and log (D22):** a behaviour session ends with `lum.report.write`: 12 images in
-  `...\Session Plots\` (`NN_<Plot>_PP_<subject>_<YYYYMMDD_HHMMSS>.png`) and
+  `...\Session Plots\` (`NN_<Plot>_PP_<subject>_<YYYYMMDD_HHMMSS>.png`: `01_Outcomes` …
+  `09_HoldAttempts` … `12_SessionTiming`, names and numbers unchanged since 0.9.8) and
   `...\Session Logs\<data file name>_log.md`, drawn from `BpodSystem.Data` alone
   (`lum.report.sessionTrials`); nothing in the data file refers to them.
   `lum.report.fromFile(dataFile)` does the same for a saved session and **only reads** it
@@ -932,6 +964,13 @@ Each has already cost time and is guarded in code; don't undo them.
   `BpodSystem.ProtocolFigures` (the teardown closes it, through a `try`); the timer is stopped by its
   figure's `DeleteFcn`; and its callback is a local function that stops it with built-ins if the
   window cannot refresh (`lum.gui.CameraWindow`).
+- **Never draw or export from a timer while an emulated session runs** (found 2026-09-27). A
+  desktop check that captured the windows with `exportapp` from a 6 s timer stalled the emulator
+  for good after trial 1: the capture ran inside the emulator loop's `drawnow`, and the loop never
+  advanced again while the timer went on firing. The same session without that timer ran all 24
+  trials. To watch a desktop session, screenshot it from outside MATLAB (PowerShell
+  `CopyFromScreen`, as in *Tests and validation*), and read its figures after the teardown
+  (`_plots.png`, the summary plots).
 - **`RunStateMachine` leaves `Status.BeingUsed` at 1** when it runs outside a protocol, so the next rig
   utility refuses ("A protocol is running"). `TestHouseLight` and `TestSyncLine` restore `BeingUsed`
   and `InStateMatrix`; a new utility that runs a state machine must do the same.
@@ -1052,6 +1091,18 @@ compile step, so that is the closest thing to one. `docs/repository.md` lists wh
 - Test doubles: `StubHiFi`, `StubPulsePal` (a PulsePal that can stop answering) and
   `StubCameraManager` (SpinCam's manager, no cameras); DoricLED's own `SimulatedTransport` is the
   LED's. `startMouse` plays scripted pokes into an emulated state machine.
+- **A desktop check** (a new window, or how the plots look on screen) runs a real desktop MATLAB,
+  never the rig: `matlab.exe -nosplash -r "..."` launched from WSL with `setsid nohup ... &` (a plain
+  `&` dies with the shell), running `Bpod('EMU')` through `ensureEmulator`, the session set up as
+  `animalSessionTest`'s `runSession` does (headless, data under `%TEMP%`, never the data folder),
+  played by `startSessionMouse`, and ending with `exit`. Watch it with screenshots taken from WSL
+  (`powershell.exe` `System.Drawing` `CopyFromScreen`), never with a MATLAB timer (see *Gotchas*).
+  Check that no MATLAB is running first (`tasklist`): one may be running an animal. Screenshots
+  come out blank white when the operator's remote-desktop session is disconnected and locked
+  (`qwinsta` shows `Disc`, `LogonUI` runs): the windows still draw, so read `_plots.png` instead.
+  The last checks (2026-09-27, 0.9.9): an emulated 24-trial session watched on screen, and a
+  24-trial session on the rig (`docs/rig-checks.md`, *Done*); the online figure, tabbed runtime
+  window, `_plots.png`, summary plots and log all drawn as in the headless renders.
 - For anything that depends on pokes: `stateMachineTest` plays whole trials with `startMouse`
   (scripted `'V'` override bytes from a timer, a few hundred ms apart, never `ManualOverride`);
   `animalSessionTest` plays four whole sessions with `startSessionMouse` (one behaviour per trial, the

@@ -111,6 +111,54 @@ verifyTrue(testCase, any(arrayfun(@(h) any(~isnan(h.YData)), held)), 'Hold times
 delete(cleanup);
 end
 
+function testEveryPanelUsesTheThemesTypeAndColours(testCase)
+% One family and one size scale on every axis, titles in regular weight, and each meaning a
+% colour of its own: sides, outcomes and channels never share one (lum.gui.theme).
+t = lum.gui.theme();
+[S, stimulusSet] = sessionFixture(testCase, 'pure');
+plots = lum.OnlinePlots(S, stimulusSet, 'Visible', 'off');
+cleanup = onCleanup(@() plots.close());
+panels = findall(plots.Figure, 'Type', 'axes');
+panels = panels(arrayfun(@(a) ~isempty(a.Title.String), panels));
+verifyNumElements(testCase, panels, 9);
+for ax = panels'
+    verifyEqual(testCase, ax.FontName, t.Font.Name, ax.Title.String);
+    verifyEqual(testCase, ax.FontSize, t.FontCompact.Tick, ax.Title.String);
+    verifyEqual(testCase, ax.Title.FontWeight, 'normal', ax.Title.String);
+    verifyEqual(testCase, char(ax.Box), 'off', ax.Title.String);
+end
+meanings = {'Correct', 'Incorrect', 'NoChoice', 'NotHeld', 'HeldLater', 'Left', 'Right', ...
+            'ChannelA', 'ChannelB'};
+colours = cellfun(@(name) t.(name), meanings, 'UniformOutput', false);
+colours = vertcat(colours{:});
+distance = sqrt(sum((permute(colours, [1 3 2]) - permute(colours, [3 1 2])) .^ 2, 3));
+distance(logical(eye(numel(meanings)))) = Inf;
+verifyGreaterThan(testCase, min(distance(:)), 0.1, 'Every meaning keeps a colour of its own');
+delete(cleanup);
+end
+
+function testOnlinePlotsKeepTheirTextInside(testCase)
+% The live figure at its session size, after a session's worth of trials: every panel's title,
+% axis labels and tick labels inside the window, no title running into its neighbour's, and no
+% two keys overlapping (0.9.9: long titles and keys ran into each other at the larger type).
+[S, stimulusSet] = sessionFixture(testCase, 'pure');
+S.Session.MaxTrials = 300;
+plots = lum.OnlinePlots(S, stimulusSet, 'Visible', 'off');
+cleanup = onCleanup(@() plots.close());
+feed(plots, S, stimulusSet, 120);
+verifyTextInside(testCase, plots.Figure, 9);
+delete(cleanup);
+end
+
+function testSleepPlotsKeepTheirTextInside(testCase)
+S = testCase.TestData.S;
+S.Sleep.DurationMinutes = 2;
+plots = lum.sleep.Plots(S, 'Visible', 'off');
+cleanup = onCleanup(@() plots.close());
+verifyTextInside(testCase, plots.Figure, 2);
+delete(cleanup);
+end
+
 function testReactionTimesAreOnALogAxis(testCase)
 % A naive animal's 10 s and a trained one's 0.2 s on one panel (LUMS0014 ran 1 to 11 s).
 [S, stimulusSet] = sessionFixture(testCase, 'pure');
@@ -132,14 +180,14 @@ function testHabituationScoresChoicesByTheReward(testCase)
 % unrewarded).
 [plots, cleanup] = playStage(testCase, 1);
 outcomes = axesTitled(plots.Figure, 'Outcomes');
-filled = findobj(outcomes, 'Type', 'line', 'Marker', 'o', 'LineWidth', 0.5);
-open = findobj(outcomes, 'Type', 'line', 'Marker', 'o', 'LineWidth', 1.3);
+filled = findobj(outcomes, 'Type', 'line', 'Marker', 'o', 'MarkerFaceColor', lum.gui.theme().Correct);
+open = findobj(outcomes, 'Type', 'line', 'Marker', 'o', 'MarkerEdgeColor', lum.gui.theme().Incorrect);
 verifyEqual(testCase, nnz(~isnan(filled.YData)), 11, 'Every rewarded choice is green');
 verifyEqual(testCase, nnz(~isnan(open.YData)), 1, 'Only the unrewarded choice is not');
 verifySubstring(testCase, plots.summaryText(), '73% of 15 trials rewarded (12 choices)');
 performance = axesTitled(plots.Figure, 'Performance');
-verifyEqual(testCase, performance.YLabel.String, 'Fraction of trials rewarded');
-allLine = findobj(performance, 'Type', 'line', 'LineWidth', 2);
+verifyEqual(testCase, performance.YLabel.String, 'Fraction rewarded');
+allLine = findobj(performance, 'Type', 'line', 'Color', lum.gui.theme().Series);
 window = sscanf(performance.Title.String, 'Performance, %d-trial window');
 rewardedTrials = [true(1, 11), false(1, 4)];
 verifyEqual(testCase, allLine.YData(15), mean(rewardedTrials(end - window + 1:end)), 'AbsTol', 1e-12, ...
@@ -195,12 +243,14 @@ for trial = 1:15
         result = struct('Outcome', outcome, 'Choice', choice, 'Correct', correct, ...
                         'Rewarded', double(rewarded), 'ReactionTime', 2, 'HoldBreaks', 0, ...
                         'HoldAttempts', 1, 'EarlyWithdrawals', 0, 'CentreRewarded', 0, ...
-                        'ResponseRetries', 0, 'CentreHoldTime', 0.3);
+                        'ResponseRetries', 0, 'CentreHoldTime', 0.3, 'HoldCompleted', 1, ...
+                        'HeldFirstAttempt', 1);
     else
         result = struct('Outcome', lum.Outcome.HoldNotCompleted, 'Choice', NaN, 'Correct', NaN, ...
                         'Rewarded', 0, 'ReactionTime', NaN, 'HoldBreaks', 0, ...
                         'HoldAttempts', 3, 'EarlyWithdrawals', 3, 'CentreRewarded', 0, ...
-                        'ResponseRetries', 0, 'CentreHoldTime', 0.1);
+                        'ResponseRetries', 0, 'CentreHoldTime', 0.1, 'HoldCompleted', 0, ...
+                        'HeldFirstAttempt', 0);
     end
     history = lum.updateHistory(history, trial, spec, result);
     [nextSpec, queue] = lum.nextTrialSpec(S, stimulusSet, queue, history, trial + 1);
@@ -254,7 +304,7 @@ verifyTrue(testCase, all(min(abs([x(shown); y(shown)]), [], 1) <= 0.03), ...
            'A pure-channel pattern lights one channel only, so every choice sits on an axis');
 
 bias = axesTitled(plots.Figure, 'Side bias');
-chose = findobj(bias, 'Type', 'line', 'LineWidth', 2);
+chose = findobj(bias, 'Type', 'line', 'Color', lum.gui.theme().Left, 'LineStyle', '-');
 values = chose.YData(~isnan(chose.YData));
 verifyNotEmpty(testCase, values);
 verifyTrue(testCase, all(values >= 0 & values <= 1));
@@ -1376,7 +1426,9 @@ for trial = 1:nTrials
                     'ReactionTime', NaN, 'HoldBreaks', 0, 'HoldAttempts', 1, ...
                     'EarlyWithdrawals', double(outcome == lum.Outcome.EarlyWithdrawal), ...
                     'CentreRewarded', double(trial <= 5), 'ResponseRetries', 0, ...
-                    'CentreHoldTime', spec.HoldDuration + 0.05 * mod(trial, 3));
+                    'CentreHoldTime', spec.HoldDuration + 0.05 * mod(trial, 3), ...
+                    'HoldCompleted', double(outcome ~= lum.Outcome.EarlyWithdrawal), ...
+                    'HeldFirstAttempt', double(outcome ~= lum.Outcome.EarlyWithdrawal));
     if outcome == lum.Outcome.Correct || outcome == lum.Outcome.Incorrect
         result.Correct = double(outcome == lum.Outcome.Correct);
         result.Choice = spec.CorrectSide;
@@ -1390,6 +1442,66 @@ for trial = 1:nTrials
     plots.update(trial, spec, result, nextSpec, queue, 3);
     spec = nextSpec;
 end
+end
+
+function verifyTextInside(testCase, fig, nPanels)
+% Every titled panel's text inside the figure, titles clear of each other, keys apart.
+drawnow;
+pause(0.2);
+figurePixels = getpixelposition(fig);
+panels = findall(fig, 'Type', 'axes');
+panels = panels(arrayfun(@(a) ~isempty(a.Title.String) && strcmp(a.Visible, 'on'), panels));
+verifyNumElements(testCase, panels, nPanels);
+boxes = zeros(numel(panels), 4);      % Text extent of each panel: left, bottom, right, top
+titles = zeros(numel(panels), 4);     % Title extent: left, bottom, right, top
+for i = 1:numel(panels)
+    ax = panels(i);
+    inner = getpixelposition(ax, true);
+    ax.Units = 'pixels';
+    inset = ax.TightInset;
+    ax.Units = 'normalized';
+    boxes(i, :) = [inner(1) - inset(1), inner(2) - inset(2), inner(1) + inner(3) + inset(3), ...
+                   inner(2) + inner(4) + inset(4)];
+    ax.Title.Units = 'pixels';
+    extent = ax.Title.Extent;
+    ax.Title.Units = 'data';
+    titles(i, :) = [inner(1) + extent(1), inner(2) + extent(2), inner(1) + extent(1) + extent(3), ...
+                    inner(2) + extent(2) + extent(4)];
+    name = char(join(string(ax.Title.String)));
+    verifyGreaterThanOrEqual(testCase, boxes(i, 1), -1, [name ': text off the left edge']);
+    verifyGreaterThanOrEqual(testCase, boxes(i, 2), -1, [name ': text off the bottom']);
+    verifyLessThanOrEqual(testCase, boxes(i, 3), figurePixels(3) + 1, [name ': text off the right edge']);
+    verifyLessThanOrEqual(testCase, boxes(i, 4), figurePixels(4) + 1, [name ': text off the top']);
+    verifyLessThanOrEqual(testCase, titles(i, 3), figurePixels(3) + 1, [name ': title off the right edge']);
+end
+for i = 1:numel(panels)
+    for j = 1:numel(panels)
+        if i ~= j && overlaps(titles(i, :), titles(j, :))
+            verifyFail(testCase, sprintf('Titles overlap: "%s" and "%s"', ...
+                char(join(string(panels(i).Title.String))), char(join(string(panels(j).Title.String)))));
+        end
+    end
+end
+keys = findall(fig, 'Type', 'legend');
+keyBoxes = zeros(numel(keys), 4);
+for i = 1:numel(keys)
+    position = getpixelposition(keys(i), true);
+    keyBoxes(i, :) = [position(1), position(2), position(1) + position(3), position(2) + position(4)];
+    verifyGreaterThanOrEqual(testCase, keyBoxes(i, 1), -1, 'A key off the left edge');
+    verifyLessThanOrEqual(testCase, keyBoxes(i, 3), figurePixels(3) + 1, 'A key off the right edge');
+    verifyGreaterThanOrEqual(testCase, keyBoxes(i, 2), -1, 'A key off the bottom');
+end
+for i = 1:numel(keys)
+    for j = i + 1:numel(keys)
+        verifyFalse(testCase, overlaps(keyBoxes(i, :), keyBoxes(j, :)), ...
+                    sprintf('Keys overlap: %s | %s', strjoin(keys(i).String, ', '), strjoin(keys(j).String, ', ')));
+    end
+end
+end
+
+function tf = overlaps(a, b)
+% Whether two boxes [left bottom right top] share more than a pixel.
+tf = min(a(3), b(3)) - max(a(1), b(1)) > 1 && min(a(4), b(4)) - max(a(2), b(2)) > 1;
 end
 
 function ax = axesTitled(figureHandle, prefix)

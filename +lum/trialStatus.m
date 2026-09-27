@@ -12,7 +12,8 @@ function lines = trialStatus(trialNumber, spec, result, nextSpec, stimulusSet)
 % rewarded: chose left, left before the valve opened') and the running one as 'both sides
 % pay'. In training and experiment it is correct or incorrect, as the contingency scores
 % it. A trial without a choice says why (no poke, early withdrawal, hold not completed, no
-% side poke in time) in every stage.
+% side poke in time) in every stage. A trial that took more than one hold attempt says so:
+% 'held on attempt 3' when the hold was completed, '14 hold attempts' when it was not.
 %
 % Arguments:
 %   trialNumber  The trial that just ended
@@ -64,8 +65,13 @@ switch result.Outcome
         end
 end
 last = sprintf('Trial %d: %s', trialNumber, what);
-if result.HoldAttempts > 1
-    last = sprintf('%s (%d holds)', last, result.HoldAttempts);
+% Hold attempts as the plots count them (lum.holdMeasures): a completed hold after early
+% withdrawals is a completed hold, and says at which attempt.
+attempts = result.EarlyWithdrawals + result.HoldCompleted;
+if result.HoldCompleted && attempts > 1
+    last = sprintf('%s (held on attempt %d)', last, attempts);
+elseif ~result.HoldCompleted && attempts > 1
+    last = sprintf('%s (%d hold attempts)', last, attempts);
 end
 lines = {last};
 if ~isempty(nextSpec)

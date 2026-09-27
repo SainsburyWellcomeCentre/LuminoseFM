@@ -15,28 +15,39 @@ function [files, problems] = summaryPlots(Data, dataFile, varargin)
 % raster takes up to 400 trials a page). The plots:
 %
 %   01_Outcomes         Each trial's choice by stimulus group, as the online figure scores it
-%                       (rewarded in habituation, correct otherwise), above each trial's
-%                       outcome
+%                       (rewarded in habituation, correct otherwise), above how each trial
+%                       ended
 %   02_Performance      Moving-window score, all and by rewarded side, and the running score
 %   03_Psychometric     P(chose left) by group or evidence, whole session and each half,
 %                       against the contingency
 %   04_Evidence         Every choice at its trial's u_A and u_B, with the contingency's boundary
-%   05_BySide           Score and choices by rewarded side, and trials without a choice
+%   05_BySide           Score by rewarded side, and the side chosen
 %   06_SideBias         P(chose left) over the last BiasWindow choices, with bias
 %                       correction's target, and the side each trial paid
 %   07_ReactionTime     Per trial by side with a running median, and their distribution
 %   08_CentreHold       Time in the centre port on each trial's last hold against the hold
-%                       asked for, and every hold attempt's time
-%   09_HoldAttempts     Hold attempts and early withdrawals per trial, with the hold asked
-%                       for and where automatic shaping stepped it back
-%   10_Engagement       Trials by outcome in 5-minute bins, trial length, and water and
-%                       trials accumulated over the session
+%                       asked for (and where automatic shaping stepped it back), and the
+%                       distribution on completed holds
+%   09_HoldAttempts     How the hold went: held on the first attempt, held after early
+%                       withdrawals, not completed, or no hold started, in bins of trials;
+%                       hold attempts per trial; and the first-attempt rate by the hold asked
+%                       for
+%   10_Engagement       Trials by outcome in 5-minute bins, trial length, and water
+%                       accumulated over the session
 %   11_PortActivity     Pokes per minute at each port over the session
-%   12_SessionTiming    MATLAB's prepare, plot and save time per trial, and its memory
+%   12_SessionTiming    MATLAB's prepare, send, plot and save time per trial, and its memory
+%
+% A hold counts as completed however many early withdrawals came before it
+% (lum.holdMeasures): only 09_HoldAttempts tells a first attempt from a later one. The
+% other plots show whether the hold was completed, and a trial with no completed hold as a
+% trial without a choice.
+%
+% Colours, type, gridlines and keys come from lum.gui.theme, lum.gui.styleAxes and
+% lum.gui.panelLegend, as in the online figure.
 %
 % Written after the session's data are saved, so nothing in the data file depends on them,
 % and from the data alone (lum.report.sessionTrials), so an old file draws the same way
-% (lum.report.fromFile). Each figure is made invisible, printed and deleted before the next.
+% (lum.report.fromFile). One invisible figure is cleared and printed for each plot.
 %
 % Arguments:
 %   Data      The session's data (BpodSystem.Data, or a saved file's SessionData)
@@ -44,19 +55,19 @@ function [files, problems] = summaryPlots(Data, dataFile, varargin)
 %
 % Options:
 %   'Folder'      Where to write (default lum.report.folder(dataFile, 'Plots'))
-%   'Resolution'  Dots per inch of the images (default 110)
+%   'Resolution'  Dots per inch of the images (default 150)
 %
 % Returns:
 %   files     Full paths of the images written
 %   problems  One message per plot that could not be drawn; the others are still written.
 %             Never throws for a single plot.
 %
-% See also: lum.report.write, lum.report.sessionTrials, lum.OnlinePlots
+% See also: lum.report.write, lum.report.sessionTrials, lum.OnlinePlots, lum.holdMeasures
 
 p = inputParser;
 p.FunctionName = 'lum.report.summaryPlots';
 addParameter(p, 'Folder', '');
-addParameter(p, 'Resolution', 110, @(x) isnumeric(x) && isscalar(x) && x > 0);
+addParameter(p, 'Resolution', 150, @(x) isnumeric(x) && isscalar(x) && x > 0);
 parse(p, varargin{:});
 folder = char(p.Results.Folder);
 if isempty(folder)
@@ -83,32 +94,36 @@ pageSize = ceil(T.n / nPages);
 plots = cell(0, 5);
 for page = 1:nPages
     trialRange = [(page - 1) * pageSize + 1, min(T.n, page * pageSize)];
-    plots(end+1, :) = {1, 'Outcomes', page, [1400 560], @(fig) drawOutcomes(fig, T, t, trialRange)}; %#ok<AGROW>
+    plots(end+1, :) = {1, 'Outcomes', page, [1400 600], @(fig) drawOutcomes(fig, T, t, trialRange)}; %#ok<AGROW>
 end
 plots = [plots; ...
     {2, 'Performance', 1, [1400 520], @(fig) drawPerformance(fig, T, t)}; ...
-    {3, 'Psychometric', 1, [1100 620], @(fig) drawPsychometric(fig, T, t)}; ...
-    {4, 'Evidence', 1, [900 760], @(fig) drawEvidence(fig, T, t)}; ...
-    {5, 'BySide', 1, [1100 520], @(fig) drawBySide(fig, T, t)}; ...
+    {3, 'Psychometric', 1, [1000 580], @(fig) drawPsychometric(fig, T, t)}; ...
+    {4, 'Evidence', 1, [820 760], @(fig) drawEvidence(fig, T, t)}; ...
+    {5, 'BySide', 1, [1000 480], @(fig) drawBySide(fig, T, t)}; ...
     {6, 'SideBias', 1, [1400 520], @(fig) drawSideBias(fig, T, t)}; ...
     {7, 'ReactionTime', 1, [1400 560], @(fig) drawReactionTime(fig, T, t)}; ...
     {8, 'CentreHold', 1, [1400 560], @(fig) drawCentreHold(fig, T, t)}; ...
-    {9, 'HoldAttempts', 1, [1400 560], @(fig) drawHoldAttempts(fig, T, t)}; ...
-    {10, 'Engagement', 1, [1400 720], @(fig) drawEngagement(fig, T, t)}; ...
-    {11, 'PortActivity', 1, [1400 560], @(fig) drawPortActivity(fig, T, t)}; ...
-    {12, 'SessionTiming', 1, [1400 560], @(fig) drawSessionTiming(fig, Data, T, t)}];
+    {9, 'HoldAttempts', 1, [1400 760], @(fig) drawHoldAttempts(fig, T, t)}; ...
+    {10, 'Engagement', 1, [1400 800], @(fig) drawEngagement(fig, T, t)}; ...
+    {11, 'PortActivity', 1, [1400 520], @(fig) drawPortActivity(fig, T, t)}; ...
+    {12, 'SessionTiming', 1, [1400 640], @(fig) drawSessionTiming(fig, Data, T, t)}];
 
 % One invisible figure, cleared between plots: making a figure costs more than drawing in it.
-fig = figure('Visible', 'off', 'Color', t.Background, 'MenuBar', 'none', 'ToolBar', 'none', ...
+fig = figure('Visible', 'off', 'Color', t.PlotBackground, 'MenuBar', 'none', 'ToolBar', 'none', ...
              'NumberTitle', 'off', 'HandleVisibility', 'off', 'InvertHardcopy', 'off', ...
-             'PaperPositionMode', 'auto');
+             'PaperUnits', 'inches', 'PaperPositionMode', 'manual');
 cleanup = onCleanup(@() delete(fig));
 for i = 1:size(plots, 1)
     [number, name, page, pixels, draw] = plots{i, :};
     file = fullfile(folder, sprintf('%02d_%s_%02d_%s.png', number, name, page, tag));
     try
         clf(fig);
+        % The printed size is set on the paper: an invisible figure can apply a new Position
+        % late, and print would then lay the plot out at the one before.
         fig.Position = [20 20 pixels];
+        fig.PaperSize = pixels / 96;
+        fig.PaperPosition = [0 0 pixels / 96];
         draw(fig);
         pageText = '';
         if nPages > 1 && number == 1
@@ -116,10 +131,11 @@ for i = 1:size(plots, 1)
                                min(T.n, page * pageSize));
         end
         layout = findobj(fig, 'Type', 'tiledlayout');
-        layout(1).Title.String = [heading pageText];
-        layout(1).Title.FontSize = 10;
-        layout(1).Title.FontWeight = 'bold';
-        layout(1).Title.Color = t.Ink;
+        layout(1).Title.String = headingLines([heading pageText], pixels(1), t);
+        layout(1).Title.FontName = t.Font.Name;
+        layout(1).Title.FontSize = t.Font.Title;
+        layout(1).Title.FontWeight = 'normal';
+        layout(1).Title.Color = t.Axis;
         layout(1).Title.Interpreter = 'none';
         % print, not exportgraphics: these figures hold only axes, and print is quicker.
         print(fig, file, '-dpng', sprintf('-r%d', round(p.Results.Resolution)));
@@ -135,12 +151,12 @@ end
 %% The plots -------------------------------------------------------------------
 
 function drawOutcomes(fig, T, t, trialRange)
-% Each trial's choice by group (or evidence), and each trial's outcome.
+% Each trial's choice by group (or evidence), and how each trial ended.
 layout = tiledlayout(fig, 3, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
 trials = trialRange(1):trialRange(2);
 xLimits = [trialRange(1) - 0.5, trialRange(1) + max(trialRange(2) - trialRange(1), 20) + 0.5];
 ax = nexttile(layout, [2 1]);
-styleAxes(ax, t, outcomeTitle(T));
+lum.gui.styleAxes(ax, outcomeTitle(T), t);
 stimulusSet = T.stimulusSet;
 byEvidence = lum.OnlinePlots.rasterByEvidenceOf(stimulusSet);
 if byEvidence
@@ -152,10 +168,11 @@ chose = ~isnan(T.choice(trials));
 scoredGood = T.scored(trials) == 1;
 handles = [ ...
     dots(ax, trials(chose & scoredGood), y(chose & scoredGood), 'Marker', 'o', ...
-         'MarkerSize', 5, 'MarkerFaceColor', t.Correct, 'MarkerEdgeColor', 'none'), ...
+         'MarkerSize', 6, 'MarkerFaceColor', t.Correct, 'MarkerEdgeColor', 'none'), ...
     dots(ax, trials(chose & ~scoredGood), y(chose & ~scoredGood), 'Marker', 'o', ...
-         'MarkerSize', 5, 'MarkerFaceColor', 'none', 'MarkerEdgeColor', t.Incorrect, 'LineWidth', 1.2), ...
-    dots(ax, trials(~chose), y(~chose), 'Marker', 'x', 'MarkerSize', 5, 'Color', t.NoChoice)];
+         'MarkerSize', 6, 'MarkerFaceColor', 'none', 'MarkerEdgeColor', t.Incorrect, 'LineWidth', 1.6), ...
+    dots(ax, trials(~chose), y(~chose), 'Marker', 'x', 'MarkerSize', 6, 'Color', t.NoChoice, ...
+         'LineWidth', 1.2)];
 if byEvidence
     ylabel(ax, stimulusSet.EvidenceName);
 else
@@ -163,24 +180,18 @@ else
     set(ax, 'YLim', [0.5 K + 0.5], 'YTick', 1:K, 'YTickLabel', stimulusSet.GroupLabels, 'YDir', 'reverse');
 end
 set(ax, 'XLim', xLimits);
-keyLegend(ax, handles, [scoreLabels(T), {'no choice'}], t);
+lum.gui.panelLegend(ax, handles, [scoreLabels(T), {'no choice'}], t);
 
-% Why each trial ended, a row per outcome.
+% How each trial ended, a row per outcome: a trial whose hold was not completed is one row,
+% whether the hold window ran out or an early withdrawal ended it ('End trial').
 ax = nexttile(layout);
-styleAxes(ax, t, 'How each trial ended');
-names = {'Rewarded / correct', 'Not rewarded / incorrect', 'No side poke in time', ...
-         'Hold not completed', 'Early withdrawal (trial ended)', 'No hold started'};
-if all(T.bothSidesPay)
-    names(1:2) = {'Rewarded', 'Not rewarded'};
-elseif ~any(T.bothSidesPay)
-    names(1:2) = {'Correct', 'Incorrect'};
-end
+lum.gui.styleAxes(ax, 'How each trial ended', t);
+[names, colours] = outcomeRows(T, t);
 row = outcomeRow(T, trials);
-colours = [t.Correct; t.Incorrect; t.NoChoice; t.Warn; t.Warn; t.Muted];
 for r = 1:numel(names)
     members = trials(row == r);
-    dots(ax, members, r * ones(size(members)), 'Marker', '|', 'MarkerSize', 7, ...
-         'Color', colours(r, :), 'LineWidth', 1.2);
+    dots(ax, members, r * ones(size(members)), 'Marker', '|', 'MarkerSize', 9, ...
+         'Color', colours(r, :), 'LineWidth', 2);
 end
 set(ax, 'YLim', [0.5 numel(names) + 0.5], 'YTick', 1:numel(names), 'YTickLabel', names, ...
      'YDir', 'reverse', 'XLim', xLimits);
@@ -191,19 +202,19 @@ end
 function drawPerformance(fig, T, t)
 % The online figure's performance panel over every trial, and the running score.
 ax = nexttile(tiledlayout(fig, 1, 1, 'Padding', 'compact'));
-styleAxes(ax, t, sprintf('Performance, %d-trial window', movingWindow(T)));
 window = movingWindow(T);
+lum.gui.styleAxes(ax, sprintf('Performance, %d-trial window', window), t);
 x = 1:T.n;
-line(ax, [0 T.n + 1], [0.5 0.5], 'Color', t.Faint, 'LineStyle', '--', 'LineWidth', 1);
-left = line(ax, x, moving(T.scored, window, T.correctSide == 1), 'Color', t.Left, 'LineWidth', 1);
-right = line(ax, x, moving(T.scored, window, T.correctSide == 2), 'Color', t.Right, 'LineWidth', 1);
-whole = line(ax, x, moving(T.scored, window, true(1, T.n)), 'Color', t.Ink, 'LineWidth', 2);
-running = line(ax, x, cumulativeMean(T.scored), 'Color', t.Accent, 'LineStyle', ':', 'LineWidth', 1.5);
+chanceLine(ax, [0 T.n + 1], t);
+left = line(ax, x, moving(T.scored, window, T.correctSide == 1), 'Color', t.Left, 'LineWidth', 1.6);
+right = line(ax, x, moving(T.scored, window, T.correctSide == 2), 'Color', t.Right, 'LineWidth', 1.6);
+whole = line(ax, x, moving(T.scored, window, true(1, T.n)), 'Color', t.Series, 'LineWidth', 2.4);
+running = line(ax, x, cumulativeMean(T.scored), 'Color', t.SeriesSoft, 'LineStyle', '--', 'LineWidth', 1.6);
 set(ax, 'YLim', [0 1], 'XLim', [0, max(T.n, 20) + 1]);
 xlabel(ax, 'Trial');
 ylabel(ax, scoreAxisLabel(T));
-keyLegend(ax, [whole, left, right, running], ...
-          {'all', 'left-rewarded', 'right-rewarded', 'session so far'}, t);
+lum.gui.panelLegend(ax, [whole, left, right, running], ...
+                    {'all', 'left-rewarded', 'right-rewarded', 'session so far'}, t);
 end
 
 
@@ -212,15 +223,15 @@ function drawPsychometric(fig, T, t)
 stimulusSet = T.stimulusSet;
 layout = lum.OnlinePlots.psychometricLayoutOf(stimulusSet);
 ax = nexttile(tiledlayout(fig, 1, 1, 'Padding', 'compact'));
-styleAxes(ax, t, layout.Title);
+lum.gui.styleAxes(ax, layout.Title, t);
 span = [min(layout.X), max(layout.X)];
 pad = 0.5;
 if isempty(layout.TickLabels) && diff(span) > 0
     pad = 0.08 * diff(span);
 end
-line(ax, span + [-pad pad], [0.5 0.5], 'Color', t.Faint, 'LineStyle', '--');
-target = line(ax, layout.X, layout.Target, 'Color', t.Muted, 'LineStyle', ':', 'Marker', 'd', ...
-              'MarkerSize', 5, 'LineWidth', 1);
+chanceLine(ax, span + [-pad pad], t);
+target = line(ax, layout.X, layout.Target, 'Color', t.SeriesSoft, 'LineStyle', ':', 'Marker', 'd', ...
+              'MarkerSize', 7, 'LineWidth', 1.4);
 chose = ~isnan(T.choice);
 point = zeros(1, T.n);
 point(chose) = layout.Index(T.pattern(chose));
@@ -229,16 +240,15 @@ styles = {'--', '-.'};
 halfHandles = gobjects(1, 2);
 for h = 1:2
     [pLeft, ~] = psychometric(point(halves{h}), T.choice(halves{h}), numel(layout.X));
-    halfHandles(h) = line(ax, layout.X, pLeft, 'Color', mix(t.Accent, 0.45), ...
-                          'LineStyle', styles{h}, 'Marker', '.', 'MarkerSize', 10);
+    halfHandles(h) = line(ax, layout.X, pLeft, 'Color', t.SeriesSoft, 'LineWidth', 1.2, ...
+                          'LineStyle', styles{h}, 'Marker', '.', 'MarkerSize', 16);
 end
 [pLeft, errors, counts] = psychometric(point, T.choice, numel(layout.X));
-whole = errorbar(ax, layout.X, pLeft, errors, 'Color', t.Accent, 'LineWidth', 1.5, 'Marker', 'o', ...
-                 'MarkerSize', 6, 'MarkerFaceColor', t.Accent, 'CapSize', 0);
+whole = errorbar(ax, layout.X, pLeft, errors, 'Color', t.Series, 'LineWidth', 2, 'Marker', 'o', ...
+                 'MarkerSize', 8, 'MarkerFaceColor', t.Series, 'CapSize', 0);
 for b = 1:numel(layout.X)
     if counts(b) > 0
-        text(ax, layout.X(b), 0.04, sprintf('n=%d', counts(b)), 'HorizontalAlignment', 'center', ...
-             'FontSize', 8, 'Color', t.Muted);
+        note(ax, layout.X(b), 0.04, sprintf('n=%d', counts(b)), t, 'HorizontalAlignment', 'center');
     end
 end
 set(ax, 'YLim', [0 1], 'XLim', span + [-pad pad]);
@@ -247,8 +257,8 @@ if ~isempty(layout.TickLabels)
 end
 xlabel(ax, layout.XLabel);
 ylabel(ax, 'P(choose left)');
-keyLegend(ax, [whole, halfHandles, target], ...
-          {'chose left, whole session', 'first half', 'second half', 'contingency'}, t);
+lum.gui.panelLegend(ax, [whole, halfHandles, target], ...
+                    {'chose left, whole session', 'first half', 'second half', 'contingency'}, t);
 end
 
 
@@ -256,26 +266,37 @@ function drawEvidence(fig, T, t)
 % Every choice at the light its trial delivered on A and B.
 stimulusSet = T.stimulusSet;
 ax = nexttile(tiledlayout(fig, 1, 1, 'Padding', 'compact'));
-styleAxes(ax, t, sprintf('Evidence, u_A vs u_B, by choice  (%s left, %s right)', char(9664), char(9654)));
+lum.gui.styleAxes(ax, sprintf('Evidence, u_A vs u_B, by choice (%s left, %s right)', char(9664), char(9654)), t);
 edge = struct('Kind', 'diagonal', 'Value', NaN);
 if isfield(stimulusSet, 'Boundary')
     edge = stimulusSet.Boundary;
 end
+boundary = {'Color', t.SeriesSoft, 'LineStyle', '--', 'LineWidth', 1};
 switch edge.Kind
     case 'diagonal'
-        line(ax, [0 1], [0 1], 'Color', t.Faint, 'LineStyle', '--');
+        line(ax, [0 1], [0 1], boundary{:});
     case 'vertical'
-        line(ax, [1 1] * edge.Value, [0 1], 'Color', t.Faint, 'LineStyle', '--');
+        line(ax, [1 1] * edge.Value, [0 1], boundary{:});
     case 'horizontal'
-        line(ax, [0 1], [1 1] * edge.Value, 'Color', t.Faint, 'LineStyle', '--');
+        line(ax, [0 1], [1 1] * edge.Value, boundary{:});
     case 'line'
         x = [-0.1 1.1];
-        line(ax, x, edge.Slope * x + edge.Intercept, 'Color', t.Faint, 'LineStyle', '--');
+        line(ax, x, edge.Slope * x + edge.Intercept, boundary{:});
+end
+set(ax, 'XLim', [-0.06 1.06], 'YLim', [-0.06 1.06], 'XTick', 0:0.25:1, 'YTick', 0:0.25:1, 'XGrid', 'on');
+axis(ax, 'square');
+xlabel(ax, 'u_A, evidence on A (fraction of the window lit)');
+ylabel(ax, 'u_B, evidence on B');
+chose = find(~isnan(T.choice));
+lit = double(T.optoOn(chose) == 1);
+if ~any(lit)
+    % Every choice would sit at the origin: say why rather than show a blob.
+    note(ax, 0.5, 0.5, 'No light in this session', t, 'HorizontalAlignment', 'center', ...
+         'FontSize', t.Font.Label);
+    return
 end
 lightA = reshape(stimulusSet.Descriptors.AOn, 1, []) / stimulusSet.Duration;
 lightB = reshape(stimulusSet.Descriptors.BOn, 1, []) / stimulusSet.Duration;
-chose = find(~isnan(T.choice));
-lit = double(T.optoOn(chose) == 1);
 x = lit .* lightA(T.pattern(chose)) + jitter(chose, 0.6180339887);
 y = lit .* lightB(T.pattern(chose)) + jitter(chose, 0.7548776662);
 good = T.scored(chose) == 1;
@@ -284,66 +305,56 @@ handles = gobjects(1, 2);
 for side = 1:2
     mine = T.choice(chose) == side;
     handles(1) = dots(ax, x(mine & good), y(mine & good), 'Marker', markers{side}, ...
-                      'MarkerSize', 5, 'MarkerFaceColor', t.Correct, 'MarkerEdgeColor', 'none');
+                      'MarkerSize', 7, 'MarkerFaceColor', t.Correct, 'MarkerEdgeColor', 'none');
     handles(2) = dots(ax, x(mine & ~good), y(mine & ~good), 'Marker', markers{side}, ...
-                      'MarkerSize', 5, 'MarkerFaceColor', 'none', 'MarkerEdgeColor', t.Incorrect);
+                      'MarkerSize', 7, 'MarkerFaceColor', 'none', 'MarkerEdgeColor', t.Incorrect, ...
+                      'LineWidth', 1.4);
 end
-set(ax, 'XLim', [-0.06 1.06], 'YLim', [-0.06 1.06], 'XTick', 0:0.25:1, 'YTick', 0:0.25:1);
-axis(ax, 'square');
-xlabel(ax, 'u_A, evidence on A (fraction of the window lit)');
-ylabel(ax, 'u_B, evidence on B');
-keyLegend(ax, handles, scoreLabels(T), t);
+lum.gui.panelLegend(ax, handles, scoreLabels(T), t);
 end
 
 
 function drawBySide(fig, T, t)
-% Score by the side a trial paid; choices made by side; trials without a choice.
-layout = tiledlayout(fig, 1, 3, 'TileSpacing', 'compact', 'Padding', 'compact');
+% Score by the side a trial paid, and the side chosen.
+layout = tiledlayout(fig, 1, 2, 'TileSpacing', 'loose', 'Padding', 'compact');
 ax = nexttile(layout);
-styleAxes(ax, t, 'Score by rewarded side');
-fractions = zeros(1, 2);
+lum.gui.styleAxes(ax, 'Score by rewarded side', t);
+fractions = NaN(1, 2);
 counts = zeros(1, 2);
 for side = 1:2
     scored = T.scored(T.correctSide == side & ~isnan(T.scored));
     counts(side) = numel(scored);
-    fractions(side) = mean(scored);
+    if counts(side) > 0
+        fractions(side) = mean(scored);
+    end
 end
-bars = bar(ax, 1:2, fractions, 0.55, 'FaceColor', 'flat', 'EdgeColor', 'none');
+chanceLine(ax, [0.4 2.6], t);
+bars = bar(ax, 1:2, fractions, 0.5, 'FaceColor', 'flat', 'EdgeColor', 'none');
 bars.CData = [t.Left; t.Right];
-line(ax, [0.4 2.6], [0.5 0.5], 'Color', t.Faint, 'LineStyle', '--');
 for side = 1:2
-    text(ax, side, min(max(fractions(side), 0), 1) + 0.05, sprintf('%d trials', counts(side)), ...
-         'HorizontalAlignment', 'center', 'FontSize', 8, 'Color', t.Muted);
+    if counts(side) > 0
+        note(ax, side, fractions(side) + 0.02, sprintf('%.0f%% of %d', 100 * fractions(side), counts(side)), ...
+             t, 'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom');
+    end
 end
-set(ax, 'YLim', [0 1.12], 'XLim', [0.4 2.6], 'XTick', 1:2, ...
-     'XTickLabel', {'left-rewarded', 'right-rewarded'}, 'XGrid', 'off');
+set(ax, 'YLim', [0 1.1], 'YTick', 0:0.25:1, 'XLim', [0.4 2.6], 'XTick', 1:2, ...
+     'XTickLabel', {'left-rewarded', 'right-rewarded'});
 ylabel(ax, scoreAxisLabel(T));
 
 ax = nexttile(layout);
-styleAxes(ax, t, 'Choices made');
+noChoice = sum(isnan(T.choice));
+lum.gui.styleAxes(ax, sprintf('Side chosen (%d trials without a choice)', noChoice), t);
 chosen = [sum(T.choice == 1), sum(T.choice == 2)];
-bars = bar(ax, 1:2, chosen, 0.55, 'FaceColor', 'flat', 'EdgeColor', 'none');
+bars = bar(ax, 1:2, chosen, 0.5, 'FaceColor', 'flat', 'EdgeColor', 'none');
 bars.CData = [t.Left; t.Right];
+top = max(1, max(chosen)) * 1.15;
 for side = 1:2
-    text(ax, side, chosen(side), sprintf('%d (%.0f%%)', chosen(side), 100 * chosen(side) / max(1, sum(chosen))), ...
-         'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', 'FontSize', 8, 'Color', t.Muted);
+    note(ax, side, chosen(side) + 0.02 * top, sprintf('%d (%.0f%%)', chosen(side), ...
+         100 * chosen(side) / max(1, sum(chosen))), t, 'HorizontalAlignment', 'center', ...
+         'VerticalAlignment', 'bottom');
 end
-set(ax, 'XLim', [0.4 2.6], 'XTick', 1:2, 'XTickLabel', {'chose left', 'chose right'}, ...
-     'XGrid', 'off', 'YLim', [0, max(1, max(chosen)) * 1.15]);
-ylabel(ax, 'Trials');
-
-ax = nexttile(layout);
-styleAxes(ax, t, 'Trials without a choice, by rewarded side');
-none = [sum(isnan(T.choice) & T.correctSide == 1), sum(isnan(T.choice) & T.correctSide == 2)];
-bars = bar(ax, 1:2, none, 0.55, 'FaceColor', 'flat', 'EdgeColor', 'none');
-bars.CData = [mix(t.Left, 0.5); mix(t.Right, 0.5)];
-for side = 1:2
-    text(ax, side, none(side), sprintf('%d', none(side)), 'HorizontalAlignment', 'center', ...
-         'VerticalAlignment', 'bottom', 'FontSize', 8, 'Color', t.Muted);
-end
-set(ax, 'XLim', [0.4 2.6], 'XTick', 1:2, 'XTickLabel', {'left-rewarded', 'right-rewarded'}, ...
-     'XGrid', 'off', 'YLim', [0, max(1, max(none)) * 1.15]);
-ylabel(ax, 'Trials');
+set(ax, 'XLim', [0.4 2.6], 'XTick', 1:2, 'XTickLabel', {'left', 'right'}, 'YLim', [0, top]);
+ylabel(ax, 'Choices');
 end
 
 
@@ -351,8 +362,8 @@ function drawSideBias(fig, T, t)
 % P(chose left) over the last BiasWindow choices, the correction's target, each trial's side.
 window = max(1, round(T.S.GUI.BiasWindow));
 ax = nexttile(tiledlayout(fig, 1, 1, 'Padding', 'compact'));
-styleAxes(ax, t, sprintf('Side bias, last %d choices', window));
-line(ax, [0 T.n + 1], [0.5 0.5], 'Color', t.Faint, 'LineStyle', '--');
+lum.gui.styleAxes(ax, sprintf('Side bias, last %d choices', window), t);
+chanceLine(ax, [0 T.n + 1], t);
 chose = find(~isnan(T.choice));
 leftChoice = double(T.choice(chose) == 1);
 biasLeft = NaN(1, T.n);
@@ -360,20 +371,20 @@ for i = 1:numel(chose)
     biasLeft(chose(i)) = mean(leftChoice(max(1, i - window + 1):i));
 end
 biasLeft = fillForward(biasLeft);
-target = line(ax, 1:T.n, T.biasTarget, 'Color', t.Muted, 'LineStyle', ':', 'LineWidth', 1.2);
-leftLine = line(ax, 1:T.n, biasLeft, 'Color', t.Left, 'LineWidth', 2);
+target = line(ax, 1:T.n, T.biasTarget, 'Color', t.SeriesSoft, 'LineStyle', ':', 'LineWidth', 1.6);
+leftLine = line(ax, 1:T.n, biasLeft, 'Color', t.Left, 'LineWidth', 2.4);
 % The side each trial paid, as ticks along the top and bottom.
 leftTrials = find(T.correctSide == 1);
 rightTrials = find(T.correctSide == 2);
-paidLeft = dots(ax, leftTrials, 1.03 * ones(size(leftTrials)), 'Marker', '|', 'MarkerSize', 5, ...
+paidLeft = dots(ax, leftTrials, 1.03 * ones(size(leftTrials)), 'Marker', '|', 'MarkerSize', 7, ...
                 'Color', t.Left);
-paidRight = dots(ax, rightTrials, -0.03 * ones(size(rightTrials)), 'Marker', '|', 'MarkerSize', 5, ...
+paidRight = dots(ax, rightTrials, -0.03 * ones(size(rightTrials)), 'Marker', '|', 'MarkerSize', 7, ...
                  'Color', t.Right);
-set(ax, 'YLim', [-0.06 1.06], 'XLim', [0, max(T.n, 20) + 1]);
+set(ax, 'YLim', [-0.06 1.06], 'YTick', 0:0.25:1, 'XLim', [0, max(T.n, 20) + 1]);
 xlabel(ax, 'Trial');
-ylabel(ax, 'P(left)');
-keyLegend(ax, [leftLine, target, paidLeft, paidRight], ...
-          {'chose left', 'bias correction target', 'trial paid left', 'trial paid right'}, t);
+ylabel(ax, 'P(chose left)');
+lum.gui.panelLegend(ax, [leftLine, target, paidLeft, paidRight], ...
+                    {'chose left', 'bias correction target', 'trial paid left', 'trial paid right'}, t);
 end
 
 
@@ -381,245 +392,303 @@ function drawReactionTime(fig, T, t)
 % Reaction time per trial on a log axis, by side, and its distribution.
 layout = tiledlayout(fig, 1, 4, 'TileSpacing', 'compact', 'Padding', 'compact');
 ax = nexttile(layout, [1 3]);
-styleAxes(ax, t, 'Reaction time, from leaving the centre port');
+lum.gui.styleAxes(ax, 'Reaction time, from leaving the centre port', t);
 rt = T.reactionTime;
-leftDots = dots(ax, find(T.choice == 1), rt(T.choice == 1), 'Marker', '.', 'MarkerSize', 10, ...
+leftDots = dots(ax, find(T.choice == 1), rt(T.choice == 1), 'Marker', '.', 'MarkerSize', 14, ...
                 'Color', t.Left);
-rightDots = dots(ax, find(T.choice == 2), rt(T.choice == 2), 'Marker', '.', 'MarkerSize', 10, ...
+rightDots = dots(ax, find(T.choice == 2), rt(T.choice == 2), 'Marker', '.', 'MarkerSize', 14, ...
                  'Color', t.Right);
-median20 = runningMedian(rt, 20);
-medianLine = line(ax, 1:T.n, median20, 'Color', t.Ink, 'LineWidth', 1.2);
+medianLine = line(ax, 1:T.n, runningMedian(rt, 20), 'Color', t.Series, 'LineWidth', 2);
 limits = logLimits(rt);
-ticks = [0.01 0.02 0.05 0.1 0.2 0.5 1 2 5 10 20 50 100];
+ticks = logTicks(limits);
 set(ax, 'YScale', 'log', 'YLim', limits, 'YTick', ticks, 'YTickLabel', compose('%g', ticks), ...
-     'YMinorGrid', 'off', 'XLim', [0, max(T.n, 20) + 1]);
+     'YMinorTick', 'off', 'XLim', [0, max(T.n, 20) + 1]);
 xlabel(ax, 'Trial');
-ylabel(ax, 'Seconds (log)');
-keyLegend(ax, [leftDots, rightDots, medianLine], {'chose left', 'chose right', 'median of last 20'}, t);
+ylabel(ax, 'Reaction time (s, log)');
+lum.gui.panelLegend(ax, [leftDots, rightDots, medianLine], {'chose left', 'chose right', 'median of last 20'}, t);
 
+% The distribution of every choice's reaction time, on the same log axis (the sides are told
+% apart on the left): bins a fixed fraction of a decade wide, from the data's own range,
+% fewer for fewer choices.
 ax = nexttile(layout);
-styleAxes(ax, t, 'Distribution');
-edges = logspace(log10(limits(1)), log10(limits(2)), 30);
-sideColours = [t.Left; t.Right];
-for side = 1:2
-    values = rt(T.choice == side & rt > 0);
-    if ~isempty(values)
-        histogram(ax, values, edges, 'Orientation', 'horizontal', 'DisplayStyle', 'stairs', ...
-                  'EdgeColor', sideColours(side, :), 'LineWidth', 1.5);
-    end
+lum.gui.styleAxes(ax, 'Distribution', t);
+values = rt(~isnan(T.choice) & rt > 0);
+edges = logEdges(rt, limits, min(24, max(8, round(2 * sqrt(numel(values))))));
+if isempty(values)
+    values = NaN;
 end
+histogram(ax, values, edges, 'Orientation', 'horizontal', 'FaceColor', t.SeriesSoft, ...
+          'FaceAlpha', 1, 'EdgeColor', t.Panel, 'LineWidth', 0.5);
+typical = median(rt, 'omitnan');
 set(ax, 'YScale', 'log', 'YLim', limits, 'YTick', ticks, 'YTickLabel', compose('%g', ticks), ...
-     'YMinorGrid', 'off');
+     'YMinorTick', 'off', 'XGrid', 'on');
+if ~isnan(typical)
+    referenceLine(ax, typical, sprintf('median %.2f s', typical), t);
+end
 xlabel(ax, 'Choices');
-text(ax, 0.95, 0.97, sprintf('median %.2f s', median(rt, 'omitnan')), 'Units', 'normalized', ...
-     'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', 'FontSize', 8, 'Color', t.Muted);
 end
 
 
 function drawCentreHold(fig, T, t)
-% Time in the centre port on each trial's last hold, and on every attempt.
+% Time in the centre port on each trial's last hold against the hold asked for, and its
+% distribution on completed holds.
 layout = tiledlayout(fig, 1, 4, 'TileSpacing', 'compact', 'Padding', 'compact');
 ax = nexttile(layout, [1 3]);
-styleAxes(ax, t, 'Centre hold, time in the port on each trial''s last hold');
-completed = lum.HoldShaping.completedHold(T.outcome);
-asked = line(ax, 1:T.n, T.holdAsked, 'Color', t.Muted, 'LineWidth', 1.2);
+lum.gui.styleAxes(ax, 'Centre hold, time in the port on each trial''s last hold', t);
+completed = T.holdCompleted == 1;
+asked = line(ax, 1:T.n, T.holdAsked, 'Color', t.Series, 'LineWidth', 1.8);
+back = find(T.steppedBack);
+stepped = dots(ax, back, T.holdAsked(back), 'Marker', 'v', 'MarkerSize', 7, ...
+               'MarkerFaceColor', t.Series, 'MarkerEdgeColor', 'none');
 % The axis holds 98% of the holds and every hold asked for, so a few long early holds do not
 % flatten the rest; those above it sit on its top edge, counted in the corner.
 top = niceCeiling([quantileOf(T.centreHoldTime, 0.98), 2 * max(T.holdAsked)], 0.5);
 shown = min(T.centreHoldTime, top);
-done = dots(ax, find(completed), shown(completed), 'Marker', '.', 'MarkerSize', 10, 'Color', t.Correct);
-broken = dots(ax, find(~completed), shown(~completed), 'Marker', 'x', 'MarkerSize', 5, ...
-              'Color', t.Incorrect);
+done = dots(ax, find(completed), shown(completed), 'Marker', '.', 'MarkerSize', 14, 'Color', t.Correct);
+notDone = dots(ax, find(~completed), shown(~completed), 'Marker', 'x', 'MarkerSize', 7, ...
+               'Color', t.NotHeld, 'LineWidth', 1.4);
 above = sum(T.centreHoldTime > top);
 if above > 0
-    text(ax, 0.99, 0.97, sprintf('%d hold(s) above %.2g s drawn at the top', above, top), ...
-         'Units', 'normalized', 'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', ...
-         'FontSize', 8, 'Color', t.Muted);
+    note(ax, 0.99, 0.98, sprintf('%d above %.2g s, drawn at the top', above, top), t, ...
+         'Units', 'normalized', 'HorizontalAlignment', 'right', 'VerticalAlignment', 'top');
 end
 set(ax, 'YLim', [0 top], 'XLim', [0, max(T.n, 20) + 1]);
 xlabel(ax, 'Trial');
-ylabel(ax, 'Seconds from the poke');
-keyLegend(ax, [done, broken, asked], {'completed', 'broken', 'asked for'}, t);
+ylabel(ax, 'Time in the port from the poke (s)');
+lum.gui.panelLegend(ax, [done, notDone, asked, stepped], ...
+                    {sprintf('hold completed (%d)', sum(completed)), ...
+                     sprintf('not completed (%d)', sum(~completed & ~isnan(T.centreHoldTime))), ...
+                     'hold asked for', 'stepped back'}, t);
 
 ax = nexttile(layout);
-styleAxes(ax, t, 'Every hold attempt');
-edges = linspace(0, max(top, 0.1), 31);
-brokenCounts = histcounts(T.attemptTime(~T.attemptCompleted), edges);
-doneCounts = histcounts(T.attemptTime(T.attemptCompleted), edges);
-stacked = barh(ax, edges(1:end-1) + diff(edges) / 2, [doneCounts; brokenCounts]', 1, 'stacked', ...
-               'EdgeColor', 'none');
-stacked(1).FaceColor = t.Correct;
-stacked(2).FaceColor = mix(t.Incorrect, 0.6);
-askedRange = [min(T.holdDuration), max(T.holdDuration)];
-patch(ax, [0 1 1 0] * max([1, doneCounts + brokenCounts]) * 1.05, ...
-      askedRange([1 1 2 2]), t.Accent, 'FaceAlpha', 0.08, 'EdgeColor', 'none');
-set(ax, 'YLim', [0 top]);
-xlabel(ax, 'Attempts');
-ylabel(ax, 'Seconds from stimulus onset');
-text(ax, 0.95, 0.97, sprintf('%d attempts, %d completed', numel(T.attemptTime), sum(T.attemptCompleted)), ...
-     'Units', 'normalized', 'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', ...
-     'FontSize', 8, 'Color', t.Muted);
+lum.gui.styleAxes(ax, 'Completed holds', t);
+edges = linspace(0, top, 31);
+values = min(T.centreHoldTime(completed), top);
+if isempty(values)
+    values = NaN;
+end
+histogram(ax, values, edges, 'Orientation', 'horizontal', 'FaceColor', t.Correct, ...
+          'FaceAlpha', 0.8, 'EdgeColor', 'none');
+set(ax, 'YLim', [0 top], 'XGrid', 'on');
+typical = median(T.holdAsked(completed), 'omitnan');
+if ~isnan(typical)
+    referenceLine(ax, typical, sprintf('asked for, median %.2f s', typical), t);
+end
+xlabel(ax, 'Trials');
 end
 
 
 function drawHoldAttempts(fig, T, t)
-% Attempts and early withdrawals per trial, with the hold asked for and its step backs.
-ax = nexttile(tiledlayout(fig, 1, 1, 'Padding', 'compact'));
-styleAxes(ax, t, 'Hold attempts per trial, and the hold asked for');
-yyaxis(ax, 'left');
-attempts = bar(ax, 1:T.n, T.holdAttempts, 1, 'FaceColor', mix(t.Accent, 0.35), 'EdgeColor', 'none');
-hold(ax, 'on');
-withdrawals = dots(ax, 1:T.n, T.earlyWithdrawals, 'Marker', '.', 'MarkerSize', 8, ...
-                   'Color', t.Incorrect);
-ylabel(ax, 'Per trial');
-ax.YColor = t.Muted;
-set(ax, 'YLim', [0, max(5, max(T.holdAttempts) * 1.1)]);
-yyaxis(ax, 'right');
-asked = line(ax, 1:T.n, T.holdAsked, 'Color', t.Ink, 'LineWidth', 1.5);
-back = find(T.steppedBack);
-stepped = dots(ax, back, T.holdAsked(back), 'Marker', 'v', 'MarkerSize', 6, ...
-               'MarkerFaceColor', t.Warn, 'MarkerEdgeColor', 'none');
-ylabel(ax, 'Hold asked for (s, from the poke)');
-ax.YColor = t.Ink;
-set(ax, 'YLim', [0, niceCeiling(T.holdAsked, 0.5)]);
-set(ax, 'XLim', [0, max(T.n, 20) + 1]);
+% How each trial's hold went, in bins of trials; attempts per trial; first-attempt rate by the
+% hold asked for. The one plot that tells a first attempt from a later one.
+layout = tiledlayout(fig, 2, 3, 'TileSpacing', 'compact', 'Padding', 'compact');
+binSize = max(10, 5 * ceil(T.n / 100));
+edges = 0:binSize:T.n;
+if edges(end) < T.n
+    edges(end + 1) = T.n;
+end
+bins = discretize(1:T.n, edges + 0.5);
+nBins = numel(edges) - 1;
+kinds = [T.heldFirstAttempt == 1; T.holdCompleted == 1 & T.heldFirstAttempt ~= 1; ...
+         T.holdCompleted ~= 1 & T.attempts > 0; T.attempts == 0];
+fractions = zeros(nBins, 4);
+for b = 1:nBins
+    fractions(b, :) = mean(kinds(:, bins == b), 2)';
+end
+
+ax = nexttile(layout, [1 3]);
+lum.gui.styleAxes(ax, sprintf(['How the hold went, per %d trials: held on the first attempt on ' ...
+    '%.0f%% of trials, completed on %.0f%%'], binSize, 100 * mean(T.heldFirstAttempt), ...
+    100 * mean(T.holdCompleted)), t);
+% Each bin spans its own trials, so a shorter last bin is drawn narrower, not off the axis.
+centres = (edges(1:end-1) + edges(2:end)) / 2 + 0.5;
+colours = [t.Correct; t.HeldLater; t.NotHeld; t.NoHold];
+stacked = stackedBins(ax, edges + 0.5, fractions, colours);
+set(ax, 'YLim', [0 1], 'YTick', 0:0.25:1, 'XLim', [0, max(T.n, 20) + 1]);
 xlabel(ax, 'Trial');
-keyLegend(ax, [attempts, withdrawals, asked, stepped], ...
-          {'hold attempts', 'early withdrawals', 'hold asked for', 'stepped back'}, t);
+ylabel(ax, 'Fraction of trials');
+lum.gui.panelLegend(ax, stacked, {'held on the first attempt', 'held after early withdrawals', ...
+                                  'hold not completed', 'no hold started'}, t);
+
+% Attempts per trial: every trial faint, the mean of each bin over it.
+ax = nexttile(layout, [1 2]);
+lum.gui.styleAxes(ax, 'Hold attempts per trial', t);
+top = max(5, ceil(1.1 * quantileOf(T.attempts, 0.98)));
+each = dots(ax, 1:T.n, min(T.attempts, top), 'Marker', '.', 'MarkerSize', 11, 'Color', t.SeriesSoft);
+means = arrayfun(@(b) mean(T.attempts(bins == b)), 1:nBins);
+binMean = line(ax, centres, means, 'Color', t.Series, 'LineWidth', 2.2, 'Marker', 'o', ...
+               'MarkerSize', 6, 'MarkerFaceColor', t.Series);
+above = sum(T.attempts > top);
+if above > 0
+    note(ax, 0.99, 0.98, sprintf('%d trial(s) above %d, drawn at the top', above, top), t, ...
+         'Units', 'normalized', 'HorizontalAlignment', 'right', 'VerticalAlignment', 'top');
+end
+set(ax, 'YLim', [0 top], 'XLim', [0, max(T.n, 20) + 1]);
+xlabel(ax, 'Trial');
+ylabel(ax, 'Attempts');
+lum.gui.panelLegend(ax, [each, binMean], {'each trial', sprintf('mean per %d trials', binSize)}, t);
+
+% The first-attempt rate by the hold asked for, over trials that started a hold.
+ax = nexttile(layout);
+lum.gui.styleAxes(ax, 'Held on the first attempt, by hold asked for', t);
+started = T.attempts > 0;
+if ~any(started)
+    note(ax, 0.5, 0.5, 'No hold started', t, 'Units', 'normalized', 'HorizontalAlignment', 'center');
+    return
+end
+[labels, members] = holdGroups(T.holdAsked, started);
+rates = cellfun(@(m) mean(T.heldFirstAttempt(m)), members);
+counts = cellfun(@nnz, members);
+bar(ax, 1:numel(rates), rates, 0.5, 'FaceColor', t.Correct, 'EdgeColor', 'none');
+for k = 1:numel(rates)
+    note(ax, k, rates(k) + 0.02, sprintf('n=%d', counts(k)), t, 'HorizontalAlignment', 'center', ...
+         'VerticalAlignment', 'bottom');
+end
+set(ax, 'YLim', [0 1.1], 'YTick', 0:0.25:1, 'XLim', [0.4, numel(rates) + 0.6], ...
+    'XTick', 1:numel(rates), 'XTickLabel', labels);
+xlabel(ax, 'Hold asked for (s, from the poke)');
+ylabel(ax, 'Fraction of trials with a hold');
 end
 
 
 function drawEngagement(fig, T, t)
-% Trials by outcome over session time, trial length, water and trials accumulated.
+% Trials by outcome over session time, trial length, water accumulated.
 layout = tiledlayout(fig, 3, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
 minutes = T.finish / 60;
 binMinutes = 5;
 edges = 0:binMinutes:max(2 * binMinutes, ceil(max(minutes) / binMinutes) * binMinutes);
+[names, colours] = outcomeRows(T, t);
 row = outcomeRow(T, 1:T.n);
-groups = {row == 1, row == 2, row == 3, row == 4 | row == 5, row == 6};
-names = {'rewarded / correct', 'not rewarded / incorrect', 'no side poke', ...
-         'hold not completed', 'no hold started'};
-colours = [t.Correct; t.Incorrect; t.NoChoice; t.Warn; t.Muted];
-counts = zeros(numel(edges) - 1, numel(groups));
-for g = 1:numel(groups)
-    counts(:, g) = histcounts(minutes(groups{g}), edges)';
+counts = zeros(numel(edges) - 1, numel(names));
+for g = 1:numel(names)
+    counts(:, g) = histcounts(minutes(row == g), edges)';
 end
 ax = nexttile(layout);
-styleAxes(ax, t, sprintf('Trials ended in each %d minutes, by outcome', binMinutes));
-bars = bar(ax, edges(1:end-1) + binMinutes / 2, counts, 1, 'stacked', 'EdgeColor', 'none');
+lum.gui.styleAxes(ax, sprintf('Trials ended in each %d minutes, by how they ended', binMinutes), t);
+bars = bar(ax, edges(1:end-1) + binMinutes / 2, counts, 0.85, 'stacked', 'EdgeColor', 'none');
+bars(1).BaseLine.Visible = 'off';
 for g = 1:numel(bars)
     bars(g).FaceColor = colours(g, :);
 end
 set(ax, 'XLim', [0 edges(end)]);
 ylabel(ax, 'Trials');
-keyLegend(ax, bars, names, t);
+lum.gui.panelLegend(ax, bars, lower(names), t);
 
 ax = nexttile(layout);
-styleAxes(ax, t, 'Trial length');
-dots(ax, T.start / 60, T.finish - T.start, 'Marker', '.', 'MarkerSize', 8, 'Color', t.Accent);
-ticks = [0.5 1 2 5 10 20 50 100 200 500 1000];
-set(ax, 'XLim', [0 edges(end)], 'YScale', 'log', 'YLim', logLimits(T.finish - T.start), ...
-    'YTick', ticks, 'YTickLabel', compose('%g', ticks), 'YMinorGrid', 'off');
+lum.gui.styleAxes(ax, 'Trial length', t);
+lengths = T.finish - T.start;
+dots(ax, T.start / 60, lengths, 'Marker', '.', 'MarkerSize', 12, 'Color', t.Series);
+limits = logLimits(lengths, false);
+ticks = logTicks(limits);
+set(ax, 'XLim', [0 edges(end)], 'YScale', 'log', 'YLim', limits, ...
+    'YTick', ticks, 'YTickLabel', compose('%g', ticks), 'YMinorTick', 'off');
 ylabel(ax, 'Seconds (log)');
 
 ax = nexttile(layout);
-styleAxes(ax, t, 'Water and trials, accumulated');
-yyaxis(ax, 'left');
 water = cumsum(T.sideWater + nanToZero(T.centreReward));
-waterLine = line(ax, minutes, water, 'Color', t.Accent, 'LineWidth', 2);
+lum.gui.styleAxes(ax, sprintf('Water accumulated: %.0f uL in %d trials', water(end), T.n), t);
+line(ax, minutes, water, 'Color', t.Series, 'LineWidth', 2.4);
+set(ax, 'XLim', [0 edges(end)], 'YLim', [0, max(10, water(end) * 1.08)]);
 ylabel(ax, 'Water (uL)');
-ax.YColor = t.Accent;
-yyaxis(ax, 'right');
-trialsLine = line(ax, minutes, 1:T.n, 'Color', t.Ink, 'LineWidth', 1.2, 'LineStyle', '--');
-ylabel(ax, 'Trials');
-ax.YColor = t.Ink;
-set(ax, 'XLim', [0 edges(end)]);
 xlabel(ax, 'Minutes from the first trial');
-keyLegend(ax, [waterLine, trialsLine], {sprintf('water, %.0f uL', water(end)), ...
-                                        sprintf('trials, %d', T.n)}, t);
 end
 
 
 function drawPortActivity(fig, T, t)
 % Pokes per minute at each port over the session.
 ax = nexttile(tiledlayout(fig, 1, 1, 'Padding', 'compact'));
-styleAxes(ax, t, 'Pokes per minute, each port');
+lum.gui.styleAxes(ax, 'Pokes per minute, each port', t);
 last = max([T.finish, 1]) / 60;
 edges = 0:1:ceil(last);
 if numel(edges) < 2
     edges = [0 1];
 end
 ports = {'Left', 'Centre', 'Right'};
-colours = [t.Left; t.Ink; t.Right];
+colours = [t.Left; t.Series; t.Right];
 handles = gobjects(1, 3);
 for p = 1:3
     counts = histcounts(T.pokes.(ports{p}) / 60, edges);
-    handles(p) = stairs(ax, edges, [counts counts(end)], 'Color', colours(p, :), 'LineWidth', 1.5);
+    handles(p) = stairs(ax, edges, [counts counts(end)], 'Color', colours(p, :), 'LineWidth', 1.8);
 end
 set(ax, 'XLim', [0 edges(end)]);
 xlabel(ax, 'Minutes from the first trial');
 ylabel(ax, 'Pokes per minute');
-keyLegend(ax, handles, {sprintf('left (%d)', numel(T.pokes.Left)), ...
-                        sprintf('centre (%d)', numel(T.pokes.Centre)), ...
-                        sprintf('right (%d)', numel(T.pokes.Right))}, t);
+lum.gui.panelLegend(ax, handles, {sprintf('left (%d)', numel(T.pokes.Left)), ...
+                                  sprintf('centre (%d)', numel(T.pokes.Centre)), ...
+                                  sprintf('right (%d)', numel(T.pokes.Right))}, t);
 end
 
 
 function drawSessionTiming(fig, Data, T, t)
-% MATLAB's time per trial for preparing, plotting and saving, and its memory.
-layout = tiledlayout(fig, 2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
-ax = nexttile(layout);
-styleAxes(ax, t, 'MATLAB''s work per trial (outside the state machine)');
+% MATLAB's time per trial for each step, a small panel each, and its memory.
+layout = tiledlayout(fig, 2, 4, 'TileSpacing', 'compact', 'Padding', 'compact');
 names = {'prepare', 'send', 'plot', 'save'};
-colours = [t.Accent; t.ChannelA; t.ChannelB; t.Muted];
-handles = gobjects(0);
-labels = {};
-if isfield(Data, 'Timing')
-    for i = 1:numel(names)
-        if isfield(Data.Timing, names{i})
-            values = 1000 * Data.Timing.(names{i})(1:T.n);
-            handles(end+1) = dots(ax, 1:T.n, values, 'Marker', '.', 'MarkerSize', 7, ...
-                                  'Color', colours(i, :)); %#ok<AGROW>
-            counted = values(values > 1);   % save: only the trials that saved
-            if ~strcmp(names{i}, 'save')
-                counted = values;
-            end
-            labels{end+1} = sprintf('%s (median %.0f ms)', names{i}, median(counted, 'omitnan')); %#ok<AGROW>
-        end
+for i = 1:numel(names)
+    ax = nexttile(layout);
+    values = NaN(1, T.n);
+    if isfield(Data, 'Timing') && isfield(Data.Timing, names{i})
+        values = 1000 * Data.Timing.(names{i})(1:T.n);
     end
-end
-set(ax, 'XLim', [0, max(T.n, 20) + 1]);
-ylabel(ax, 'ms');
-if ~isempty(handles)
-    keyLegend(ax, handles, labels, t);
+    if strcmp(names{i}, 'save')
+        values(values <= 1) = NaN;   % Only the trials that saved
+    end
+    typical = median(values, 'omitnan');
+    lum.gui.styleAxes(ax, sprintf('%s, median %.0f ms', names{i}, typical), t);
+    dots(ax, 1:T.n, values, 'Marker', '.', 'MarkerSize', 10, 'Color', t.SeriesSoft);
+    if ~isnan(typical)
+        line(ax, [0, T.n + 1], [typical typical], 'Color', t.Series, 'LineWidth', 1.6);
+    end
+    top = niceCeiling(quantileOf(values, 0.99), 1);
+    set(ax, 'XLim', [0, max(T.n, 20) + 1], 'YLim', [0 top]);
+    if i == 1
+        ylabel(ax, 'MATLAB''s time per trial (ms)');
+    end
+    xlabel(ax, 'Trial');
 end
 
-ax = nexttile(layout);
-styleAxes(ax, t, 'MATLAB''s memory at each save');
+ax = nexttile(layout, [1 4]);
+lum.gui.styleAxes(ax, 'MATLAB''s memory at each save', t);
 if isfield(Data, 'Timing') && isfield(Data.Timing, 'memoryGB')
     values = Data.Timing.memoryGB(1:T.n);
     kept = find(~isnan(values));
-    line(ax, kept, values(kept), 'Marker', '.', 'MarkerSize', 8, 'Color', t.Accent);
+    line(ax, kept, values(kept), 'Marker', '.', 'MarkerSize', 14, 'Color', t.Series, 'LineWidth', 1.6);
 end
 set(ax, 'XLim', [0, max(T.n, 20) + 1]);
 xlabel(ax, 'Trial');
-ylabel(ax, 'GB');
+ylabel(ax, 'Memory (GB)');
 end
 
 
 %% Helpers ----------------------------------------------------------------------
 
-function styleAxes(ax, t, titleText)
-% The online figure's panel style (lum.OnlinePlots).
-set(ax, 'Color', t.Panel, 'XColor', t.Muted, 'YColor', t.Muted, 'GridColor', t.Faint, ...
-    'GridAlpha', 1, 'Box', 'off', 'TickDir', 'out', 'FontSize', 9, 'LineWidth', 0.75, ...
-    'XGrid', 'on', 'YGrid', 'on');
-ax.Title.String = titleText;
-ax.Title.FontWeight = 'bold';
-ax.Title.FontSize = 10;
-ax.Title.Color = t.Ink;
-ax.TitleHorizontalAlignment = 'left';
-hold(ax, 'on');
+function handles = stackedBins(ax, edges, fractions, colours)
+% Stacked bars, one per bin from edges(b) to edges(b + 1) with a small gap either side, so
+% bins of unequal size keep their own width. fractions is nBins x nKinds. Returns a patch per
+% kind, for the key.
+[nBins, nKinds] = size(fractions);
+gap = 0.06 * min(diff(edges));
+handles = gobjects(1, nKinds);
+bottom = zeros(nBins, 1);
+for k = 1:nKinds
+    x0 = edges(1:end-1)' + gap;
+    x1 = edges(2:end)' - gap;
+    y0 = bottom;
+    y1 = bottom + fractions(:, k);
+    handles(k) = patch(ax, [x0 x1 x1 x0]', [y0 y0 y1 y1]', colours(k, :), 'EdgeColor', 'none');
+    bottom = y1;
+end
+end
+
+
+function words = headingLines(words, width, t)
+% The heading on one line, or on two, split at the middle separator, when it would not fit
+% the figure's width at the title size (about 0.55 em a character).
+if numel(words) * 0.55 * t.Font.Title * 96 / 72 < 0.95 * width
+    return
+end
+parts = strsplit(words, '  |  ');
+half = ceil(numel(parts) / 2);
+words = {strjoin(parts(1:half), '  |  '), strjoin(parts(half + 1:end), '  |  ')};
 end
 
 
@@ -631,6 +700,29 @@ if isempty(x)
     y = NaN;
 end
 handle = line(ax, x, y, 'LineStyle', 'none', varargin{:});
+end
+
+
+function handle = note(ax, x, y, words, t, varargin)
+% A small muted annotation in the plots' type.
+handle = text(ax, x, y, words, 'FontName', t.Font.Name, 'FontSize', t.Font.Note, ...
+              'Color', t.Axis, 'Interpreter', 'none', varargin{:});
+end
+
+
+function chanceLine(ax, xSpan, t)
+% The 0.5 line a score or a probability is read against: thin, dashed, behind the data.
+line(ax, xSpan, [0.5 0.5], 'Color', t.SeriesSoft, 'LineStyle', '--', 'LineWidth', 1);
+end
+
+
+function referenceLine(ax, y, label, t)
+% A thin labelled horizontal line across a distribution panel.
+limits = xlim(ax);
+line(ax, limits, [y y], 'Color', t.Series, 'LineWidth', 1.4);
+note(ax, limits(2), y, label, t, 'HorizontalAlignment', 'right', 'VerticalAlignment', 'bottom', ...
+     'Color', t.Ink, 'BackgroundColor', t.Panel, 'Margin', 1);
+xlim(ax, limits);
 end
 
 
@@ -648,16 +740,9 @@ value = values(low) + (position - low) * (values(high) - values(low));
 end
 
 
-function keyLegend(ax, handles, labels, t)
-% A panel's key under its axis label, as in the online figure.
-legend(ax, handles, labels, 'Location', 'southoutside', 'Orientation', 'horizontal', ...
-       'Box', 'off', 'TextColor', t.Muted, 'FontSize', 8, 'AutoUpdate', 'off');
-end
-
-
 function titleText = outcomeTitle(T)
 if all(T.bothSidesPay)
-    titleText = 'Outcomes  (habituation: both side ports pay)';
+    titleText = 'Outcomes (habituation: both side ports pay)';
 else
     titleText = 'Outcomes';
 end
@@ -684,19 +769,49 @@ end
 end
 
 
+function [names, colours] = outcomeRows(T, t)
+% How a trial can end, in the order the rows and the stacks show it, and their colours.
+names = {'Rewarded or correct', 'Not rewarded or incorrect', 'No side poke in time', ...
+         'Hold not completed', 'No hold started'};
+if all(T.bothSidesPay)
+    names(1:2) = {'Rewarded', 'Not rewarded'};
+elseif ~any(T.bothSidesPay)
+    names(1:2) = {'Correct', 'Incorrect'};
+end
+colours = [t.Correct; t.Incorrect; t.NoSidePoke; t.NotHeld; t.NoHold];
+end
+
+
 function row = outcomeRow(T, trials)
-% 1 scored good, 2 scored bad, 3 no side poke, 4 hold not completed, 5 early withdrawal that
-% ended the trial, 6 no hold started.
+% 1 scored good, 2 scored bad, 3 no side poke, 4 hold not completed (the hold window ran out,
+% or an early withdrawal ended the trial), 5 no hold started.
 row = zeros(size(trials));
 outcome = T.outcome(trials);
 chose = ~isnan(T.choice(trials));
 row(chose & T.scored(trials) == 1) = 1;
 row(chose & T.scored(trials) ~= 1) = 2;
 row(~chose & outcome == lum.Outcome.NoResponse) = 3;
-row(~chose & outcome == lum.Outcome.HoldNotCompleted) = 4;
-row(~chose & outcome == lum.Outcome.EarlyWithdrawal) = 5;
-row(~chose & outcome == lum.Outcome.NoInitiation) = 6;
+row(~chose & ismember(outcome, [lum.Outcome.HoldNotCompleted, lum.Outcome.EarlyWithdrawal])) = 4;
+row(~chose & outcome == lum.Outcome.NoInitiation) = 5;
 row(row == 0) = 2;   % CorrectNoReward without a choice cannot happen; kept visible if it does
+end
+
+
+function [labels, members] = holdGroups(holdAsked, started)
+% Trials that started a hold, grouped by the hold asked for: a group per value (to 10 ms)
+% when there are five or fewer, otherwise five equal ranges.
+values = round(holdAsked(started) * 100) / 100;
+distinct = unique(values);
+if numel(distinct) <= 5
+    labels = compose('%.2f', distinct);
+    members = arrayfun(@(v) started & round(holdAsked * 100) / 100 == v, distinct, ...
+                       'UniformOutput', false);
+    return
+end
+edges = linspace(min(values), max(values), 6);
+labels = compose('%.2f-%.2f', [edges(1:end-1); edges(2:end)]');
+group = discretize(holdAsked, edges);
+members = arrayfun(@(g) started & group == g, 1:5, 'UniformOutput', false);
 end
 
 
@@ -792,8 +907,12 @@ upper = max(minimum, 1.15 * max(values));
 end
 
 
-function limits = logLimits(values)
-% The online figure's log-axis limits: a 1-2-5 step holding every value, at least 0.1-1 s.
+function limits = logLimits(values, reachSecond)
+% The online figure's log-axis limits: a 1-2-5 step holding every value, and (unless
+% reachSecond is false) at least 0.1-1 s.
+if nargin < 2
+    reachSecond = true;
+end
 values = values(values > 0 & isfinite(values));
 steps = [1 2 5];
 if isempty(values)
@@ -807,11 +926,36 @@ lower = decade * steps(find(steps * decade <= low, 1, 'last'));
 decade = 10 ^ floor(log10(high));
 candidates = [steps 10] * decade;
 upper = candidates(find(candidates >= high, 1));
-limits = [min(0.1, max(lower, 0.001)), max(1, upper)];
+limits = [max(lower, 0.001), upper];
+if reachSecond
+    limits = [min(0.1, limits(1)), max(1, limits(2))];
+end
 end
 
 
-function colour = mix(colour, amount)
-% A colour faded towards white by (1 - amount).
-colour = 1 - amount * (1 - colour);
+function ticks = logTicks(limits)
+% Ticks on a 1-2-5 step inside the limits; only 1 and 5 of each decade when that is too many.
+decades = floor(log10(limits(1))):ceil(log10(limits(2)));
+ticks = reshape([1; 2; 5] * 10 .^ decades, 1, []);
+ticks = ticks(ticks >= limits(1) * 0.999 & ticks <= limits(2) * 1.001);
+if numel(ticks) > 8
+    ticks = ticks(ismember(round(ticks ./ 10 .^ floor(log10(ticks))), [1 5]));
 end
+end
+
+
+function edges = logEdges(values, limits, nBins)
+% Histogram edges on a log scale, spanning the data's own range inside the axis limits.
+values = values(values > 0 & isfinite(values));
+if isempty(values)
+    edges = logspace(log10(limits(1)), log10(limits(2)), nBins + 1);
+    return
+end
+low = max(limits(1), min(values));
+high = min(limits(2), max(values));
+if high <= low
+    high = low * 1.5;
+end
+edges = logspace(log10(low) - 0.01, log10(high) + 0.01, nBins + 1);
+end
+

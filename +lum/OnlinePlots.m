@@ -46,8 +46,19 @@ classdef OnlinePlots < handle
     %                   (a trained animal's fraction of a second and a naive one's several
     %                   seconds on one panel)
     %     Centre hold   Per trial, how long the animal stayed in the centre port on its
-    %                   last hold (completed or broken), against the hold asked for
-    %                   (latency plus hold)
+    %                   last hold, against the hold asked for (latency plus hold): a dot
+    %                   where the hold was completed, at any attempt (lum.holdMeasures), a
+    %                   grey cross where it was not
+    %
+    % The centre hold counts as completed however many early withdrawals came before it: in
+    % the operator's view a mouse that withdrew, came back and held for the full time held.
+    % How many attempts it took is in the summary plots (09_HoldAttempts), not here: the
+    % figure has no room for a fifth panel in its bottom row. A trial that ended with no
+    % completed hold (no hold started, an early withdrawal under 'End trial', or every hold
+    % broken until the hold window ran out) is a trial without a choice, grey, in Outcomes.
+    %
+    % Colours and type come from lum.gui.theme through lum.gui.styleAxes and
+    % lum.gui.panelLegend, shared with the summary plots and the sleep figure.
     %
     % The header's summary line gives the water drunk so far, side and centre rewards
     % counted apart, and the hold the running trial asks for. The trial number and the
@@ -86,6 +97,7 @@ classdef OnlinePlots < handle
         nSlots = 4
         maxSegments
         bothSidesPay            % Habituation: choices are scored by the reward, not the side
+        lightOn                 % The session delivers light (S.Session.UseOpto)
 
         rasterOfPattern       % Outcome-raster y of each pattern
         psychometricIndex     % Psychometric point each pattern counts towards
@@ -110,7 +122,7 @@ classdef OnlinePlots < handle
         biasLeftY             % P(chose left) over the last biasWindow choices, per trial
         biasTargetY           % The P(left) bias correction aimed for, per trial
         heldCompletedY        % Seconds in the centre port on a completed hold, per trial
-        heldBrokenY           % ... on a hold that broke
+        notHeldY              % ... on the last hold of a trial that completed none
         holdAskedY            % Latency plus the hold the trial asked for
         latency               % S.Stimulus.Latency, part of the time asked for
         choseLeft             % One entry per choice made: 1 left, 0 right
@@ -164,11 +176,13 @@ classdef OnlinePlots < handle
             end
             obj.stimulusSet = stimulusSet;
             obj.theme = lum.gui.theme();
+            obj.theme.Font = obj.theme.FontCompact;   % Nine panels in one window
             obj.clock = tic;
 
             nTrials = S.Session.MaxTrials;
             obj.movingWindow = min(50, max(10, round(nTrials / 20)));
             obj.bothSidesPay = S.Task.TrainingStage == 1;
+            obj.lightOn = S.Session.UseOpto;
             obj.biasWindow = max(1, round(S.GUI.BiasWindow));
             obj.maxSegments = max([1, stimulusSet.nTimers]);
             blank = NaN(1, nTrials);
@@ -176,7 +190,7 @@ classdef OnlinePlots < handle
              obj.performanceY, obj.leftPerformanceY, obj.rightPerformanceY, ...
              obj.reactionTimes, obj.leftReactionY, obj.rightReactionY, ...
              obj.medianReactionY, obj.biasLeftY, obj.biasTargetY, obj.choseLeft, ...
-             obj.heldCompletedY, obj.heldBrokenY, obj.holdAskedY] = deal(blank);
+             obj.heldCompletedY, obj.notHeldY, obj.holdAskedY] = deal(blank);
             obj.latency = S.Stimulus.Latency;
             obj.planeX = NaN(4, nTrials);
             obj.planeY = NaN(4, nTrials);
@@ -195,7 +209,7 @@ classdef OnlinePlots < handle
 
             t = obj.theme;
             obj.Figure = figure('Name', 'LuminoseFM - online', 'NumberTitle', 'off', ...
-                                'MenuBar', 'none', 'ToolBar', 'none', 'Color', t.Background, ...
+                                'MenuBar', 'none', 'ToolBar', 'none', 'Color', t.PlotBackground, ...
                                 'Position', [80 60 1320 820], 'Visible', p.Results.Visible, ...
                                 'CloseRequestFcn', @hideInstead);
             if ~isempty(BpodSystem) && isobject(BpodSystem)
@@ -204,7 +218,7 @@ classdef OnlinePlots < handle
 
             obj.buildHeader(S, char(p.Results.Subject), p.Results.HouseLight);
             body = uipanel(obj.Figure, 'Units', 'normalized', 'Position', [0 0 1 0.93], ...
-                           'BorderType', 'none', 'BackgroundColor', t.Background);
+                           'BorderType', 'none', 'BackgroundColor', t.PlotBackground);
             % Twelve columns, so the top row keeps its one-to-three split, the middle
             % row holds three panels of equal width and the bottom row four.
             tiles = tiledlayout(body, 3, 12, 'TileSpacing', 'compact', 'Padding', 'compact');
@@ -258,9 +272,9 @@ classdef OnlinePlots < handle
                 'YLim', logLimits(obj.reactionTimes(first:trialNumber)));
 
             set(h.heldCompleted, 'YData', obj.heldCompletedY);
-            set(h.heldBroken, 'YData', obj.heldBrokenY);
+            set(h.notHeld, 'YData', obj.notHeldY);
             set(h.holdAsked, 'YData', obj.holdAskedY);
-            onScreen = [obj.heldCompletedY(first:trialNumber), obj.heldBrokenY(first:trialNumber), ...
+            onScreen = [obj.heldCompletedY(first:trialNumber), obj.notHeldY(first:trialNumber), ...
                         obj.holdAskedY(first:trialNumber)];
             set(obj.axesOf.centreHold, 'XLim', xLimits, 'YLim', [0, niceCeiling(onScreen, 0.5)]);
 
@@ -339,9 +353,9 @@ classdef OnlinePlots < handle
             end
             t = obj.theme;
             parts = obj.summaryParts(trialNumber);
-            plain = ['\rm', texColour(t.Muted)];
+            plain = ['\rm', texColour(t.Axis)];
             markup = ['\bf', texColour(t.Ink), parts{1}, plain, parts{2}, ...
-                      '\bf', texColour(t.Accent), parts{3}, plain, parts{4}];
+                      '\bf', texColour(t.Left), parts{3}, plain, parts{4}];
         end
 
         function parts = summaryParts(obj, trialNumber)
@@ -458,12 +472,12 @@ classdef OnlinePlots < handle
             end
 
             % The centre hold: what the animal held on its last attempt, against what the
-            % trial asked for.
+            % trial asked for; completed at any attempt, or not at all (lum.holdMeasures).
             obj.holdAskedY(n) = obj.latency + spec.HoldDuration;
-            if lum.HoldShaping.completedHold(result.Outcome)
+            if result.HoldCompleted
                 obj.heldCompletedY(n) = result.CentreHoldTime;
             else
-                obj.heldBrokenY(n) = result.CentreHoldTime;
+                obj.notHeldY(n) = result.CentreHoldTime;
             end
 
             % Moving-window performance, from the window alone.
@@ -499,11 +513,14 @@ classdef OnlinePlots < handle
 
             % The light the trial actually delivered: none on a light-off trial. A small
             % fixed jitter per trial keeps repeated patterns from hiding one another,
-            % without touching the global random stream that draws sides.
+            % without touching the global random stream that draws sides. A session without
+            % light draws nothing here (the panel says so).
             lit = double(spec.OptoOn);
             series = 2 * (1 - scored) + result.Choice;   % 1..4, see planeX
-            obj.planeX(series, n) = lit * obj.lightA(spec.PatternIndex) + jitter(n, 0.6180339887);
-            obj.planeY(series, n) = lit * obj.lightB(spec.PatternIndex) + jitter(n, 0.7548776662);
+            if obj.lightOn
+                obj.planeX(series, n) = lit * obj.lightA(spec.PatternIndex) + jitter(n, 0.6180339887);
+                obj.planeY(series, n) = lit * obj.lightB(spec.PatternIndex) + jitter(n, 0.7548776662);
+            end
 
             point = obj.psychometricIndex(spec.PatternIndex);
             if point >= 1
@@ -543,13 +560,13 @@ classdef OnlinePlots < handle
                     role = sprintf('queued #%d', trial);
                     sideText = sideOf(obj.stimulusSet.PatternPLeft(index));
                 end
-                lightOn = nextSpec.OptoOn;
+                lightNow = nextSpec.OptoOn;
                 group = obj.stimulusSet.PatternGroup(index);
                 groupText = 'no group';
                 if group >= 1
                     groupText = obj.stimulusSet.GroupLabels{group};
                 end
-                if ~lightOn
+                if ~lightNow
                     groupText = sprintf('%s (light off)', groupText);
                 end
                 set(label, 'String', sprintf('%s\n%s %s %s', role, groupText, arrow, sideText));
@@ -571,7 +588,7 @@ classdef OnlinePlots < handle
                     vertices(4 * r - 3:4 * r, :) = [x0 y(1); x1 y(1); x1 y(2); x0 y(2)];
                 end
                 set(patchHandle, 'Vertices', vertices, 'FaceVertexCData', colours, ...
-                    'FaceAlpha', 0.25 + 0.75 * double(lightOn));
+                    'FaceAlpha', 0.25 + 0.75 * double(lightNow));
             end
         end
 
@@ -579,7 +596,7 @@ classdef OnlinePlots < handle
             % What Performance and By side plot: the fraction of choices correct, or in
             % habituation the fraction of trials rewarded.
             if obj.bothSidesPay
-                label = 'Fraction of trials rewarded';
+                label = 'Fraction rewarded';
             else
                 label = 'Fraction correct';
             end
@@ -598,7 +615,7 @@ classdef OnlinePlots < handle
             % A strip across the top: logo, what session this is, and the summary.
             t = obj.theme;
             header = uipanel(obj.Figure, 'Units', 'normalized', 'Position', [0 0.93 1 0.07], ...
-                             'BorderType', 'none', 'BackgroundColor', t.Background);
+                             'BorderType', 'none', 'BackgroundColor', t.PlotBackground);
             logoImage = lum.gui.logo(48);
             if ~isempty(logoImage)
                 logoAxes = axes('Parent', header, 'Units', 'normalized', ...
@@ -622,8 +639,8 @@ classdef OnlinePlots < handle
                                 obj.stimulusSet.nGroups, obj.stimulusSet.Seed, breakText);
             obj.titleControl = uicontrol(header, 'Style', 'text', 'Units', 'normalized', ...
                       'Position', [0.05 0.5 0.8 0.42], 'String', titleText, 'FontSize', 12, ...
-                      'FontWeight', 'bold', 'HorizontalAlignment', 'left', ...
-                      'BackgroundColor', t.Background, 'ForegroundColor', t.Ink);
+                      'FontName', t.Font.Name, 'FontWeight', 'bold', 'HorizontalAlignment', 'left', ...
+                      'BackgroundColor', t.PlotBackground, 'ForegroundColor', t.Ink);
             fitToWidth(obj.titleControl, 12, 8);  % A long family label shrinks, not clips
             obj.handles.houseLight = lum.gui.houseLightSwitch(header, [0.87 0.5 0.12 0.42], ...
                                                               houseLight, t);
@@ -636,22 +653,22 @@ classdef OnlinePlots < handle
             disableDefaultInteractivity(summaryAxes);
             obj.handles.summary = text(summaryAxes, 0, 0.5, 'Waiting for the first trial', ...
                       'Interpreter', 'tex', 'FontSize', 10, ...
-                      'FontName', get(groot, 'defaultUicontrolFontName'), ...
+                      'FontName', t.Font.Name, ...
                       'HorizontalAlignment', 'left', 'VerticalAlignment', 'middle', ...
-                      'Color', t.Muted, 'HitTest', 'off');
+                      'Color', t.Axis, 'HitTest', 'off');
         end
 
         function buildOutcomePanel(obj, ax, x)
             t = obj.theme;
-            styleAxes(ax, t, 'Outcomes');
+            lum.gui.styleAxes(ax, 'Outcomes', t);
             obj.axesOf.outcome = ax;
             obj.handles.correct = line(ax, x, obj.correctY, 'LineStyle', 'none', 'Marker', 'o', ...
-                'MarkerSize', 5, 'MarkerFaceColor', t.Correct, 'MarkerEdgeColor', 'none');
+                'MarkerSize', 6, 'MarkerFaceColor', t.Correct, 'MarkerEdgeColor', 'none');
             obj.handles.incorrect = line(ax, x, obj.incorrectY, 'LineStyle', 'none', ...
-                'Marker', 'o', 'MarkerSize', 5, 'MarkerFaceColor', 'none', ...
-                'MarkerEdgeColor', t.Incorrect, 'LineWidth', 1.3);
+                'Marker', 'o', 'MarkerSize', 6, 'MarkerFaceColor', 'none', ...
+                'MarkerEdgeColor', t.Incorrect, 'LineWidth', 1.6);
             obj.handles.noChoice = line(ax, x, obj.noChoiceY, 'LineStyle', 'none', 'Marker', 'x', ...
-                'MarkerSize', 5, 'MarkerEdgeColor', t.NoChoice);
+                'MarkerSize', 6, 'MarkerEdgeColor', t.NoChoice, 'LineWidth', 1.2);
             if rasterByEvidence(obj.stimulusSet)
                 span = [min(obj.stimulusSet.Evidence), max(obj.stimulusSet.Evidence)];
                 pad = max(0.05 * diff(span), 0.02);
@@ -664,16 +681,16 @@ classdef OnlinePlots < handle
             end
             xlabel(ax, 'Trial');
             set(ax, 'XLim', [0.5, obj.nTrialsToShow + 0.5]);
-            panelLegend(ax, [obj.handles.correct, obj.handles.incorrect, obj.handles.noChoice], ...
-                        [obj.scoreLabels(), {'no choice'}], t);
+            lum.gui.panelLegend(ax, [obj.handles.correct, obj.handles.incorrect, obj.handles.noChoice], ...
+                                [obj.scoreLabels(), {'no choice'}], t);
             if obj.bothSidesPay
-                ax.Title.String = 'Outcomes  (habituation: both side ports pay)';
+                ax.Title.String = 'Outcomes (habituation: both side ports pay)';
             end
         end
 
         function buildUpcomingPanel(obj, ax)
             t = obj.theme;
-            styleAxes(ax, t, 'Now and next');
+            lum.gui.styleAxes(ax, 'Now and next', t);
             obj.axesOf.upcoming = ax;
             window = obj.stimulusSet.Duration;
             faces = reshape(1:4 * obj.maxSegments, 4, obj.maxSegments)';
@@ -691,65 +708,65 @@ classdef OnlinePlots < handle
                     'FaceColor', 'flat', 'FaceVertexCData', repmat(t.ChannelA, obj.maxSegments, 1), ...
                     'EdgeColor', 'none');
                 obj.handles.slotLabels(s) = text(ax, -0.04 * window, centre, '', ...
-                    'HorizontalAlignment', 'right', 'FontSize', 8, 'Color', t.Ink, ...
-                    'Interpreter', 'none');
+                    'HorizontalAlignment', 'right', 'FontSize', t.Font.Note, 'FontName', t.Font.Name, ...
+                    'Color', t.Ink, 'Interpreter', 'none');
             end
             set(ax, 'XLim', [-0.9 * window, 1.02 * window], 'YLim', [0.45, obj.nSlots + 0.55], ...
                 'YTick', [], 'XTick', [0 window], 'XGrid', 'off', 'YGrid', 'off');
             xlabel(ax, 'Stimulus window (s)');
             % Which lane is which, in the title rather than above the lanes, where it ran
             % into the title.
-            ax.Title.String = sprintf('Now and next   %s A above   %s B below', ...
+            ax.Title.String = sprintf('Now and next   %sA above   %sB below', ...
                                       texColour(t.ChannelA), texColour(t.ChannelB));
         end
 
         function buildPerformancePanel(obj, ax, x)
             t = obj.theme;
-            styleAxes(ax, t, sprintf('Performance, %d-trial window', obj.movingWindow));
+            lum.gui.styleAxes(ax, sprintf('Performance, %d-trial window', obj.movingWindow), t);
             obj.axesOf.performance = ax;
-            line(ax, [0 numel(x)], [0.5 0.5], 'Color', t.Faint, 'LineStyle', '--', 'LineWidth', 1);
+            chanceLine(ax, [0 numel(x)], t);
             obj.handles.leftPerformance = line(ax, x, obj.leftPerformanceY, 'Color', t.Left, ...
-                                               'LineWidth', 1);
+                                               'LineWidth', 1.6);
             obj.handles.rightPerformance = line(ax, x, obj.rightPerformanceY, 'Color', t.Right, ...
-                                                'LineWidth', 1);
-            obj.handles.performance = line(ax, x, obj.performanceY, 'Color', t.Ink, 'LineWidth', 2);
+                                                'LineWidth', 1.6);
+            obj.handles.performance = line(ax, x, obj.performanceY, 'Color', t.Series, 'LineWidth', 2.4);
             set(ax, 'YLim', [0 1], 'XLim', [0 20]);
             xlabel(ax, 'Trial');
             ylabel(ax, obj.scoreAxisLabel());
-            panelLegend(ax, [obj.handles.performance, obj.handles.leftPerformance, ...
-                             obj.handles.rightPerformance], {'all', 'left-rewarded', 'right-rewarded'}, t);
+            lum.gui.panelLegend(ax, [obj.handles.performance, obj.handles.leftPerformance, ...
+                                     obj.handles.rightPerformance], {'all', 'left-rewarded', 'right-rewarded'}, t);
         end
 
         function buildPsychometricPanel(obj, ax, layout)
             t = obj.theme;
-            styleAxes(ax, t, layout.Title);
+            lum.gui.styleAxes(ax, layout.Title, t);
             obj.axesOf.psychometric = ax;
             span = [min(layout.X), max(layout.X)];
             pad = 0.5;  % Half a group
             if isempty(layout.TickLabels) && diff(span) > 0
                 pad = 0.08 * diff(span);
             end
-            line(ax, span + [-pad pad], [0.5 0.5], 'Color', t.Faint, 'LineStyle', '--');
-            target = line(ax, layout.X, layout.Target, 'Color', t.Muted, 'LineStyle', ':', ...
-                          'Marker', 'd', 'MarkerSize', 5, 'MarkerEdgeColor', t.Muted, 'LineWidth', 1);
+            chanceLine(ax, span + [-pad pad], t);
+            target = line(ax, layout.X, layout.Target, 'Color', t.SeriesSoft, 'LineStyle', ':', ...
+                          'Marker', 'd', 'MarkerSize', 7, 'MarkerEdgeColor', t.SeriesSoft, 'LineWidth', 1.4);
             nPoints = numel(layout.X);
             obj.handles.psychometric = errorbar(ax, layout.X, NaN(1, nPoints), ...
-                zeros(1, nPoints), zeros(1, nPoints), 'Color', t.Accent, 'LineWidth', 1.5, ...
-                'Marker', 'o', 'MarkerSize', 6, 'MarkerFaceColor', t.Accent, 'CapSize', 0);
+                zeros(1, nPoints), zeros(1, nPoints), 'Color', t.Series, 'LineWidth', 2, ...
+                'Marker', 'o', 'MarkerSize', 8, 'MarkerFaceColor', t.Series, 'CapSize', 0);
             set(ax, 'YLim', [0 1], 'XLim', span + [-pad pad]);
             if ~isempty(layout.TickLabels)
                 set(ax, 'XTick', layout.X, 'XTickLabel', layout.TickLabels);
             end
             xlabel(ax, layout.XLabel);
             ylabel(ax, 'P(choose left)');
-            panelLegend(ax, [obj.handles.psychometric, target], {'chose left', 'contingency'}, t);
+            lum.gui.panelLegend(ax, [obj.handles.psychometric, target], {'chose left', 'contingency'}, t);
         end
 
         function buildEvidencePanel(obj, ax)
             % Choices in the plane of the evidence on A against the evidence on B.
             t = obj.theme;
-            styleAxes(ax, t, sprintf('Evidence, u_A vs u_B, by choice  (%s left, %s right)', ...
-                                     char(9664), char(9654)));
+            lum.gui.styleAxes(ax, sprintf('Evidence, u_A vs u_B (%s left, %s right)', ...
+                                          char(9664), char(9654)), t);
             obj.axesOf.evidence = ax;
             % The line the contingency divides the plane along, where it is one.
             edge = struct('Kind', 'diagonal', 'Value', NaN);
@@ -758,18 +775,18 @@ classdef OnlinePlots < handle
             end
             switch edge.Kind
                 case 'diagonal'
-                    line(ax, [0 1], [0 1], 'Color', t.Faint, 'LineStyle', '--', 'LineWidth', 1);
+                    line(ax, [0 1], [0 1], 'Color', t.SeriesSoft, 'LineStyle', '--', 'LineWidth', 1);
                 case 'vertical'
-                    line(ax, [1 1] * edge.Value, [0 1], 'Color', t.Faint, 'LineStyle', '--', ...
+                    line(ax, [1 1] * edge.Value, [0 1], 'Color', t.SeriesSoft, 'LineStyle', '--', ...
                          'LineWidth', 1);
                 case 'horizontal'
-                    line(ax, [0 1], [1 1] * edge.Value, 'Color', t.Faint, 'LineStyle', '--', ...
+                    line(ax, [0 1], [1 1] * edge.Value, 'Color', t.SeriesSoft, 'LineStyle', '--', ...
                          'LineWidth', 1);
                 case 'line'
                     % u_B = Slope * u_A + Intercept: a mixture ratio through the origin, or a
                     % difference parallel to the diagonal. The axes clip it to the plane.
                     x = [-0.1 1.1];
-                    line(ax, x, edge.Slope * x + edge.Intercept, 'Color', t.Faint, ...
+                    line(ax, x, edge.Slope * x + edge.Intercept, 'Color', t.SeriesSoft, ...
                          'LineStyle', '--', 'LineWidth', 1);
             end
             nTrials = size(obj.planeX, 2);
@@ -781,29 +798,36 @@ classdef OnlinePlots < handle
                 if k <= 2
                     style = {'MarkerFaceColor', t.Correct, 'MarkerEdgeColor', 'none'};
                 else
-                    style = {'MarkerFaceColor', 'none', 'MarkerEdgeColor', t.Incorrect, 'LineWidth', 1};
+                    style = {'MarkerFaceColor', 'none', 'MarkerEdgeColor', t.Incorrect, 'LineWidth', 1.4};
                 end
                 obj.handles.plane(k) = line(ax, blank, blank, 'LineStyle', 'none', ...
-                    'Marker', markers{k}, 'MarkerSize', 5, style{:});
+                    'Marker', markers{k}, 'MarkerSize', 7, style{:});
             end
-            set(ax, 'XLim', [-0.06 1.06], 'YLim', [-0.06 1.06], 'XTick', 0:0.5:1, 'YTick', 0:0.5:1);
-            xlabel(ax, 'u_A, evidence on A (fraction of the window lit)');
-            ylabel(ax, 'u_B, evidence on B');
-            panelLegend(ax, obj.handles.plane([1 3]), obj.scoreLabels(), t);
+            set(ax, 'XLim', [-0.06 1.06], 'YLim', [-0.06 1.06], 'XTick', 0:0.5:1, 'YTick', 0:0.5:1, ...
+                'XGrid', 'on');
+            if ~obj.lightOn
+                % Every choice would sit at the origin: say why rather than show a blob.
+                text(ax, 0.5, 0.5, 'No light in this session', 'HorizontalAlignment', 'center', ...
+                     'FontName', t.Font.Name, 'FontSize', t.Font.Label, 'Color', t.Axis);
+            end
+            xlabel(ax, 'u_A (fraction of window lit)');
+            ylabel(ax, 'u_B');
+            lum.gui.panelLegend(ax, obj.handles.plane([1 3]), obj.scoreLabels(), t);
         end
 
         function buildBarPanel(obj, ax)
             t = obj.theme;
-            styleAxes(ax, t, 'By side');
+            lum.gui.styleAxes(ax, 'By side', t);
             obj.axesOf.bars = ax;
-            obj.handles.bars = bar(ax, 1:2, NaN(1, 2), 0.55, 'FaceColor', 'flat', ...
+            obj.handles.bars = bar(ax, 1:2, NaN(1, 2), 0.5, 'FaceColor', 'flat', ...
                                    'EdgeColor', 'none');
             obj.handles.bars.CData = [t.Left; t.Right];
-            line(ax, [0.4 2.6], [0.5 0.5], 'Color', t.Faint, 'LineStyle', '--');
+            chanceLine(ax, [0.4 2.6], t);
             obj.handles.barCounts = gobjects(1, 2);
             for k = 1:2
                 obj.handles.barCounts(k) = text(ax, k, 0.06, '0', 'HorizontalAlignment', 'center', ...
-                                                'FontSize', 8, 'Color', t.Muted);
+                                                'FontSize', t.Font.Note, 'FontName', t.Font.Name, ...
+                                                'Color', t.Axis);
             end
             set(ax, 'YLim', [0 1.12], 'XLim', [0.4 2.6], 'XTick', 1:2, ...
                 'XTickLabel', {'left-rewarded', 'right-rewarded'}, 'XGrid', 'off');
@@ -812,55 +836,55 @@ classdef OnlinePlots < handle
 
         function buildBiasPanel(obj, ax, x)
             t = obj.theme;
-            styleAxes(ax, t, sprintf('Side bias, last %d choices', obj.biasWindow));
+            lum.gui.styleAxes(ax, sprintf('Side bias, last %d choices', obj.biasWindow), t);
             obj.axesOf.bias = ax;
-            line(ax, [0 numel(x)], [0.5 0.5], 'Color', t.Faint, 'LineStyle', '--', 'LineWidth', 1);
-            obj.handles.biasTarget = line(ax, x, obj.biasTargetY, 'Color', t.Muted, ...
-                                          'LineStyle', ':', 'LineWidth', 1.2);
-            obj.handles.biasLeft = line(ax, x, obj.biasLeftY, 'Color', t.Left, 'LineWidth', 2);
+            chanceLine(ax, [0 numel(x)], t);
+            obj.handles.biasTarget = line(ax, x, obj.biasTargetY, 'Color', t.SeriesSoft, ...
+                                          'LineStyle', ':', 'LineWidth', 1.6);
+            obj.handles.biasLeft = line(ax, x, obj.biasLeftY, 'Color', t.Left, 'LineWidth', 2.4);
             set(ax, 'YLim', [0 1], 'XLim', [0 20]);
             xlabel(ax, 'Trial');
             ylabel(ax, 'P(left)');
-            panelLegend(ax, [obj.handles.biasLeft, obj.handles.biasTarget], ...
-                        {'chose left', 'bias correction target'}, t);
+            lum.gui.panelLegend(ax, [obj.handles.biasLeft, obj.handles.biasTarget], ...
+                                {'chose left', 'correction target'}, t);
         end
 
         function buildReactionTimePanel(obj, ax, x)
             t = obj.theme;
-            styleAxes(ax, t, 'Reaction time, from leaving the centre port');
+            lum.gui.styleAxes(ax, 'Reaction time', t);
             obj.axesOf.reaction = ax;
             obj.handles.leftReaction = line(ax, x, obj.leftReactionY, 'LineStyle', 'none', ...
-                'Marker', '.', 'MarkerSize', 10, 'Color', t.Left);
+                'Marker', '.', 'MarkerSize', 14, 'Color', t.Left);
             obj.handles.rightReaction = line(ax, x, obj.rightReactionY, 'LineStyle', 'none', ...
-                'Marker', '.', 'MarkerSize', 10, 'Color', t.Right);
-            obj.handles.medianReaction = line(ax, x, obj.medianReactionY, 'Color', t.Ink, ...
-                                              'LineWidth', 1.2);
+                'Marker', '.', 'MarkerSize', 14, 'Color', t.Right);
+            obj.handles.medianReaction = line(ax, x, obj.medianReactionY, 'Color', t.Series, ...
+                                              'LineWidth', 2);
             ticks = [0.01 0.02 0.05 0.1 0.2 0.5 1 2 5 10 20 50 100];
             set(ax, 'YScale', 'log', 'YLim', logLimits([]), 'YTick', ticks, ...
-                'YTickLabel', compose('%g', ticks), 'YMinorGrid', 'off', ...
+                'YTickLabel', compose('%g', ticks), 'YMinorGrid', 'off', 'YMinorTick', 'off', ...
                 'XLim', [0.5, obj.nTrialsToShow + 0.5]);
             xlabel(ax, 'Trial');
             ylabel(ax, 'Seconds (log)');
-            panelLegend(ax, [obj.handles.leftReaction, obj.handles.rightReaction, ...
-                             obj.handles.medianReaction], {'chose left', 'chose right', 'median'}, t);
+            lum.gui.panelLegend(ax, [obj.handles.leftReaction, obj.handles.rightReaction, ...
+                                     obj.handles.medianReaction], {'left', 'right', 'median'}, t);
         end
 
         function buildCentreHoldPanel(obj, ax, x)
             % Time in the centre port on each trial's last hold, and the time asked for.
             t = obj.theme;
-            styleAxes(ax, t, 'Centre hold, time in the port');
+            lum.gui.styleAxes(ax, 'Centre hold', t);
             obj.axesOf.centreHold = ax;
-            obj.handles.holdAsked = line(ax, x, obj.holdAskedY, 'Color', t.Muted, ...
-                                         'LineWidth', 1.2, 'LineStyle', '-');
+            obj.handles.holdAsked = line(ax, x, obj.holdAskedY, 'Color', t.Series, ...
+                                         'LineWidth', 1.8, 'LineStyle', '-');
             obj.handles.heldCompleted = line(ax, x, obj.heldCompletedY, 'LineStyle', 'none', ...
-                'Marker', '.', 'MarkerSize', 10, 'Color', t.Correct);
-            obj.handles.heldBroken = line(ax, x, obj.heldBrokenY, 'LineStyle', 'none', ...
-                'Marker', 'x', 'MarkerSize', 5, 'Color', t.Incorrect);
+                'Marker', '.', 'MarkerSize', 14, 'Color', t.Correct);
+            obj.handles.notHeld = line(ax, x, obj.notHeldY, 'LineStyle', 'none', ...
+                'Marker', 'x', 'MarkerSize', 7, 'Color', t.NotHeld, 'LineWidth', 1.4);
             set(ax, 'YLim', [0 0.5], 'XLim', [0.5, obj.nTrialsToShow + 0.5]);
             xlabel(ax, 'Trial');
-            ylabel(ax, 'Seconds');
-            panelLegend(ax, [obj.handles.heldCompleted, obj.handles.heldBroken, obj.handles.holdAsked], ...
-                        {'completed', 'broken', 'asked for'}, t);
+            ylabel(ax, 'Seconds in the port');
+            lum.gui.panelLegend(ax, [obj.handles.heldCompleted, obj.handles.notHeld, obj.handles.holdAsked], ...
+                                {'completed', 'not completed', 'asked for'}, t);
         end
     end
 end
@@ -920,25 +944,10 @@ tf = stimulusSet.Continuous && hasEvidence(stimulusSet) ...
 end
 
 
-function styleAxes(ax, t, titleText)
-% The look every panel shares.
-set(ax, 'Color', t.Panel, 'XColor', t.Muted, 'YColor', t.Muted, 'GridColor', t.Faint, ...
-    'GridAlpha', 1, 'Box', 'off', 'TickDir', 'out', 'FontSize', 9, 'LineWidth', 0.75, ...
-    'XGrid', 'on', 'YGrid', 'on');
-ax.Title.String = titleText;
-ax.Title.FontWeight = 'bold';
-ax.Title.FontSize = 10;
-ax.Title.Color = t.Ink;
-ax.TitleHorizontalAlignment = 'left';
-hold(ax, 'on');
-end
 
-
-function panelLegend(ax, handles, labels, t)
-% A panel's key: one row under its axis label, where it covers no data and leaves the
-% title where every panel has it.
-legend(ax, handles, labels, 'Location', 'southoutside', 'Orientation', 'horizontal', ...
-       'Box', 'off', 'TextColor', t.Muted, 'FontSize', 8, 'AutoUpdate', 'off');
+function chanceLine(ax, xSpan, t)
+% The 0.5 line a score or a probability is read against: thin, dashed, behind the data.
+line(ax, xSpan, [0.5 0.5], 'Color', t.SeriesSoft, 'LineStyle', '--', 'LineWidth', 1);
 end
 
 

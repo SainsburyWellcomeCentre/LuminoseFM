@@ -29,6 +29,11 @@ Tests play the mouse with `tests/startMouse.m`: a timer that puts scripted pokes
 emulated state machine, the way the console's buttons do, without calling `ManualOverride` (see
 below).
 
+Nothing else should draw from a timer while an emulated session runs. A timer that exported the
+figures (`exportapp`) every 6 s stalled a desktop session for good after its first trial: the
+export ran inside the emulator loop's `drawnow`, and the loop never went on. To record how a
+session looks, take screenshots from outside MATLAB.
+
 ---
 
 ## How the emulator differs from this rig

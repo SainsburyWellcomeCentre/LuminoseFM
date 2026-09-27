@@ -47,7 +47,7 @@ once it has passed.
 | [P10](#p10-what-094-changed-seen-in-a-desktop-session-094) | a refused reward volume and the hold plot in a desktop session | 0.9.4 |
 | [P11](#p11-the-light-playing-on-after-a-short-hold-095) | light at the fiber tips after a short hold (step 1 can run headless) | 0.9.5 |
 | [P12](#p12-what-096-changed-in-a-desktop-session-096) | the mouse-drawn crop, crops per session type, the carried hold, the memory after a desktop behaviour session | 0.9.6 |
-| [P13](#p13-the-hold-on-the-timing-panel-the-wrapped-header-and-the-summary-plots-098) | the runtime hold, the wrapped header, the teardown's plots, the 0 s ITI (step 4 can run headless) | 0.9.8 |
+| [P13](#p13-the-hold-on-the-timing-panel-the-wrapped-header-and-the-summary-plots-098) | the runtime hold, the wrapped header, the teardown's plots on screen, the animal and the 0 s ITI (step 4's file checks passed 2026-09-27) | 0.9.8 |
 
 ### P4. Calibrate the 2-to-19 bundle (0.9.1)
 
@@ -190,7 +190,8 @@ The pieces are tested under the emulator; these need the desktop MATLAB and the 
 3. End the session with the End button. The console says *writing its summary plots and log* and then
    where they went; note how many seconds it took (the line after it). Open `Session Plots` and
    `Session Logs` beside `Session Data`, and look through one of each.
-4. **The 0 s ITI.** Can be run headless with permission (no animal). A behaviour session with light
+4. **The 0 s ITI.** The file and camera checks passed on 2026-09-27 (*Done*); what is left is the
+   animal at the rig. Can be run headless with permission (no animal). A behaviour session with light
    at the default ITI of 0 s, some trials lapsing (no poke): from the file, every trial after the
    first starts (`TrialStartTimestamp(k+1)`) within about 0.5 s of the previous one's end
    (`TrialEndTimestamp(k)`), a gap close to `Timing.prepare(k) + Timing.send(k)`, and no trial is
@@ -200,6 +201,27 @@ The pieces are tested under the emulator; these need the desktop MATLAB and the 
    trial).
 
 ## Done
+
+### 2026-09-27 — 0.9.9's plots on the rig and P13 step 4, no animal, fibers terminated, run by an agent with the operator's permission
+
+The operator was away from the rig. First the whole suite under the emulator: 602 of 603 passed
+(the usual SpinCam skip), no lint messages, including the two new rendering tests (every title,
+label and key of the live figures inside the window, none running into another). Then, in
+separate processes on COM3 (no other MATLAB running, COM3 free):
+
+| Check | Result |
+|-------|--------|
+| `CheckRig` (`-batch`) | 11 of 11 ok: r2_Plus, firmware 23, 16 global timers; HiFi1 on COM8; Flex analog in and sync out; PulsePal; Doric LED; liquid calibration 14.4 / 13.1 ms for 1 µL |
+| Behaviour session `FakeSubject_LuminoseFM_20260927_215021` in a **desktop** MATLAB (files in `%TEMP%\LuminoseFM_rigcheck`): Training, light on both channels (2-to-19, uncalibrated: 100 mA), video, *Task events* sync, ITI 0 s, hold window 3 s, tabbed runtime window, LED and camera windows open; 96 virtual pokes from a timer writing `'V'` bytes (the timer draws nothing) | Ran to its 24 trials in 130 s under `BpodTrialManager`: 10 correct, 3 incorrect, 11 lapses (`NoInitiation`); 13 holds completed, 9 of them at the first attempt. Version recorded `0.9.9+267e103`. The online figure saved at teardown (`_plots.png`) and the 12 summary plots and log are drawn in the 0.9.9 scheme with every label inside; summary plots and log took 18.5 s (150 dpi) |
+| MATLAB's time per trial | prepare 123 ms, send 32, plot **231** (LUMS0014's 0.9.7 session: 236), save 38 (medians): the 0.9.9 plots cost no more |
+| P13 step 4, the 0 s ITI | Every trial started 11–338 ms after the one before ended (median 176 ms), 16 ms (median) more than that trial's prepare + send; none lost or late. `BpodTrialManager` printed its *inter-trial dead time > 500 µs* warning 23 times: expected with a 0 s ITI in a session with light (CLAUDE.md, *The ITI is 0 s*) |
+| Cameras | 10,630 / 10,631 frames, none missed or dropped; both decoded barcode `0CADAEBA` as Behaviour; every `NoInitiation` (20 ms, two frame periods) followed by the line low for at least 3 frames before the next trial's rise; the only 2-frame low runs are the barcode's bits |
+| Flex analog | 100,253 samples merged |
+
+Not seen: the windows on screen during the rig session. The operator's remote-desktop session
+disconnected part way (`qwinsta`: `Disc`, the lock screen up), so screenshots were blank; the
+windows kept drawing, and `_plots.png` is the online figure as drawn. An emulated session in a
+desktop MATLAB earlier the same evening was watched on screen (CLAUDE.md, *Tests and validation*).
 
 ### 2026-09-26 — "Out of memory" after a session found and fixed (0.9.7), no animal, run by an agent with the operator's permission
 

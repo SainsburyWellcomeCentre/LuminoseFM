@@ -1232,8 +1232,38 @@ Plots are named `NN_<Plot>_PP_<subject>_<YYYYMMDD_HHMMSS>.png`: sorted by name, 
 from every session comes together in date order. They reuse the online figure's theme, scoring
 (habituation by the reward, other stages by the side, per trial's stage), psychometric layout and
 raster rule (`lum.OnlinePlots.psychometricLayoutOf`, `rasterByEvidenceOf`), and add what the live
-figure has no room for (outcome reasons, every hold attempt, engagement, port activity, MATLAB's
+figure has no room for (outcome reasons, hold attempts, engagement, port activity, MATLAB's
 timing).
+
+**A hold completed after retries is a completed hold (0.9.9).** In the operator's view a mouse
+that withdrew early, came back and held for the full time held: it goes on to choose and may be
+rewarded. So every plot, the log and the runtime window read the hold from one pure function of
+the trial's states, `lum.holdMeasures` (returned by `lum.scoreTrial` as `HoldCompleted` and
+`HeldFirstAttempt`): *hold completed* is a visit to `CentreReward` or `WaitForCentreExit`; a
+*hold attempt* is each visit to `EarlyWithdrawal` plus the completed hold (a forgiven break under
+grace is part of its attempt); *held on the first attempt* is a completed hold with no early
+withdrawal. The main plots (outcomes, performance, by side, the centre hold, engagement) show only
+whether the hold was completed; early withdrawals are not an outcome category or a colour of
+their own there. A trial with no completed hold keeps its category: *hold not completed* (the
+hold window ran out, or under *End trial* the early withdrawal that ended it; `lum.Outcome`'s
+`HoldNotCompleted` and `EarlyWithdrawal`, merged) or *no hold started*. Attempts get one plot of
+their own, `09_HoldAttempts`: the share of trials held on the first attempt, after early
+withdrawals, not completed and not started, in bins of trials; attempts per trial; the
+first-attempt rate by the hold asked for. It is not in the online figure, whose bottom row has no
+room for a fifth panel. Nothing new is stored: the states give the measures back from any file.
+
+**One look, for print (0.9.9).** `lum.gui.theme` is the only source of colours and of the plots'
+type (one family, one size scale: title 12, axis label 11, tick and key 10 points), applied by
+`lum.gui.styleAxes` and `lum.gui.panelLegend` in the online figure, the sleep figure and the
+summary plots. Plot figures are white with dark axes and labels, and marks are large, so a
+summary plot can go into a figure as it is (150 dpi). The plot colours were chosen with the
+dataviz skill's validator (OKLab distance, Machado colour-vision simulation) and then by the
+operator from rendered options: one meaning each, sides navy and gold, correct sage and
+incorrect rust (apart in lightness, so they stay apart for a red-green colour-blind reader), a
+series with no side or outcome near black, and shape as a second cue (correct filled, incorrect
+open). The live figures use a step smaller type (`FontCompact`), since nine panels share one
+window. No plot
+has a second y-axis: two measures of different scale get two panels.
 
 **Why at the end, from the data.** Nothing extra runs in the trial loop, so the real-time budget
 is untouched; nothing extra is stored in the data file, so the saves stay the size they were; the
@@ -1402,7 +1432,8 @@ MATLAB, power-cycle the state machine and PulsePal).
 `+lum/+report/` (D22): `write` (the behaviour teardown's call), `summaryPlots`, `sessionLog`,
 `sessionTrials` (the one pass over `SessionData` both read), `folder`, `fileTag`, `heading`,
 `replayOnlinePlots` and `fromFile` (a saved session, read only). `lum.trialStatus` is the runtime
-window's trial lines.
+window's trial lines. `lum.holdMeasures` is what all of them, and the online figure, say about a
+trial's hold. `lum.gui.styleAxes` and `lum.gui.panelLegend` give every plot panel the theme's look.
 
 ### Sleep sessions
 `+lum/+sleep/`: `run` (the session sequence), `pulseSchedule` and `syncPulseTimes` (sync pulses),

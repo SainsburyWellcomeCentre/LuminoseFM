@@ -52,6 +52,9 @@ right — D8 in [`architecture.md`](architecture.md).
 | automatic shaping | Training the animal by its performance: now the centre hold (`S.Task.AutoShaping`, method `S.Task.HoldShaping`); later easier and harder trials. On for Habituation and Training, never in an Experiment |
 | step back | Automatic shaping shortening the hold one growth step after `HoldStepBackAfter` early withdrawals at one hold |
 | early withdrawal | Leaving the centre port before the hold is complete, unforgiven (state `EarlyWithdrawal`; `Data.EarlyWithdrawals`) |
+| hold completed | The trial's hold ran its full length, at any attempt: it reached `CentreReward` or `WaitForCentreExit` (`lum.holdMeasures`, `HoldCompleted` from `lum.scoreTrial`). A hold completed after early withdrawals is a completed hold (0.9.9) |
+| hold attempt | A poke that began a hold: each early withdrawal and the completed hold (`lum.holdMeasures` `Attempts`). A forgiven break (grace) is part of its attempt. Without a latency it equals `Data.HoldAttempts`, the visits to `CentreHold`; with one, a withdrawal during the latency is an attempt too |
+| held on the first attempt | The hold was completed with no early withdrawal before it (`HeldFirstAttempt`); the summary plots' `09_HoldAttempts` and the log report its rate |
 | centre reward | Water at the centre port for a completed hold, on habituation's first trials (`S.GUI.CentreRewardAmount`, `S.GUI.CentreRewardTrials`; state `CentreReward`; `Data.CentreReward`, µL) |
 | centre reward again | The centre reward given again, in any stage, on a set number of trials after the operator ticks it in the runtime window (`S.GUI.CentreRewardAgain`, `S.GUI.CentreRewardAgainTrials`) |
 | retry | Going on to the correct port after an unpunished incorrect choice: state `RetryResponse`, then the response window again (`Data.ResponseRetries`). Not "correction trial": the trial is the same one |
@@ -78,6 +81,42 @@ Settings files are converted when loaded. Analysis code reading older **data** f
 names.
 
 Newest first. Each table puts the old behaviour or name on the left and the new on the right.
+
+### 0.9.8 → 0.9.9 — the plots count a hold completed after retries, and one look for every plot
+
+Asked for after LUMS0014's third session, where 881 of 1177 hold attempts were early withdrawals
+but 296 of 307 trials completed their hold: the plots showed those withdrawals as failures.
+
+| 0.9.8 | 0.9.9 |
+|---|---|
+| Whether a hold was completed read from the outcome (`lum.HoldShaping.completedHold`) in the plots and the log | Read from the trial's states by `lum.holdMeasures` (a visit to `CentreReward` or `WaitForCentreExit`), returned by `lum.scoreTrial` as `HoldCompleted` and `HeldFirstAttempt`, and by `lum.report.sessionTrials` as `holdCompleted`, `heldFirstAttempt`, `attempts`. Nothing new stored |
+| Online *Centre hold*: red crosses for "broken" holds | Grey crosses for "not completed" (a trial with no completed hold); green dots for holds completed at any attempt |
+| `01_Outcomes` and `10_Engagement`: *Early withdrawal (trial ended)* its own row and colour | Merged into *Hold not completed* (with the hold window running out); five rows |
+| `08_CentreHold`: every hold attempt's time, early withdrawals in pink | The completed holds' times; the hold asked for with the step backs (moved from `09`) |
+| `09_HoldAttempts`: attempts and early withdrawals per trial on one axis, the hold asked for on a second | Held on the first attempt, after early withdrawals, not completed, no hold started, per bin of trials (10–25); attempts per trial with the bin mean; first-attempt rate by the hold asked for. No second axis |
+| `05_BySide`: three panels (score, choices, trials without a choice) | Two: score by rewarded side, side chosen (trials without a choice counted in the title) |
+| `10_Engagement`: water and trials on two y-axes | Water alone; trial length on its own log range |
+| `12_SessionTiming`: four series on one axis in the channel colours | A small panel each (prepare, send, plot, save), with its median |
+| Log: *Hold attempts: N (x a trial), E early withdrawals; C holds completed* | *Hold completed on C of n trials*; *Held on the first attempt on F trials (…% of trials, …% of completed holds); N hold attempts, E early withdrawals*; the 50-trial table gains *Hold completed* and *Held on the first attempt* |
+| Runtime window: *(3 holds)* | *(held on attempt 3)*, or *(14 hold attempts)* when none was completed |
+| Colours: saturated green and red outcomes, indigo and ochre sides, navy for other series; each plot file styled its own axes; muted grey axes and labels, 8–10 point type, bold titles, off-white figures; summary plots at 110 dpi | `lum.gui.theme`: correct `#78A874` (sage), incorrect `#A6503F` (rust), held after early withdrawals `#B5CFB3`, left `#3E5C76` (navy), right `#D4A72C` (gold), near-black series `#2B3038` and its faint companion `#8A9099`, greys `#7F848B` (no choice), `#C4C7CC` (no side poke), `#5E636B` (hold not completed), `#9DA1A8` (no hold started); channels A and B unchanged. White plot figures, dark axes and tick labels (`#33383F`). `theme().Font`: one family (Segoe UI where installed), title 12, label 11, tick and key 10 points; `FontCompact` (title 10, the rest 9) in the live figures, with shorter axis labels there. `lum.gui.styleAxes` and `lum.gui.panelLegend` style every panel of the online, sleep and summary plots: titles regular weight, horizontal gridlines only, no top or right edge. Summary plots at 150 dpi |
+| Distributions: outlined stairs by side (reaction time), stacked bars with a shaded band (centre hold) | One filled histogram each (every choice's reaction time in grey, the completed holds in green), bins from the data's range and fewer for fewer choices; the median or the hold asked for as a labelled line |
+| Evidence plane in a session without light: every choice a blob at the origin | *No light in this session* |
+
+| `09_HoldAttempts`: equal-width bars, a short last bin drawn off the axis | Each bin spans its own trials |
+| A long heading cut off on a narrow plot (`04_Evidence`, 820 px) | Split onto two lines at the middle separator |
+
+The palette and type were chosen by the operator from rendered options. The data format is
+unchanged. LUMS0014's three sessions were redrawn with `lum.report.fromFile(..., 'OnlinePlots',
+true)` (39 images and 3 logs; a pixel check found no colour of the earlier palettes left). The live
+figures were checked in a desktop MATLAB running an emulated 24-trial training session
+(2026-09-27): the online figure, the tabbed runtime window, `_plots.png`, the summary plots and the
+log. A capture timer calling `exportapp` during that session stalled the emulator after trial 1;
+without it the session ran to its end (CLAUDE.md, *Gotchas*). On the rig the same evening, a
+24-trial session in a desktop MATLAB drew the online figure, summary plots and log in this scheme,
+with MATLAB's plot time per trial unchanged (231 ms median against 236), and passed P13 step 4's
+file checks (`docs/rig-checks.md`, *Done*). New tests: `windowsTest`'s
+`testOnlinePlotsKeepTheirTextInside` and `testSleepPlotsKeepTheirTextInside`.
 
 ### 0.9.7 → 0.9.8 — after LUMS0014's third session: the run limit, the hold as a runtime setting, summary plots and a log
 

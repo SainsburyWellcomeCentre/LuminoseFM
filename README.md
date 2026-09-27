@@ -219,7 +219,11 @@ forgiven.
 Every trial that ends — after the drinking grace, a punishment, no response, no poke, or an early
 withdrawal that ends the trial — goes through `WaitForLightEnd` and then the inter-trial interval
 (`ITI`, 0 s by default), and the next trial starts as soon as MATLAB has prepared and sent it: up
-to about 0.4 s on the rig in a session with light, often at once without light. `WaitForLightEnd`
+to about 0.4 s on the rig in a session with light, often at once without light. Because of that
+gap, Bpod's trial manager prints a *WARNING: TrialManager reported an inter-trial dead time of
+>500 microseconds* box in the command window after most trials of a session with light: it is
+expected with a 0 s ITI and does not mean a trial was lost or late (checked on the rig,
+2026-09-27). `WaitForLightEnd`
 waits for a light that is still playing after a short hold, and otherwise lasts no time: a broken
 hold has already stopped the light. For example, with a fixed 0.3 s hold and a 1 s light, times from
 the poke:
@@ -637,9 +641,28 @@ Panels, in the order they are read:
     widened to what is on screen), so a trained animal's fraction of a second and a new animal's
     several seconds both read
   - **Centre hold** — how long the animal stayed in the centre port on each trial's last hold,
-    from the poke to leaving (`Data.CentreHoldTime`): green dots for holds completed, red crosses
-    for holds that broke, against a grey line for the time the trial asked for (latency plus
-    hold), which follows automatic shaping
+    from the poke to leaving (`Data.CentreHoldTime`): green dots where the hold was completed,
+    grey crosses where the trial ended without one, against a grey line for the time the trial
+    asked for (latency plus hold), which follows automatic shaping
+
+**A completed hold is a completed hold.** A mouse that withdrew early, came back and then held
+for the full time *completed its hold* (it goes on to choose, and may be rewarded), so the
+figure, the runtime window and the summary plots count it as such; early withdrawals are not an
+outcome of their own. A trial that ended with no completed hold is a trial without a choice:
+*hold not completed* (every hold broke until the hold window ran out, or, with *End trial*, the
+first early withdrawal ended it) or *no hold started*. How many attempts a hold took, and how
+often the animal held **on the first attempt**, is the summary plots' `09_HoldAttempts` (the
+figure has no room for it); the runtime window says it per trial (*held on attempt 3*). A
+forgiven break (grace) is part of the same attempt.
+
+**Colours** mean one thing each, in this figure, the sleep figure and the summary plots alike:
+channel A teal and channel B coral; left navy and right gold; correct or rewarded sage green (a
+filled mark) and incorrect or not rewarded rust (an open mark); a hold completed after early
+withdrawals pale sage; greys for trials without a choice (light: no side poke in time,
+dark: hold not completed, mid: no hold started). A series with no side or outcome (the
+psychometric curve, a median, the hold asked for, water) is near black. The plots are drawn for
+print: white background, dark axes and labels, one font at 10–12 points (a step smaller in the
+live figure, whose nine panels share one window), and the summary plots at 150 dpi.
 
 Each panel's key is one row under its axis label, clear of the data. The per-trial panels scroll
 with the session and rescale to what is on screen, so they stay legible at any point in it. **Closing the figure does not stop the session** — it only hides it.
@@ -1012,13 +1035,18 @@ few trials.
 - **`_plots.png`** is the online figure as it looked when the session ended.
 - **Session Plots** (0.9.8, behaviour sessions) holds the session's summary plots for you and
   colleagues to look through: every panel of the online figure over the **whole** session, each
-  as its own image, and more (how each trial ended, every hold attempt, engagement over time, pokes
+  as its own image, and more (how each trial ended, hold attempts, engagement over time, pokes
   at each port, MATLAB's timing). Named `NN_<Plot>_PP_<subject>_<date>_<time>.png`, so sorting by
   name puts one kind of plot from every session together, by date: `01_Outcomes`,
   `02_Performance`, `03_Psychometric`, `04_Evidence`, `05_BySide`, `06_SideBias`,
   `07_ReactionTime`, `08_CentreHold`, `09_HoldAttempts`, `10_Engagement`, `11_PortActivity`,
   `12_SessionTiming`. `PP` is the page: 01, unless the outcomes run over more than 400 trials.
-  About 0.5 MB a session.
+  About 0.5 MB a session. `08_CentreHold` is the time in the port on each trial's last hold
+  (completed or not) with the hold asked for and the step backs, and how long the completed holds
+  lasted. `09_HoldAttempts` is the one plot that tells a first attempt from a later one: in bins
+  of trials, the share held on the first attempt, held after early withdrawals, not completed and
+  with no hold started; the attempts each trial took; and the first-attempt rate by the hold
+  asked for.
 - **Session Logs** (0.9.8, behaviour sessions) holds `<data file name>_log.md`, a plain-text
   summary for the lab notebook: when and how the session ran, the animal, the settings
   that shape a trial, how the animal did (score, choices, water, the hold, reaction time, side

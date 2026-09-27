@@ -20,6 +20,10 @@ function T = sessionTrials(Data)
 %   .outcome .choice .correct .rewarded .correctSide .group .pattern .reactionTime
 %   .holdDuration .centreHoldTime .holdAttempts .earlyWithdrawals .centreReward
 %   .responseRetries .biasTarget .optoOn .trainingStage   The per-trial series
+%   .holdCompleted    1 x n: 1 if the hold was completed, at any attempt (lum.holdMeasures)
+%   .heldFirstAttempt 1 x n: 1 if it was completed with no early withdrawal before it
+%   .attempts         1 x n: hold attempts, early withdrawals plus the completed hold
+%                     (lum.holdMeasures; Data.HoldAttempts is .holdAttempts)
 %   .holdAsked        1 x n: latency plus the hold asked for, as the centre hold panel shows it
 %   .rewardAmount     1 x n: the side reward volume each trial was prepared with (uL)
 %   .sideWater        1 x n: side water given (uL): rewardAmount where Rewarded
@@ -79,7 +83,8 @@ origin = Data.TrialStartTimestamp(1);
 T.start = Data.TrialStartTimestamp(1:n) - origin;
 T.finish = Data.TrialEndTimestamp(1:n) - origin;
 
-% Every hold attempt, and every poke, from the raw events.
+% The hold measures, every visit to CentreHold, and every poke, from the raw events.
+[T.holdCompleted, T.heldFirstAttempt, T.attempts] = deal(zeros(1, n));
 attempts = cell(1, n);
 completed = cell(1, n);
 pokeNames = {'Port1In', 'Port2In', 'Port3In'};
@@ -90,12 +95,16 @@ end
 pokes = cell(3, n);
 for k = 1:n
     trial = Data.RawEvents.Trial{k};
+    measures = lum.holdMeasures(trial.States);
+    T.holdCompleted(k) = measures.Completed;
+    T.heldFirstAttempt(k) = measures.FirstAttempt;
+    T.attempts(k) = measures.Attempts;
     if isfield(trial.States, 'CentreHold')
         visits = trial.States.CentreHold;
         visits = visits(~isnan(visits(:, 1)), :);
         attempts{k} = (visits(:, 2) - visits(:, 1))';
         done = false(1, size(visits, 1));
-        if lum.HoldShaping.completedHold(T.outcome(k)) && ~isempty(done)
+        if measures.Completed && ~isempty(done)
             done(end) = true;
         end
         completed{k} = done;

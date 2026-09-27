@@ -36,6 +36,7 @@ LuminoseFM/
 │   ├── centreRewardAgain.m       the centre reward asked for again mid-session: its run and its box
 │   ├── HoldShaping.m             automatic shaping of the centre hold, the hold without it, break modes
 │   ├── scoreTrial.m              outcome classification from states and events
+│   ├── holdMeasures.m            hold completed, held on the first attempt, hold attempts
 │   ├── Outcome.m                 outcome codes (part of the data format)
 │   ├── punishmentFor.m           which mistakes are punished, and how
 │   ├── valveTimes.m              valve open times for a volume, refusing one the calibration cannot give
@@ -59,7 +60,8 @@ LuminoseFM/
 │   ├── +led/                     LED light paths, calibrations, mA and mW/mm², the LED checks and session record
 │   ├── +dev/                     device shims, real and null; cameras through SpinCam; the house light; the Doric LED
 │   └── +gui/                     session type, setup dialogs, Doric LED tab, calibration and LED windows,
-│                                 camera tab and window, help line, designers, runtime window, theme, plots image
+│                                 camera tab and window, help line, designers, runtime window, theme,
+│                                 plot panel style and keys (styleAxes, panelLegend), plots image
 ├── hardware/
 │   ├── RigConfig.m               the channel map and the connected machine's live limits
 │   ├── CheckRig.m                preflight report
@@ -134,6 +136,7 @@ skipped where the package is not found.
 | `trialSpecTest` | the trial policy: the order, contingency, bias correction (and its precedence over the run limit), the run limit counting the trial still running, training stage, centre reward and its run when asked for again; a whole session replayed in the loop's order |
 | `holdShapingTest` | automatic shaping: growth, grace, step back, the defaults and a settings file keeping its own, a start above the target; the session's order replayed (one step per completed hold, a single step back); the next session's hold 10% below the last; the hold without shaping as a runtime choice, and every session with light keeping the light clock with the ITI as its only trigger state |
 | `scoreTrialTest` | outcome scoring, including a side poke after the response window not being a choice |
+| `holdMeasuresTest` | `lum.holdMeasures` and `lum.scoreTrial` on the hold: restart mode with 0, 1 and 2 early withdrawals before a completed hold, every hold broken, *End trial*, a forgiven break, no initiation, the centre reward, a withdrawal during the latency |
 | `punishmentTest` | every combination of what is punished and how |
 | `trainingStageTest` | the training stage's note staying true to what `nextTrialSpec` does |
 | `valveTimesTest` | `lum.valveTimes`: 0 µL opens no valve, a volume past the fit's peak is refused, one outside the measurements is noted |
@@ -142,7 +145,7 @@ skipped where the package is not found.
 | `pulsePalTest` | the carrier translation, PulsePal's health check against a stub that can stop answering, holding an output at a voltage and sending it only once a command under way has finished |
 | `ledTest` | light paths and fiber areas, calibrations (units, refusals, saving and replacing, one per cable and channel, a 0.9.0 per-cable file read only on its channel, a damaged file, too few readings, a 700 mA calibration under a 1000 mA limit), mA ↔ mW/mm², the session intensity, the LED checks, the session record |
 | `ephysTest` | the ePhys calibration schedule (levels even in mA or in irradiance, the default curve's top, pairs, intervals, order, refusals), its validation, the EphysCalibration barcode fitted to the cameras |
-| `reportTest` | the runtime window's trial lines in habituation and training; where the summary plots and log go and how they are named; twelve plots and a log from a made-up session; the outcome raster paging past 400 trials; `lum.report.fromFile` reading a saved file without changing a byte |
+| `reportTest` | the runtime window's trial lines in habituation and training, and the attempt a hold was completed at; where the summary plots and log go and how they are named; twelve plots and a log from a made-up session; the outcome raster paging past 400 trials; `lum.report.fromFile` reading a saved file without changing a byte; the replayed online figure, the summary plots' numbers and the log agreeing on which holds were completed and at which attempt |
 | `memoryWatchTest` | the memory sampler lists the running timers and writes a row a second (Windows only) |
 | `lintTest` | zero MATLAB Code Analyzer messages over the whole repository |
 
@@ -155,7 +158,7 @@ skipped where the package is not found.
 | `houseLightTest` | the house light: its starting level, switches recorded and shown, a click while PulsePal is busy landing when it is free, a refused switch putting the box back, off when closed, the level a trial started at and the edges on Bpod's clock; the disabled light without PulsePal; which light `lum.dev.openHouseLight` chooses; `TestHouseLight` end to end |
 | `doricTest` | the Doric LED on DoricLED's simulated driver: modes, both channels set up in external TTL mode, a request sent only at the next prepare window, an ePhys step's currents, calibration light, closing, the LED opened alone at launch; `TestDoricLED` end to end |
 | `cameraTest` | camera settings, format notes and descriptions (one sentence each), which formats need SpinVideo, where videos go, settings to camera state, what a recording records, finishing a recording, the camera window and its timer, crops per session type and typed crops, against `StubCameraManager`; then a behaviour and a sleep session with SpinCam's simulated cameras (the video stops after the final save, the file keeps the recording summary) |
-| `windowsTest` | every window, built invisibly: the runtime window (header wrapping); both plot figures (a close request hides them, they save as an image, the house light box, habituation scoring every trial, reaction time on a log axis, the psychometric panel along each family's evidence, the contingency's boundary); the session type chooser; the setup dialogs (shaping by stage, Play buttons, the help line, the Cameras tab and its format description, a crop drawn on the preview, each stimulus family and its defaults following the timer budget, the copies of the hold and the stimulus window following each other); both designers; the Doric LED tab, the calibration window, the LED window and the ePhys dialog |
+| `windowsTest` | every window, built invisibly: the runtime window (header wrapping); both plot figures (a close request hides them, they save as an image, the house light box, every panel in the theme's type and a colour per meaning, every title, label and key inside the window at the session size with no title or key running into another, habituation scoring every trial, reaction time on a log axis, the psychometric panel along each family's evidence, the contingency's boundary); the session type chooser; the setup dialogs (shaping by stage, Play buttons, the help line, the Cameras tab and its format description, a crop drawn on the preview, each stimulus family and its defaults following the timer budget, the copies of the hold and the stimulus window following each other); both designers; the Doric LED tab, the calibration window, the LED window and the ePhys dialog |
 
 **Whole sessions under `Bpod('EMU')`**, launched headless through `LuminoseFM`:
 

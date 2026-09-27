@@ -129,7 +129,7 @@ classdef Plots < handle
 
             obj.Figure = figure('Name', ['LuminoseFM - ' lum.gui.Form.sessionLabel(obj.kind, true)], ...
                                 'NumberTitle', 'off', ...
-                                'MenuBar', 'none', 'ToolBar', 'none', 'Color', t.Background, ...
+                                'MenuBar', 'none', 'ToolBar', 'none', 'Color', t.PlotBackground, ...
                                 'Position', [80 60 1200 780], 'Visible', p.Results.Visible, ...
                                 'CloseRequestFcn', @hideInstead);
             if ~isempty(BpodSystem) && isobject(BpodSystem)
@@ -138,7 +138,7 @@ classdef Plots < handle
 
             obj.buildHeader(S, char(p.Results.Subject), p.Results.HouseLight, p.Results.Description);
             body = uipanel(obj.Figure, 'Units', 'normalized', 'Position', [0 0 1 0.86], ...
-                           'BorderType', 'none', 'BackgroundColor', t.Background);
+                           'BorderType', 'none', 'BackgroundColor', t.PlotBackground);
             if obj.hasLight
                 tiles = tiledlayout(body, 3, 3, 'TileSpacing', 'compact', 'Padding', 'compact');
                 obj.buildSchedulePanel(nexttile(tiles, 1, [1 3]));
@@ -337,7 +337,7 @@ classdef Plots < handle
         function buildHeader(obj, S, subject, houseLight, description)
             t = obj.theme;
             header = uipanel(obj.Figure, 'Units', 'normalized', 'Position', [0 0.86 1 0.14], ...
-                             'BorderType', 'none', 'BackgroundColor', t.Background);
+                             'BorderType', 'none', 'BackgroundColor', t.PlotBackground);
             logoImage = lum.gui.logo(48);
             if ~isempty(logoImage)
                 logoAxes = axes('Parent', header, 'Units', 'normalized', ...
@@ -370,19 +370,19 @@ classdef Plots < handle
             end
             uicontrol(header, 'Style', 'text', 'Units', 'normalized', 'Position', [0.06 0.74 0.78 0.22], ...
                       'String', titleText, 'FontSize', 12, 'FontWeight', 'bold', ...
-                      'HorizontalAlignment', 'left', 'BackgroundColor', t.Background, 'ForegroundColor', t.Ink);
+                      'HorizontalAlignment', 'left', 'BackgroundColor', t.PlotBackground, 'ForegroundColor', t.Ink);
             uicontrol(header, 'Style', 'text', 'Units', 'normalized', 'Position', [0.06 0.50 0.92 0.22], ...
                       'String', lightText, 'FontSize', 10, 'HorizontalAlignment', 'left', ...
-                      'BackgroundColor', t.Background, 'ForegroundColor', t.Ink);
+                      'BackgroundColor', t.PlotBackground, 'ForegroundColor', t.Ink);
             obj.handles.houseLight = lum.gui.houseLightSwitch(header, [0.86 0.74 0.13 0.22], ...
                                                               houseLight, t);
             obj.handles.barcode = uicontrol(header, 'Style', 'text', 'Units', 'normalized', ...
                       'Position', [0.06 0.27 0.92 0.21], 'String', 'Barcode not sent yet', 'FontSize', 10, ...
-                      'HorizontalAlignment', 'left', 'BackgroundColor', t.Background, 'ForegroundColor', t.Muted);
+                      'HorizontalAlignment', 'left', 'BackgroundColor', t.PlotBackground, 'ForegroundColor', t.Axis);
             obj.handles.summary = uicontrol(header, 'Style', 'text', 'Units', 'normalized', ...
                       'Position', [0.06 0.04 0.92 0.21], 'String', 'Waiting for the first pulses', ...
-                      'FontSize', 10, 'HorizontalAlignment', 'left', 'BackgroundColor', t.Background, ...
-                      'ForegroundColor', t.Muted);
+                      'FontSize', 10, 'HorizontalAlignment', 'left', 'BackgroundColor', t.PlotBackground, ...
+                      'ForegroundColor', t.Axis);
         end
 
         function buildSchedulePanel(obj, ax)
@@ -477,7 +477,7 @@ classdef Plots < handle
                 end
                 obj.handles.stepCounts(step) = text(ax, step, planned(step), label, ...
                     'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', ...
-                    'FontSize', 8, 'Color', t.Muted);
+                    'FontSize', t.Font.Note, 'Color', t.Axis);
             end
             set(ax, 'XLim', [0.4, n + 0.6], 'XTick', 1:n, 'YLim', [0, 1.2 * max(1, max(planned))], ...
                 'XGrid', 'off');
@@ -521,16 +521,9 @@ end
 
 
 function styleAxes(ax, t, titleText)
-% The look every panel shares; the same as lum.OnlinePlots.
-set(ax, 'Color', t.Panel, 'XColor', t.Muted, 'YColor', t.Muted, 'GridColor', t.Faint, ...
-    'GridAlpha', 1, 'Box', 'off', 'TickDir', 'out', 'FontSize', 9, 'LineWidth', 0.75, ...
-    'XGrid', 'on', 'YGrid', 'on');
-ax.Title.String = titleText;
-ax.Title.FontWeight = 'bold';
-ax.Title.FontSize = 10;
-ax.Title.Color = t.Ink;
-ax.TitleHorizontalAlignment = 'left';
-hold(ax, 'on');
+% The look every panel shares, as the online figure has it (lum.gui.styleAxes, compact type).
+t.Font = t.FontCompact;
+lum.gui.styleAxes(ax, titleText, t);
 end
 
 
