@@ -182,6 +182,21 @@ info = imfinfo(sessionData.Session.PlotsImage);
 verifyGreaterThan(testCase, info.Width, 500);
 end
 
+function testTheSummaryPlotsAndLogAreWrittenAfterTheData(testCase)
+% Beside the data folder, once the data file is saved (lum.report.write), so nothing in it
+% depends on them.
+folder = testCase.TestData.dataFolder;
+plots = dir(fullfile(folder, 'Session Plots', '*_testSubject_LuminoseFM_test.png'));
+verifyNumElements(testCase, plots, 12, strjoin({plots.name}, ', '));
+verifyTrue(testCase, any(strcmp({plots.name}, '01_Outcomes_01_testSubject_LuminoseFM_test.png')));
+logFile = fullfile(folder, 'Session Logs', 'testSubject_LuminoseFM_test_log.md');
+verifyTrue(testCase, isfile(logFile));
+verifySubstring(testCase, fileread(logFile), 'EMULATED');
+data = dir(fullfile(folder, 'testSubject_LuminoseFM_test.mat'));
+verifyLessThanOrEqual(testCase, data.datenum, min([plots.datenum]), ...
+                      'The plots are drawn from the saved data, after it');
+end
+
 function testTheStartupIsTimedStepByStep(testCase)
 % Where the time from launch to the first trial went, device by device.
 startup = testCase.TestData.sessionData.Session.Startup;

@@ -65,7 +65,7 @@ classdef RuntimeWindow < handle
             end
 
             obj.fields = lum.gui.runtimeFields(S);
-            obj.buildTabbed(char(p.Results.Subject), p.Results.Visible);
+            obj.buildTabbed(char(p.Results.Subject), p.Results.Visible, S.Stimulus.Duration);
             if ~isempty(BpodSystem) && isobject(BpodSystem)
                 BpodSystem.ProtocolFigures.LuminoseRuntimeWindow = obj.Figure;
             end
@@ -119,7 +119,9 @@ classdef RuntimeWindow < handle
         end
 
         function showStatus(obj, text)
-            % showStatus(text) puts one line in the header: the running trial, what next.
+            % showStatus(text) puts the running trial and what came before it in the
+            % header, wrapped over as many as five lines; a cell array starts a line per
+            % element.
             if strcmp(obj.Mode, 'Tabbed') && ~isempty(obj.status) && isvalid(obj.status)
                 set(obj.status, 'String', text);
             end
@@ -135,14 +137,14 @@ classdef RuntimeWindow < handle
     end
 
     methods (Access = private)
-        function buildTabbed(obj, subject, visible)
+        function buildTabbed(obj, subject, visible, stimulusWindow)
             % Lay the window out: header, then one tab per S.GUITabs entry.
             t = lum.gui.theme();
             rowHeight = 30;
             panelTitle = 26;
             panelGap = 10;
             width = 460;
-            headerHeight = 64;
+            headerHeight = 124;   % Title, and five lines of trial status
             footerHeight = 52;
 
             tabNames = unique({obj.fields.Tab}, 'stable');
@@ -176,11 +178,13 @@ classdef RuntimeWindow < handle
                       'FontWeight', 'bold', 'HorizontalAlignment', 'left', ...
                       'BackgroundColor', t.Background, 'ForegroundColor', t.Ink, ...
                       'Position', [70 height - 32 width - 80 22]);
+            % Wraps: a long trial line (a stepped-back hold, a centre reward) takes the
+            % lines it needs rather than being cut off at the window's edge.
             obj.status = uicontrol(obj.Figure, 'Style', 'text', ...
                                    'String', 'Waiting for the first trial', 'FontSize', 10, ...
                                    'HorizontalAlignment', 'left', 'BackgroundColor', t.Background, ...
                                    'ForegroundColor', t.Muted, ...
-                                   'Position', [70 height - 56 width - 80 20]);
+                                   'Position', [70 height - headerHeight + 4 width - 80 headerHeight - 40]);
 
             group = uitabgroup(obj.Figure, 'Units', 'pixels', ...
                                'Position', [6 footerHeight width - 12 bodyHeight]);
@@ -199,7 +203,13 @@ classdef RuntimeWindow < handle
                 for j = 1:numel(panelNames)
                     members = inTab(strcmp({obj.fields(inTab).Panel}, panelNames{j}));
                     panelHeight = panelTitle + numel(members) * rowHeight;
-                    panel = uipanel(tab, 'Units', 'pixels', 'Title', readable(panelNames{j}), ...
+                    title = readable(panelNames{j});
+                    if strcmp(panelNames{j}, 'Timing')
+                        % The hold is set against the window, which is fixed for the session.
+                        title = sprintf('%s  (stimulus window %g s, fixed for the session)', ...
+                                        title, stimulusWindow);
+                    end
+                    panel = uipanel(tab, 'Units', 'pixels', 'Title', title, ...
                                     'FontWeight', 'bold', 'FontSize', 10, ...
                                     'ForegroundColor', t.Accent, 'BackgroundColor', t.Panel, ...
                                     'HighlightColor', t.Faint, 'BorderType', 'line', ...

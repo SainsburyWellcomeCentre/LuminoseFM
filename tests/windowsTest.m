@@ -726,23 +726,61 @@ delete(cleanup);
 end
 
 function testTheSetupDialogOffersAFixedHold(testCase)
+% The hold without shaping is shown twice, on the Task tab and on the Runtime tab's Timing
+% panel, and the stimulus window three times (Stimulus, Task, Timing): each copy follows
+% the others.
 assumeUIFigures(testCase);
 [~, ~, app] = lum.gui.SetupDialog(testCase.TestData.S, testCase.TestData.rig, 'Wait', false, ...
                                   'Visible', 'off');
 cleanup = onCleanup(@() closeIfOpen(app.Figure));
-verifyEqual(testCase, app.controls.HoldLength.Value, 'Whole stimulus');
-verifyEqual(testCase, char(app.controls.FixedHold.Enable), 'off', 'Only a fixed hold is typed');
-app.controls.HoldLength.Value = 'Fixed';
-app.controls.FixedHold.Value = 0.3;
-app.refresh();
+task = app.controls.TaskHold;
+timing = app.controls.Runtime;
+verifyEqual(testCase, task.HoldLength.Value, 'Whole stimulus');
+verifyEqual(testCase, char(task.FixedHold.Enable), 'off', 'Only a fixed hold is typed');
+verifyEqual(testCase, char(timing.FixedHold.Enable), 'off');
+task.HoldLength.Value = 'Fixed';
+task.HoldLength.ValueChangedFcn(task.HoldLength, []);   % As a click does
+timing.FixedHold.Value = 0.3;
+timing.FixedHold.ValueChangedFcn(timing.FixedHold, []);
 collected = app.collect();
-verifyEqual(testCase, collected.Task.HoldLength, 'Fixed');
-verifyEqual(testCase, collected.Task.FixedHold, 0.3);
-verifyEqual(testCase, char(app.controls.FixedHold.Enable), 'on');
+verifyEqual(testCase, collected.GUI.HoldLength, 2);
+verifyEqual(testCase, collected.GUI.FixedHold, 0.3);
+verifyEqual(testCase, timing.HoldLength.Value, 'Fixed', 'The Timing panel follows the Task tab');
+verifyEqual(testCase, task.FixedHold.Value, 0.3, 'The Task tab follows the Timing panel');
+verifyEqual(testCase, char(task.FixedHold.Enable), 'on');
 verifySubstring(testCase, app.controls.HoldNote.Text, 'light plays on');
+
+app.controls.TimingWindow.Value = 1.5;
+app.controls.TimingWindow.ValueChangedFcn(app.controls.TimingWindow, []);
+verifyEqual(testCase, app.collect().Stimulus.Duration, 1.5, 'The window typed on the Timing panel');
+verifyEqual(testCase, app.controls.StimulusDuration.Value, 1.5);
+verifyEqual(testCase, app.controls.TaskWindow.Value, 1.5);
+
 app.controls.AutoShaping.Value = true;
 app.refresh();
-verifyEqual(testCase, char(app.controls.HoldLength.Enable), 'off', 'A growing hold replaces it');
+verifyEqual(testCase, char(task.HoldLength.Enable), 'off', 'A growing hold replaces it');
+verifyEqual(testCase, char(timing.HoldLength.Enable), 'off');
+delete(cleanup);
+end
+
+function testTheRuntimeWindowWrapsItsTrialLine(testCase)
+% A long trial line wraps rather than running off the window's edge (LUMS0014, 2026-09-27),
+% and the Timing panel names the stimulus window it sets the hold against.
+S = testCase.TestData.S;
+window = lum.gui.RuntimeWindow(S, 'Mode', 'Tabbed', 'Visible', 'off');
+cleanup = onCleanup(@() window.close());
+status = findobj(window.Figure, 'Style', 'text', 'String', 'Waiting for the first trial');
+verifyNotEmpty(testCase, status);
+position = get(status, 'Position');
+verifyGreaterThanOrEqual(testCase, position(4), 80, 'Room for five lines');
+lines = {'Trial 12: not rewarded: chose left, left before the valve opened (14 holds)', ...
+         ['Running 13: A only (light off), both sides pay, hold 0.60 s (stepped back after '...
+          'early withdrawals), centre reward 1.2 uL (again)']};
+window.showStatus(lines);
+wrapped = textwrap(status, lines);
+verifyLessThanOrEqual(testCase, numel(wrapped), 5, strjoin(wrapped, ' / '));
+titles = get(findobj(window.Figure, 'Type', 'uipanel'), 'Title');
+verifyTrue(testCase, any(contains(titles, sprintf('stimulus window %g s', S.Stimulus.Duration))));
 delete(cleanup);
 end
 
@@ -1207,10 +1245,11 @@ end
 
 
 function testAFamilysDefaultsFollowTheTimersLeftForLight(testCase)
-% A mixture chosen in an Experiment session has two cycles in the emulator (four timers);
-% switching to Training adds the light clock, and the defaults follow with one cycle
-% rather than leaving a set the machine refuses (D21). With grace as well, the motif
-% family loads two-letter words.
+% A mixture chosen in an Experiment session fits the emulator's timers left for light (the
+% hold window and the light clock take two, D21, leaving three: one cycle of two timers);
+% Training keeps them, and grace takes the hold clock as well, leaving two, which the defaults
+% still fit rather than leaving a set the machine refuses. With grace, the motif family loads
+% two-letter words.
 assumeUIFigures(testCase);
 S = testCase.TestData.S;
 [~, ~, app] = lum.gui.SetupDialog(S, testCase.TestData.rig, 'Wait', false, 'Visible', 'off');
@@ -1223,8 +1262,13 @@ verifySubstring(testCase, app.status(), 'Ready to start');
 app.controls.TrainingStage.Value = 'Training';
 app.controls.TrainingStage.ValueChangedFcn([], []);
 verifySubstring(testCase, app.status(), 'Ready to start');
-verifyLessThan(testCase, app.collect().Stimulus.Generator.MixtureCycles, cycles, ...
-               'One timer fewer for light in the emulator');
+verifyEqual(testCase, app.collect().Stimulus.Generator.MixtureCycles, cycles, ...
+            'Both stages keep the light clock');
+app.controls.HoldShaping.Value = 'Both';
+app.refresh();
+verifySubstring(testCase, app.status(), 'Ready to start');
+verifyLessThanOrEqual(testCase, 2 * app.collect().Stimulus.Generator.MixtureCycles, 2, ...
+                      'Grace takes the hold clock: two timers left for light in the emulator');
 app.controls.TrainingStage.Value = 'Experiment';
 app.controls.TrainingStage.ValueChangedFcn([], []);
 verifyEqual(testCase, app.collect().Stimulus.Generator.MixtureCycles, cycles, 'And back');

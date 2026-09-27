@@ -34,11 +34,14 @@ latency = max(S.Stimulus.Latency, 0);
 stimulusSpan = stimulusWindow;
 choiceCaption = sprintf('<= %g s', S.GUI.ResponseWindow);
 if ~lum.HoldShaping.growsHold(S) && lum.HoldShaping.isFixed(S)
-    fixedHold = max(S.Task.FixedHold, 0);
+    fixedHold = max(S.GUI.FixedHold, 0);
     postHold = max(fixedHold - stimulusWindow, 0);
     stimulusSpan = min(fixedHold, stimulusWindow);
 end
-if isfield(S.Session, 'UseOpto') && lum.HoldShaping.lightMayOutlastHold(S)
+% The light outlasts the hold as the settings stand: a growing hold, or a fixed one
+% shorter than the window.
+if isfield(S.Session, 'UseOpto') && lum.HoldShaping.lightMayOutlastHold(S) ...
+        && (lum.HoldShaping.growsHold(S) || stimulusSpan < stimulusWindow)
     choiceCaption = sprintf('%s, light plays to %g s', choiceCaption, stimulusWindow);
 end
 openSpan = max(0.35, 0.3 * (latency + stimulusWindow + postHold));

@@ -13,17 +13,29 @@ mW/mm², and records every session on video (§10).
 This file is the **operator's guide**: how to run a session and what everything on the screen
 means. The rig, the data format and the design live in [`docs/`](docs):
 
-| Document | What is in it |
-|----------|---------------|
-| [`docs/hardware.md`](docs/hardware.md) | The behaviour box, the channel map, the light path, Flex I/O, the software environment |
-| [`docs/data-format.md`](docs/data-format.md) | Every field a session file contains, and how to read older ones |
-| [`docs/sync-and-barcode.md`](docs/sync-and-barcode.md) | The sync TTL and the session barcode, for aligning other recordings |
-| [`docs/stimulus_family.md`](docs/stimulus_family.md) | The stimulus families from first principles: the maths of two-channel patterns, what each family asks, which cues could solve it, and how to analyse the choices |
-| [`docs/naming-and-versions.md`](docs/naming-and-versions.md) | Glossary, and what changed between versions |
-| [`docs/emulator.md`](docs/emulator.md) | Running the whole protocol with no hardware attached |
-| [`docs/architecture.md`](docs/architecture.md) | Design decisions (D1–D20) and the map from design to code |
-| [`docs/rig-checks.md`](docs/rig-checks.md) | What has been checked on the rig, and the checks still waiting for someone at it |
-| [`docs/repository.md`](docs/repository.md) | Where the code lives, and what the test suite covers |
+| If you want to… | Read |
+|-----------------|------|
+| know the box, the channel map, the light path, Flex I/O and what the computer needs | [`docs/hardware.md`](docs/hardware.md) |
+| read a session file, field by field, including files from older versions | [`docs/data-format.md`](docs/data-format.md) |
+| align another recording (Neuropixels, cameras) to the session | [`docs/sync-and-barcode.md`](docs/sync-and-barcode.md) |
+| analyse the data in Python, or plan the lab's HDF5 files | [`docs/python-analysis.md`](docs/python-analysis.md) |
+| understand the stimulus families: the maths of two-channel patterns, what each family asks, which cues could solve it, how to analyse the choices | [`docs/stimulus_family.md`](docs/stimulus_family.md) |
+| look up a word, or what changed between versions | [`docs/naming-and-versions.md`](docs/naming-and-versions.md) |
+| run everything with no hardware attached | [`docs/emulator.md`](docs/emulator.md) |
+| know what has been checked on the rig, and what still needs someone there | [`docs/rig-checks.md`](docs/rig-checks.md), and the pre-deployment report [`docs/validation-2026-09-24.md`](docs/validation-2026-09-24.md) |
+| change the code: design decisions D1–D22 and where each lives | [`docs/architecture.md`](docs/architecture.md), [`docs/repository.md`](docs/repository.md) (layout and tests) |
+
+Coding agents start from [`CLAUDE.md`](CLAUDE.md) (also `AGENTS.md`).
+
+**Contents:** [1 Before the first animal](#1-before-the-first-animal-of-the-day) ·
+[2 Kind of session](#2-choosing-the-kind-of-session) · [3 The task](#3-the-task) ·
+[4 The stimulus](#4-the-stimulus) · [5 The windows](#5-the-windows) ·
+[6 Watching a session](#6-watching-a-session) · [7 Sleep sessions](#7-sleep-sessions) ·
+[8 ePhys calibration](#8-ephys-calibration-sessions) ·
+[9 LED intensity and calibration](#9-the-lights-intensity-the-doric-led-and-its-calibration) ·
+[10 Video](#10-video) · [11 Aligning other recordings](#11-aligning-other-recordings) ·
+[12 Your data](#12-your-data) · [13 Utilities](#13-utilities) ·
+[14 Working away from the rig](#14-working-away-from-the-rig)
 
 ---
 
@@ -80,8 +92,8 @@ records it as `SessionData.Session.Type`.
 
 ```
 cue on → poke into the centre port → hold through the latency (0 s by default) → the stimulus
-    starts; hold while it plays → leave the centre port → poke a side port (left or right)
-    → reward, or the cost of a mistake → next trial
+    starts; hold (the whole stimulus by default) → leave the centre port → poke a side port
+    (left or right) → reward, or the cost of a mistake → next trial
 ```
 
 **The cue lasts until the stimulus starts.** The cue — the centre light, a tone, air, in any
@@ -96,33 +108,41 @@ leaving during it is a broken hold, exactly like leaving during the stimulus.
 Once the stimulus starts, each part of the cue either **continues through the stimulus** (the
 default) or stays on for a set time into it; 0 switches it off as the stimulus starts.
 
-**The hold.** The hold is how long the animal must keep its nose in the centre port before it may
-leave and choose. It is not the same thing as the **stimulus window** (Stimulus tab), which is how
-long the light pattern lasts. The Task tab's *Centre hold* panel sets it, and its *Hold* line says
-how long it is:
+### The hold
 
-- *Hold for* **Whole stimulus** (the default): the stimulus window plus the post-stimulus hold
-  (runtime window, 0 s by default). The hold and the light end together, or the hold after it.
-- *Hold for* **Fixed**: *Fixed hold* seconds from stimulus onset, the same on every trial. The
-  post-stimulus hold is not used. Shorter than the window, the animal may leave before the light
-  is over; longer, it holds in the dark after the light for the difference.
+The hold is how long the animal must keep its nose in the centre port before it may
+leave and choose. It is not the same thing as the **stimulus window** (Stimulus tab), which is how
+long the light pattern lasts. Two settings set it when automatic shaping does not: *Hold without
+shaping* and *Fixed hold*. They are runtime settings, so they can be changed between trials. They
+are in three places, which always show the same values: the Task tab's *Centre hold* panel (whose
+*Hold* line says how long the hold is), the Runtime tab's *Trial* column, *Timing* panel, and the
+runtime window's *Trial* tab, *Timing* panel. The Timing panel also shows the **stimulus window**
+(the Stimulus tab's *Duration*, editable in all three places before the session; the runtime window
+names it in the panel's title, since it cannot change once the session has started):
+
+- *Hold without shaping* **Whole stimulus** (the default): the stimulus window plus the
+  post-stimulus hold (0 s by default). The hold and the light end together, or the hold after it.
+- *Hold without shaping* **Fixed**: *Fixed hold* seconds from stimulus onset. The post-stimulus
+  hold is not used. Shorter than the window, the animal may leave before the light is over;
+  longer, it holds in the dark after the light for the difference.
 - **Automatic shaping** with *Grow hold* or *Both* replaces either choice: the hold grows from
-  `HoldStart` to `HoldTarget` (below), and the two controls are greyed out. *Shrink grace* alone
+  `HoldStart` to `HoldTarget` (below), and the two controls are greyed out in the setup dialog (the
+  runtime window leaves them editable, and ignores them while the hold grows). *Shrink grace* alone
   keeps the hold chosen here and only forgives breaks in it.
 
 With a latency, the animal holds the latency first and the hold counts from stimulus onset, so
 from the poke it holds latency + hold. An Experiment session cannot use automatic shaping, so a
-fixed hold is how an experiment asks for a hold shorter than the stimulus. The hold is chosen before
-the session and cannot change during it (automatic shaping aside). Each trial's hold is recorded in
-`Data.HoldDuration`.
+fixed hold is how an experiment asks for a hold shorter than the stimulus. A change in the runtime
+window applies from the next trial prepared. Each trial's hold is recorded in `Data.HoldDuration`,
+and the settings it came from in `Data.TrialSettings{k}.HoldLength` and `.FixedHold`.
 
 For a 1 s stimulus window:
 
-| *Hold for* | The animal must hold | The light | It may choose |
+| *Hold without shaping* | The animal must hold | The light | It may choose |
 |---|---|---|---|
 | Whole stimulus, post-stimulus hold 0 s | 1 s | 0–1 s, inside the hold | after 1 s |
 | Whole stimulus, post-stimulus hold 0.5 s | 1.5 s | 0–1 s, then 0.5 s of dark hold | after 1.5 s |
-| Fixed, 0.3 s | 0.3 s | 0–1 s, playing on after it leaves | from 0.3 s |
+| Fixed, 0.3 s | 0.3 s | 0–1 s, playing on after it leaves | after 0.3 s |
 | Fixed, 1.5 s | 1.5 s | 0–1 s, then 0.5 s of dark hold | after 1.5 s |
 
 **The light plays to its end.** A completed hold never stops the light pattern: after a hold shorter
@@ -132,9 +152,12 @@ tone) and the cue stops when the hold ends. So every trial delivers its whole pa
 hold, and a growing hold only decides how long the animal must sample before it may leave. With a
 hold shorter than the window the animal can answer before it has seen the whole pattern; for a
 family whose deciding part comes late (an order, a sequence) it may answer on part of the evidence.
-A session whose hold can be shorter than the light (a growing hold, or a fixed one shorter than the
-window) uses one more global timer to know when the light is over, so a light pattern can have one
-segment fewer; the setup dialog says so in a note.
+Since the hold can be set shorter than the light at any time, every session with light keeps one
+global timer ready to know when the light is over (the light clock): a light pattern can have 14
+separate stretches of light on the rig (3 in the emulator), one fewer than a session without it
+had before 0.9.8. A trial whose hold covers its light does not use it.
+
+### A broken hold
 
 **A broken hold stops the stimulus.** If the animal leaves the centre port before the hold is
 over (beyond any forgiven break), the stimulus, light included, stops at once. What happens
@@ -154,6 +177,8 @@ The withdrawal after a completed hold is part of the contract, not a formality. 
 stay inert until the animal has left the centre port, so the beam break it makes on the way out
 cannot be scored as a choice, and the reaction time is measured from the withdrawal rather than
 from the end of the hold. Never leaving it at all is a non-response.
+
+### Choices, rewards and punishments
 
 **A correct choice** is rewarded at that port (runtime window, *Reward*):
 
@@ -182,16 +207,19 @@ animal leaves. `Data.Rewarded` is 1 for a rewarded trial; the drinking is in the
 |---|---|---|
 | no (the default: *Punish on* is *None*) | — | no punishment: the animal may still go to the correct port within the response window, which starts again, and be rewarded there. It may try again after each wrong poke |
 | yes | *Timeout* | no reward; `PunishTimeout` seconds, then the inter-trial interval and the next trial |
-| yes | *White noise* | no reward; the noise burst plays to its end, then the next trial |
-| yes | *Timeout + noise* | no reward; the noise and the timeout together (the timeout lasts at least as long as the noise), then the next trial |
+| yes | *White noise* | no reward; the noise burst plays to its end, then the inter-trial interval and the next trial |
+| yes | *Timeout + noise* | no reward; the noise and the timeout together (the timeout lasts at least as long as the noise), then the inter-trial interval and the next trial |
 
 Either way the trial is scored by the **first** side poked: a wrong choice followed by the correct
 one is *Incorrect*, with `Data.Rewarded` 1 and `Data.ResponseRetries` counting the wrong pokes
 forgiven.
 
-**The end of a trial.** Every trial that ends — after the drinking grace, a punishment, no
-response, no poke, or an early withdrawal that ends the trial — goes through `WaitForLightEnd` and
-then the inter-trial interval (`ITI`, 1 s by default), and the next trial starts. `WaitForLightEnd`
+### The end of a trial
+
+Every trial that ends — after the drinking grace, a punishment, no response, no poke, or an early
+withdrawal that ends the trial — goes through `WaitForLightEnd` and then the inter-trial interval
+(`ITI`, 0 s by default), and the next trial starts as soon as MATLAB has prepared and sent it: up
+to about 0.4 s on the rig in a session with light, often at once without light. `WaitForLightEnd`
 waits for a light that is still playing after a short hold, and otherwise lasts no time: a broken
 hold has already stopped the light. For example, with a fixed 0.3 s hold and a 1 s light, times from
 the poke:
@@ -374,6 +402,8 @@ total light changes from group to group, so the animal has to weigh A against B.
 the boundary moves (*more than 60% A* is a ratio, not a difference) and in what makes a trial hard:
 equal ratios are equally hard at any total, equal differences are not.
 
+### Trial order, seeds and limits
+
 - **A new random session every time.** A number, the **seed**, fixes every trial of a session:
   their order, and whatever the family draws at random (the order of the flashes, the amounts, the
   phase). Each session draws a new seed, so by default no two sessions of an animal deliver the
@@ -386,7 +416,7 @@ equal ratios are equally hard at any total, equal differences are not.
   seed in **Seed** on the Stimulus tab, from the data file or from wherever you noted it if the data
   have gone to the cloud. Untick *a new seed for every session* to keep the seed for the sessions
   after this one as well.
-- **Bias correction and the run limit** reorder the order, never change it: to offer the side
+- **Bias correction and the run limit** reorder the trials, never change which are delivered: to offer the side
   the animal avoids, or to break a run of `MaxSameSide` trials on one side, the next trial is
   swapped with the next later one in the session's order that pays the needed side. Every group
   is still delivered as often as it was balanced. Bias correction takes precedence over the run
@@ -394,23 +424,27 @@ equal ratios are equally hard at any total, equal differences are not.
   side is still broken at the limit. So correction holds its target for as long as the order has
   trials paying that side. Against an animal that always goes left, and a 1000-trial order, that
   was about 600 trials at strength 0.5. After that, the rest of the order pays the other side.
-- **What a session refuses.** Every stretch of light on a channel costs one Bpod global timer
-  (the rig has 16, the emulator 5; the hold window always takes one, and grace shaping or timed
-  components take more). The families' defaults fit both; settings that need more are refused,
-  naming the group. Two groups that deliver identical light but pay different sides are refused
+- **What a session refuses.** Every stretch of light on a channel costs one Bpod global timer.
+  The rig has 16 and the emulator 5; the hold window always takes one and the light clock one
+  (§3, *The light plays to its end*), leaving 14 for light on the rig and 3 in the emulator, and
+  grace shaping or timed components take one more each. The families' defaults fit both; settings
+  that need more are refused, naming the group. Two groups that deliver identical light but pay different sides are refused
   too: that is a task the animal cannot solve.
 - **Offsets.** Any family can delay channel A or B (one value, or one per group), wrapping the
   light round the window or letting it fall off the end.
 
-**Other components.** Besides the light pattern, the stimulus can include air, a centre light
-flash and a tone (a different frequency for each group), each timed from stimulus onset. The
-**Left** and **Right** tabs set outputs delivered on trials rewarded on that side — the side
-port's light and a side tone, each timed from stimulus onset — and the guide light. A component
-on for the whole window is free, and stays on until the hold ends — through any post-stimulus hold
-too; one that starts late or ends early uses a global timer. Sounds
-never do: a delayed tone is loaded with silence in front of it. The same holds for the cue once
-the stimulus starts: a cue light or air that goes off part way through the stimulus uses a timer,
-the cue tone does not. The HiFi module plays **one sound at a time** — a new sound cuts off the
+### Other stimulus components
+
+Besides the light pattern, the stimulus can include air, a centre light flash and a tone (a
+different frequency for each group), each timed from stimulus onset. The **Left** and **Right** tabs
+set outputs delivered on trials rewarded on that side — the side port's light and a side tone, each
+timed from stimulus onset — and the guide light.
+
+A component on for the whole window is free, and stays on until the hold ends — through any
+post-stimulus hold too; one that starts late or ends early uses a global timer. Sounds never do: a
+delayed tone is loaded with silence in front of it. The same holds for the cue once the stimulus
+starts: a cue light or air that goes off part way through the stimulus uses a timer, the cue tone
+does not. Unlike the light, these components stop when the hold ends. The HiFi module plays **one sound at a time** — a new sound cuts off the
 one playing — so a session is refused if more than one of the stimulus tone, the side tone and a
 cue tone that continues into the stimulus would start with the stimulus.
 
@@ -464,11 +498,18 @@ HiFi module, or the PC's speakers when there is none (the emulator). The cue ton
 ### Runtime window
 
 The parameters that are safe to change with an animal in the box, synced once per trial. On the
-rig it is a window of its own, in tabs (*Trial*: reward, centre reward and timing; *Task*: punishment, bias
-correction, hold shaping; *Delivery*: light, sound and port light brightness), with labels and
-units, limits held as values are typed, and a header saying how the last trial ended and what is
-running now. Under the emulator the reduced form opens instead — Bpod's own single-page parameter
-window, relabelled. `Runtime window` on the Experiment tab can force either.
+rig it is a window of its own, in tabs (*Trial*: reward, centre reward and timing, including the
+hold without shaping; *Task*: punishment, bias correction, hold shaping; *Delivery*: light, sound
+and port light brightness), with labels and units, limits held as values are typed, and a header
+saying how the last trial ended and what is running now, over as many lines as it needs. In
+habituation, where both side ports pay, the header says whether the trial was **rewarded**, never
+correct or incorrect; with a contingency (training, experiment) it says correct or incorrect.
+Under the emulator the reduced form opens instead — Bpod's own single-page parameter window,
+relabelled. `Runtime window` on the Experiment tab can force either.
+
+- *Timing*: *Hold without shaping* and *Fixed hold* (§3, *The hold*); the panel's title gives the
+  stimulus window they are set against. Then `PostStimulusHold`, `HoldWindow`, `ResponseWindow`
+  and `ITI`.
 
 - *Reward*: `RewardDelay` (0 s) and `DrinkingGrace` (0.3 s), as §3 describes under *A correct
   choice*. `RewardAmount` µL at the side port (3 by default), the valve time from Bpod's liquid
@@ -494,7 +535,9 @@ window, relabelled. `Runtime window` on the Experiment tab can force either.
   precedence over `MaxSameSide` (see *Bias correction and the run limit* in §4). In simulation,
   an always-left animal got 74–84% right-paying trials at strength 0.5 (target 75%) and 86–92% at
   strength 1 (target 90%), for 500–600 trials of a 1000-trial order. With an unbiased animal,
-  chance leanings in the window let runs reach 4–5 in 1000 trials.
+  chance leanings in the window let runs reach 4–5 in 1000 trials. The trial still running counts
+  towards the run (0.9.8): before, a run could reach `MaxSameSide` + 1 even without bias correction
+  (LUMS0014 had 26 runs of 4 with a limit of 3 on 2026-09-27).
 
 Every parameter describes itself on the help line at the foot of the window (a tooltip in the
 compact window).
@@ -514,7 +557,8 @@ window only shows it.
 
 ### Designers
 
-The **stimulus designer** (*Design stimuli…* on the Stimulus tab) holds everything about the light
+The **test-pulse designer** is described with sleep sessions (§7). The **stimulus designer**
+(*Design stimuli…* on the Stimulus tab) holds everything about the light
 patterns: the window and the bin, the seed (with **Randomise**, and whether each session draws a new
 one), the family with the question it asks, the family's own
 settings (with **Restore defaults**), channel offsets, the groups with their trials, timers and
@@ -562,17 +606,18 @@ Panels, in the order they are read:
   - **Now and next** (top left) — the pattern of the running trial and the next three in the order,
     channel A above B (the title is the key), with the side each pays; shown from the moment the
     session starts
-  - **Outcomes** — each trial's choice by stimulus group (by the B share of its light when the
-    mixture draws amounts every trial): correct, incorrect or no choice. In habituation, where both
+  - **Outcomes** — each trial's choice by stimulus group (along the family's evidence, such as
+    A's share of the light, when every trial has a pattern of its own): correct, incorrect or no
+    choice. In habituation, where both
     side ports pay, a choice is *rewarded* (green) or *not rewarded* (it left before the valve
     opened), and a trial with no choice is grey; the header, Performance and By side count every
     trial, a trial with no choice as not rewarded, and Evidence scores choices by the reward
 - Middle row
   - **Performance** — fraction correct of the choices over a moving window, for all, left- and
     right-rewarded trials; in habituation the fraction of trials rewarded
-  - **Psychometric** — P(choose left) with error bars along the family's evidence: the B share of
-    the light (mixture), A flashes minus B flashes (sequence), or the deciding channel's amount (the
-    mixture's controls), a point per value, or eight bins when the amounts are drawn every trial;
+  - **Psychometric** — P(choose left) with error bars along the family's evidence: A's share of the
+    light or A minus B (mixture), A flashes minus B flashes (sequence), or the deciding channel's
+    amount (the mixture's controls), a point per value, or eight bins when the amounts are drawn every trial;
     one point per group for the pure channel, order, motif and hand-drawn families — with the
     contingency drawn behind it
   - **Evidence, u_A vs u_B** — every choice at the latent evidence its trial's stimulus carried on
@@ -949,6 +994,8 @@ D:\luminoseData\<subject>\LuminoseFM\Session Data\<subject>_LuminoseFM_<YYYYMMDD
 D:\luminoseData\<subject>\LuminoseFM\Session Data\<subject>_LuminoseFM_<YYYYMMDD_HHMMSS>_plots.png
 D:\luminoseData\<subject>\LuminoseFM\Session Settings\<settings name>.mat
 D:\luminoseData\<subject>\LuminoseFM\Session Videos\<view>_<subject>_LuminoseFM_<YYYYMMDD_HHMMSS>.avi / .csv
+D:\luminoseData\<subject>\LuminoseFM\Session Plots\NN_<Plot>_PP_<subject>_<YYYYMMDD_HHMMSS>.png
+D:\luminoseData\<subject>\LuminoseFM\Session Logs\<subject>_LuminoseFM_<YYYYMMDD_HHMMSS>_log.md
 ```
 
 The `.mat` holds one variable, `SessionData`, saved every few trials, so a crash costs at most a
@@ -963,6 +1010,28 @@ few trials.
   a session cancelled in a setup dialog deletes its empty one (up to 0.9.5 it was left behind).
   Details in [`docs/data-format.md`](docs/data-format.md).
 - **`_plots.png`** is the online figure as it looked when the session ended.
+- **Session Plots** (0.9.8, behaviour sessions) holds the session's summary plots for you and
+  colleagues to look through: every panel of the online figure over the **whole** session, each
+  as its own image, and more (how each trial ended, every hold attempt, engagement over time, pokes
+  at each port, MATLAB's timing). Named `NN_<Plot>_PP_<subject>_<date>_<time>.png`, so sorting by
+  name puts one kind of plot from every session together, by date: `01_Outcomes`,
+  `02_Performance`, `03_Psychometric`, `04_Evidence`, `05_BySide`, `06_SideBias`,
+  `07_ReactionTime`, `08_CentreHold`, `09_HoldAttempts`, `10_Engagement`, `11_PortActivity`,
+  `12_SessionTiming`. `PP` is the page: 01, unless the outcomes run over more than 400 trials.
+  About 0.5 MB a session.
+- **Session Logs** (0.9.8, behaviour sessions) holds `<data file name>_log.md`, a plain-text
+  summary for the lab notebook: when and how the session ran, the animal, the settings
+  that shape a trial, how the animal did (score, choices, water, the hold, reaction time, side
+  bias, 50-trial blocks), what was changed during the session, and the recordings.
+- **Ending a session takes a few seconds longer** (0.9.8): once the data are saved, the video
+  stopped and the rig released, the session draws the summary plots and writes the log, about
+  0.3 s a plot (4–8 s in all). The console says *writing its summary plots and log* while it does,
+  and where they went when it is done. Wait for the *session ended* line before closing MATLAB.
+  Nothing in the data file depends on them.
+- **Plots and log for an older session**, or again with the current version:
+  `lum.report.fromFile(dataFile)`; add `'OnlinePlots', true` to redraw `_plots.png` too. The data
+  file is only read. Sessions before 0.9.6 are rescored in memory with the current scorer (a side
+  poke after the response window was counted as a choice then).
 - **LED intensity.** Each behaviour trial records the LED current it ran at on A and B
   (`LEDCurrentA`, `LEDCurrentB`, mA); sleep and ePhys calibration sessions record it per gate of
   light (`LightSegments.CurrentmA`). `SessionData.Session.DoricLED` holds the light paths and the
@@ -973,7 +1042,18 @@ few trials.
   when the session ends, so runtime changes (reward, timing), the house light, a growing hold (§3)
   and each session type's camera crops (§10) carry over to the next session. To keep a set of settings apart — per animal, or per stage — create a new settings file
   in the launch manager and choose it. Every data file also holds the exact settings it ran with,
-  in `SessionData.Session.Settings`. Session-level information — the settings, the stimulus set, the rig map, the barcode —
+  in `SessionData.Session.Settings`.
+- **Moving data off the rig: leave `Session Settings` behind.** The settings file is kept in the
+  data folder, beside the data. If a subject's whole folder is moved away, the launch manager no
+  longer lists the subject; created again, it gets an empty settings file, and the next session
+  starts from the defaults: every setting, the hold a growing hold had reached (it starts again at 0.2 s) and the
+  camera crops. Move `Session Data`, `Session Videos`, `Session Plots` and `Session Logs`, and leave
+  `<subject>\LuminoseFM\Session Settings\` in `D:\luminoseData`, or copy it back before the next
+  session: a settings file put back into a subject's `Session Settings` folder is used as it is. LED
+  calibrations (`calibration/` in this repository) and the valves' liquid calibration (`Bpod Local`)
+  are not in the data folder and are not affected.
+
+Session-level information — the settings, the stimulus set, the rig map, the barcode —
 is stored **once** in `SessionData.Session`; each trial stores only its own events, timestamps,
 outcome and indices into it. Airflow from the flow meter is merged in at the end of the session as
 `SessionData.Analog`.
@@ -997,7 +1077,7 @@ listed, MATLAB R2025b's Workspace browser went through every change the session 
 the session ended, and ran MATLAB out of memory a few minutes later (LUMS0014's sessions of
 2026-09-25 and -26). The session removes it from the base workspace as its last step; Bpod keeps it,
 so `EndBpod`, the console and the next session work as before. For four minutes after a desktop
-session a small background process also writes `<data file name>_memory.csv` beside the data file,
+behaviour session a small background process also writes `<data file name>_memory.csv` beside the data file,
 MATLAB's memory once a second; it can be deleted.
 
 Every field, and what to watch for in files from older versions, is in
@@ -1069,9 +1149,8 @@ edges means the splitter, the cable into BNC input 1, or the input disabled in t
 settings; no blinking means PulsePal output 3 or the LED driver. The light is left off and PulsePal's
 port released. Under `Bpod('EMU')` it runs too, with emulated edges.
 
-**Passing on this rig since 2026-09-21**: every switch reaches BNC input 1, 18–33 ms after its
-command. Whether the light itself turns on is still to be seen; see P1 in
-[`docs/rig-checks.md`](docs/rig-checks.md).
+**Passing on this rig since 2026-09-21**: the light switches on and off, and every switch reaches
+BNC input 1, 18–33 ms after its command (P1 in [`docs/rig-checks.md`](docs/rig-checks.md)).
 
 ### `TestDoricLED` — check the light path to the fiber
 
@@ -1097,7 +1176,7 @@ The protocol runs **end to end on a machine with no hardware attached**. Start B
 poke the ports (centre to initiate, centre again to withdraw, then a side port). No light and no
 sound are delivered, there is no sync line, the Doric LED is the DoricLED package's simulated driver
 (when the package is found), and the emulator has only five global timers, so a
-pattern with more than four stretches of light is refused there and accepted on the rig. Emulated
+pattern with more than three stretches of light is refused there and accepted on the rig. Emulated
 sessions still write a complete data file, flagged `Data.Info.EmulatorMode = 1`, and record video
 from SpinCam's simulated cameras when SpinCam is found.
 

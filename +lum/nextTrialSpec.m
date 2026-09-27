@@ -12,7 +12,8 @@ function [spec, queue] = nextTrialSpec(S, stimulusSet, queue, history, trialNumb
 %                    the animal's last S.GUI.BiasWindow choices; trials with no choice
 %                    are skipped) and the next pattern that can pay it is brought
 %                    forward, from anywhere in the rest of the session's order.
-%   Run limit        After S.Task.MaxSameSide trials rewarded on one side, the next
+%   Run limit        After S.Task.MaxSameSide trials rewarded on one side (the trial
+%                    still running counted, history.preparedSide), the next
 %                    trial must be rewarded on the other, unless bias correction is
 %                    pushing towards that side: bias correction takes precedence, so an
 %                    animal avoiding the right gets as many right trials in a row as the
@@ -201,13 +202,21 @@ recent = choices(find(~isnan(choices), floor(window), 'last'));
 
 
 function side = sideForcedByRunLimit(S, history)
-% The side that must be used next to keep same-side runs within MaxSameSide.
+% The side that must be used next to keep same-side runs within MaxSameSide. The trial
+% before this one is usually still running, prepared but not yet recorded
+% (history.preparedSide, lum.HoldShaping.notePrepared): its side ends the run. Up to 0.9.7
+% it was left out, and runs reached MaxSameSide + 1 (LUMS0014, 2026-09-27: 26 runs of 4
+% with a limit of 3).
 side = [];
 limit = S.Task.MaxSameSide;
-if limit < 1 || history.nTrials < limit
+sides = history.correctSide(1:history.nTrials);
+if isfield(history, 'preparedTrial') && history.preparedTrial == history.nTrials + 1
+    sides = [sides, history.preparedSide];
+end
+if limit < 1 || numel(sides) < limit
     return
 end
-lastSides = history.correctSide(history.nTrials - limit + 1:history.nTrials);
+lastSides = sides(end - limit + 1:end);
 if all(lastSides == lastSides(1)) && ~isnan(lastSides(1))
     side = 3 - lastSides(1);  % Sides are 1 and 2, so 3 - s is the other one
 end

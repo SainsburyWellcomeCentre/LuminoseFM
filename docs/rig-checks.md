@@ -8,48 +8,46 @@ and move each one to *Done* with its result and session names.
 
 ---
 
+## How to run a check
+
+**Permission.** The operator gives it per request, with no animal in the box. Close nothing of
+theirs: if the desktop MATLAB holds COM3 (`serialportlist('available')` lacks it), ask them to close
+it. Keep session files out of the data folder (`%TEMP%\LuminoseFM_rigcheck`, subject `FakeSubject`).
+
+**Separate processes.** Run each utility or session in its own `-batch` MATLAB, each ending with
+`EndBpod`, so one failure cannot leave a port open for the next.
+
+**Virtual pokes.** Write the state machine's virtual input bytes from a MATLAB timer on a fixed
+cycle, as the console's port buttons do: `BpodSystem.SerialPort.write(['V' ch-1 level], 'uint8')`.
+Never drive `ManualOverride` from a timer.
+
+**A headless session.** Set the appdata `LuminoseFM_Headless` and `BpodSystem` up as
+`emulatorSessionTest` does, and also do what `RunProtocol` does before a session:
+- open the Flex analog file (`BpodSystem.AnalogDataFile`, `Status.RecordAnalog = 1`,
+  `Status.nAnalogSamples = 0`) and fill `Data.Analog`'s fields;
+- set `ProtocolStartTime` and call `resetSessionClock`.
+
+Otherwise the analog stream's timer writes to an invalid file and nothing is merged.
+
+**Record** every result under *Done* below, with the session names, and move a pending check there
+once it has passed.
+
+---
+
 ## Pending — needs the operator at the rig
 
-### P12. What 0.9.6 changed, in a desktop session (0.9.6)
-
-The pieces are tested under the emulator; these need the desktop MATLAB and the cameras.
-
-1. **Crop with the mouse.** Setup dialog, Cameras tab, **Preview**, **Draw crop**: press on the
-   topview picture, drag round the arena, release. The preview shows only the crop and the table's
-   Crop column its `x,y wxh`; the help line still follows the pointer afterwards. Type a crop into the
-   column: the preview follows. **Full frame** undoes both.
-2. **Crops per session type.** Start a behaviour session with a crop, end it; open a sleep session:
-   its Cameras tab shows full frame (or the sleep crop last kept). Open a behaviour session again:
-   the behaviour crop is back. From the files: `Session.Settings.Camera.Cameras(k).Roi` and each
-   `_session.json`'s camera `Settings` (`Width`, `Height`, `OffsetX`, `OffsetY`) match.
-3. **Hold carried over.** After a habituation or training session with *Grow hold*, the log's last
-   lines say where the next session's hold starts, and the next session's Runtime tab shows it as
-   *Hold at start*.
-4. **Habituation plots.** Every rewarded side poke is a green dot in *Outcomes*, the header says
-   "% of N trials rewarded (M choices)", counting the trials with no choice as not rewarded (0.9.7),
-   and reaction times sit on a log axis.
-5. **Memory.** Found and fixed on 2026-09-26 (see *Done*). In the next desktop session, from the
-   launch manager: the log's last lines say `BpodSystem is no longer listed in the base workspace`,
-   the Workspace panel is empty, MATLAB stays responsive after the session, and
-   `<data file>_memory.csv` stays flat (about 2 GB) for its 4 minutes. `EndBpod` still works.
-
-### P11. The light playing on after a short hold (0.9.5)
-
-The emulator shows the state machine's side (`stateMachineTest`, `animalSessionTest`); on the rig the
-light's lines survive the states after the hold only because firmware 23 skips a BNC line linked to a
-running timer on state entry, and `WaitForLightEnd` relies on a condition on the light clock.
-
-1. With the operator's permission (no animal; an agent can run this headless): an Experiment session
-   with *Hold for* *Fixed*, 0.2 s, a 1 s window and virtual pokes that leave at 0.3 s and choose at
-   0.5 s. From the saved file: every light segment's `GlobalTimer<i>_End` at its planned time after
-   `CentreHold`, `WaitForLightEnd` lasting until the light is over, `ITI` after it,
-   `Session.TriggerStates` `{'ITI'}`, and `Timing.prepare` well inside the ITI. With video, the
-   cameras' `TTL_State` still matched pulse by pulse.
-2. At the rig, with a card (or the power meter) at the fiber tips: the same session played from the
-   console. Poke, leave after the hold and choose at once: the light carries on to the end of the
-   window while the side port is poked and the water is given. Poke and leave before the hold: the
-   light stops at once.
-3. A Training session with automatic shaping: early trials (0.2 s holds) still show the whole pattern.
+| Check | What it needs | Version |
+|---|---|---|
+| [P4](#p4-calibrate-the-2-to-19-bundle-091) | the power meter at the 2-to-19 cables; two 4-to-19 points to read again | 0.9.1 |
+| [P5](#p5-centre-reward-and-punishments-080) | water at each port, air from valve 4, the punishment noise heard | 0.8.0 |
+| [P6](#p6-the-end-button-with-the-camera-and-led-windows-open-081) | the End button pressed in a desktop session | 0.8.1 |
+| [P7](#p7-where-the-start-up-time-goes-081) | the startup line of a desktop launch | 0.8.1 |
+| [P8](#p8-the-stimulus-families-at-the-fiber-tips-and-centre-reward-again-090) | light at the fiber tips per family; the designer in a desktop MATLAB | 0.9.0 |
+| [P9](#p9-the-led-to-1000-ma-and-calibrations-extended-to-it-093) | the driver's front knob; the LED head's temperature | 0.9.3 |
+| [P10](#p10-what-094-changed-seen-in-a-desktop-session-094) | a refused reward volume and the hold plot in a desktop session | 0.9.4 |
+| [P11](#p11-the-light-playing-on-after-a-short-hold-095) | light at the fiber tips after a short hold (step 1 can run headless) | 0.9.5 |
+| [P12](#p12-what-096-changed-in-a-desktop-session-096) | the mouse-drawn crop, crops per session type, the carried hold, the memory after a desktop behaviour session | 0.9.6 |
+| [P13](#p13-the-hold-on-the-timing-panel-the-wrapped-header-and-the-summary-plots-098) | the runtime hold, the wrapped header, the teardown's plots, the 0 s ITI (step 4 can run headless) | 0.9.8 |
 
 ### P4. Calibrate the 2-to-19 bundle (0.9.1)
 
@@ -67,18 +65,6 @@ Check on the way that **On** and **Off** switch only their own channel, that a l
 current beside it (8 mW/mm² in behaviour, 2 in the sleep dialog); and see the light at the tips at
 those currents.
 
-### P9. The LED to 1000 mA, and calibrations extended to it (0.9.3)
-
-1. Turn the driver's front knob to 1000 mA on both channels: it caps the current whatever USB asks, so
-   with it lower the limit of 1000 mA gives less light than the calibration says. The driver reports
-   what USB asked for, not the knob, so this cannot be checked remotely.
-2. Done 2026-09-24: all eight 4-to-19 cable/channel calibrations go to 1000 mA and rise at every
-   step (checked offline, below), which a knob below 1000 mA would have flattened.
-3. Hold a channel at 1000 mA for the length of a calibration and check the LED head is not hot to the
-   touch. Doric recommends 700 mA for light held on for long; sessions gate the light.
-4. A behaviour session asking for more than the 700 mA reading (for example 20 mW/mm² on A) before
-   step 2 runs at 700 mA with a note; after it, at the current that gives 20.
-
 ### P5. Centre reward and punishments (0.8.0)
 
 1. Valve 2 is calibrated (2026-09-24), and on 2026-09-24 valves 1–3 opened for exactly their
@@ -87,7 +73,7 @@ those currents.
 2. A habituation session with the default centre reward (1.2 µL, trials 1 to 10), playing the animal at
    the ports: water appears at the centre port as each of the first 10 holds is completed, and not on
    trial 11; raising *Centre reward for trials* in the runtime window gives it again from the next
-   trial prepared. `Data.CentreReward` is 1 (µL) on those trials.
+   trial prepared. `Data.CentreReward` is 1.2 (µL) on those trials.
 3. A training session, with *Punish on* set to *Incorrect choice* and each *Punishment* in turn: with
    *White noise* and *Timeout + noise* the whole burst (`S.Sound.NoiseDuration`, 0.5 s) is heard
    before the next trial; before 0.8.0 the ITI cut it off at once. With *Punish on* *None*, a wrong
@@ -115,14 +101,6 @@ took 16.2–16.4 s, the cameras 0.6–2.8 s, the HiFi module 1.3 s, PulsePal 1.0
 2.1–2.5 s. In a desktop launch the LED connects while the operator is in the dialogs, so its share
 there is what this check is for.
 
-### P10. What 0.9.4 changed, seen in a desktop session (0.9.4)
-
-1. In a Training session, type 40 µL as the reward in the runtime window: the console warns that the
-   reward stays at the previous volume, and the box shows it again from the next trial. Type 0: the
-   next rewarded trial opens no valve (no water, no click).
-2. With automatic shaping on, the *Centre hold* plot's asked-for line rises one step after each
-   completed hold, not every second trial.
-
 ### P8. The stimulus families at the fiber tips, and centre reward again (0.9.0)
 
 1. From a desktop MATLAB, launch a behaviour session and open the Stimulus tab: choose each family in
@@ -136,6 +114,90 @@ there is what this check is for.
 3. In a Training session, tick **Centre reward again** in the runtime window: water at the centre port
    on the next 10 completed holds, and the box unticks itself after them (needs valve 2's
    calibration, P5).
+
+### P9. The LED to 1000 mA, and calibrations extended to it (0.9.3)
+
+1. Turn the driver's front knob to 1000 mA on both channels: it caps the current whatever USB asks, so
+   with it lower the limit of 1000 mA gives less light than the calibration says. The driver reports
+   what USB asked for, not the knob, so this cannot be checked remotely.
+2. Done 2026-09-24: all eight 4-to-19 cable/channel calibrations go to 1000 mA and rise at every
+   step (checked offline, below), which a knob below 1000 mA would have flattened.
+3. Hold a channel at 1000 mA for the length of a calibration and check the LED head is not hot to the
+   touch. Doric recommends 700 mA for light held on for long; sessions gate the light.
+4. A behaviour session asking for more than the 700 mA reading (for example 20 mW/mm² on A) before
+   step 2 runs at 700 mA with a note; after it, at the current that gives 20.
+
+### P10. What 0.9.4 changed, seen in a desktop session (0.9.4)
+
+1. In a Training session, type 40 µL as the reward in the runtime window: the console warns that the
+   reward stays at the previous volume, and the box shows it again from the next trial. Type 0: the
+   next rewarded trial opens no valve (no water, no click).
+2. With automatic shaping on, the *Centre hold* plot's asked-for line rises one step after each
+   completed hold, not every second trial.
+
+### P11. The light playing on after a short hold (0.9.5)
+
+The emulator shows the state machine's side (`stateMachineTest`, `animalSessionTest`); on the rig the
+light's lines survive the states after the hold only because firmware 23 skips a BNC line linked to a
+running timer on state entry, and `WaitForLightEnd` relies on a condition on the light clock.
+
+1. With the operator's permission (no animal; an agent can run this headless): an Experiment session
+   with *Hold without shaping* *Fixed* and *Fixed hold* 0.2 s, a 1 s window and virtual pokes that leave at 0.3 s and choose at
+   0.5 s. From the saved file: every light segment's `GlobalTimer<i>_End` at its planned time after
+   `CentreHold`, `WaitForLightEnd` lasting until the light is over, `ITI` after it,
+   `Session.TriggerStates` `{'ITI'}`, and `Timing.prepare` well inside the ITI. With video, the
+   cameras' `TTL_State` still matched pulse by pulse.
+2. At the rig, with a card (or the power meter) at the fiber tips: the same session played from the
+   console. Poke, leave after the hold and choose at once: the light carries on to the end of the
+   window while the side port is poked and the water is given. Poke and leave before the hold: the
+   light stops at once.
+3. A Training session with automatic shaping: early trials (0.2 s holds) still show the whole pattern.
+
+### P12. What 0.9.6 changed, in a desktop session (0.9.6)
+
+The pieces are tested under the emulator; these need the desktop MATLAB and the cameras.
+
+1. **Crop with the mouse.** Setup dialog, Cameras tab, **Preview**, **Draw crop**: press on the
+   topview picture, drag round the arena, release. The preview shows only the crop and the table's
+   Crop column its `x,y wxh`; the help line still follows the pointer afterwards. Type a crop into the
+   column: the preview follows. **Full frame** undoes both.
+2. **Crops per session type.** Start a behaviour session with a crop, end it; open a sleep session:
+   its Cameras tab shows full frame (or the sleep crop last kept). Open a behaviour session again:
+   the behaviour crop is back. From the files: `Session.Settings.Camera.Cameras(k).Roi` and each
+   `_session.json`'s camera `Settings` (`Width`, `Height`, `OffsetX`, `OffsetY`) match.
+3. **Hold carried over.** After a habituation or training session with *Grow hold*, the log's last
+   lines say where the next session's hold starts, and the next session's Runtime tab shows it as
+   *Hold at start*.
+4. **Habituation plots.** Every rewarded side poke is a green dot in *Outcomes*, the header says
+   "% of N trials rewarded (M choices)", counting the trials with no choice as not rewarded (0.9.7),
+   and reaction times sit on a log axis.
+5. **Memory.** Found and fixed on 2026-09-26 (see *Done*). In the next desktop session, from the
+   launch manager: the log's last lines say `BpodSystem is no longer listed in the base workspace`,
+   the Workspace panel is empty, MATLAB stays responsive after the session, and
+   `<data file>_memory.csv` stays flat (about 2 GB) for its 4 minutes. `EndBpod` still works.
+
+### P13. The hold on the Timing panel, the wrapped header, and the summary plots (0.9.8)
+
+1. From a desktop MATLAB, open a behaviour session's setup dialog. On the Task tab set *Hold without
+   shaping* to Fixed and *Fixed hold* to 0.3: the Runtime tab's *Trial* column, *Timing* panel shows
+   the same two values, and changing them there changes the Task tab's. Change the stimulus window on
+   the Timing panel: the Stimulus tab's *Duration* follows. The dialog must keep updating (the
+   desktop-only stall, 0.7.1).
+2. In a habituation session, watch the runtime window's header: *rewarded, chose left*, never
+   *correct*; a long line (a stepped-back hold, a centre reward) wraps rather than running off the
+   window. In a Training session with shaping off, change *Fixed hold* in the runtime window's
+   *Timing* panel mid-session: the next trial's *Centre hold* plot line and the header's *hold* follow.
+3. End the session with the End button. The console says *writing its summary plots and log* and then
+   where they went; note how many seconds it took (the line after it). Open `Session Plots` and
+   `Session Logs` beside `Session Data`, and look through one of each.
+4. **The 0 s ITI.** Can be run headless with permission (no animal). A behaviour session with light
+   at the default ITI of 0 s, some trials lapsing (no poke): from the file, every trial after the
+   first starts (`TrialStartTimestamp(k+1)`) within about 0.5 s of the previous one's end
+   (`TrialEndTimestamp(k)`), a gap close to `Timing.prepare(k) + Timing.send(k)`, and no trial is
+   lost or late (the session never waits on an upload). With *Task events* sync and video, each
+   camera's `TTL_State` is low for at least two frames between a `NoInitiation` and the next trial's
+   rise. At the rig: the animal is not hurried by it (the drinking grace still ends each rewarded
+   trial).
 
 ## Done
 
@@ -353,10 +415,3 @@ run outside a protocol, so a second rig utility in the same MATLAB refused to st
 running"). `TestHouseLight` and `TestSyncLine` now put `BeingUsed` and `InStateMatrix` back when they
 finish.
 
-**Running a session headless on the rig.** Set `BpodSystem` up as `emulatorSessionTest` does. Also do
-what `RunProtocol` does before a session:
-- open the Flex analog file (`BpodSystem.AnalogDataFile`, `Status.RecordAnalog = 1`,
-  `Status.nAnalogSamples = 0`) and fill `Data.Analog`'s fields;
-- set `ProtocolStartTime` and call `resetSessionClock`.
-
-Otherwise the analog stream's timer writes to an invalid file and nothing is merged.

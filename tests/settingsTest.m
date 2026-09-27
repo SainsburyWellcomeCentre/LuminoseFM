@@ -19,7 +19,7 @@ loaded = lum.defaultSettings;
 loaded.GUI = rmfield(loaded.GUI, 'ITI');
 loaded.Sync = rmfield(loaded.Sync, 'WidthJitter');
 [S, added] = lum.mergeSettings(lum.defaultSettings, loaded);
-verifyEqual(testCase, S.GUI.ITI, 1);
+verifyEqual(testCase, S.GUI.ITI, 0);
 verifyEqual(testCase, S.Sync.WidthJitter, 0.04);
 verifyEqual(testCase, sort(added), {'GUI.ITI', 'Sync.WidthJitter'});
 end
@@ -289,26 +289,27 @@ verifyEqual(testCase, sort({fields.Name}), sort(fieldnames(S.GUI))');
 end
 
 function testTheSyncPulseCostsNoTimerInAnyMode(testCase)
-% The hold window always takes one; the sync line takes none, in any mode, because every
-% edge it carries is a state's output action (D4). Nor does the house light: PulsePal holds
-% it (D15).
+% The hold window always takes one, and a session with light the light clock (D21); the
+% sync line takes none, in any mode, because every edge it carries is a state's output
+% action (D4). Nor does the house light: PulsePal holds it (D15).
 S = lum.defaultSettings;
 rig = struct('Limits', struct('GlobalTimers', 16), 'Available', struct('Sync', true));
 [budget, reserved] = lum.timerBudget(S, rig);
-verifyEqual(testCase, budget, 15);
+verifyEqual(testCase, reserved.LightClock, 1);
+verifyEqual(testCase, budget, 14);
 verifyEqual(testCase, reserved.HoldWindow, 1);
 verifyFalse(testCase, isfield(reserved, 'HouseLight'));
 verifyEqual(testCase, reserved.Sync, 0);
 for mode = [lum.SyncMode.FixedWidth lum.SyncMode.JitteredWidth lum.SyncMode.TaskEvents]
     S.Sync.Mode = mode;
-    verifyEqual(testCase, lum.timerBudget(S, rig), 15, ...
+    verifyEqual(testCase, lum.timerBudget(S, rig), 14, ...
                 'Every sync mode is driven by states');
 end
 S.Session.UseSync = false;
-verifyEqual(testCase, lum.timerBudget(S, rig), 15);
+verifyEqual(testCase, lum.timerBudget(S, rig), 14);
 S.Session.UseSync = true;
 rig.Available.Sync = false;   % Flex2 not configured as a digital output
-verifyEqual(testCase, lum.timerBudget(S, rig), 15);
+verifyEqual(testCase, lum.timerBudget(S, rig), 14);
 end
 
 function testATaskVariantAndAContingencyReversalAreRecorded(testCase)
@@ -480,29 +481,63 @@ end
 
 function testAnExperimentMayAskForAHoldShorterThanTheLight(testCase)
 % Automatic shaping is refused in an Experiment session, but a fixed hold is not: the
-% light plays on to its end after it (D21), which the validation notes, at the cost of
-% one global timer.
+% light plays on to its end after it (D21). Since the hold is a runtime setting (0.9.8),
+% every session with light keeps the light clock, whatever hold it starts with.
 rig = RigConfig;
 S = lum.stageDefaults(lum.defaultSettings, 3);
 S.Task.TrainingStage = 3;
-[~, wholeBudget] = lum.validateSettings(S, rig);
-S.Task.HoldLength = 'Fixed';
-S.Task.FixedHold = 0.3;
-[~, budget, notes] = lum.validateSettings(S, rig);
-verifyEqual(testCase, budget, wholeBudget - 1, 'The light clock');
-verifyTrue(testCase, any(contains(notes, 'plays on to its end')), strjoin(notes, ' | '));
-S.Task.FixedHold = S.Stimulus.Duration;
-[~, budget, notes] = lum.validateSettings(S, rig);
-verifyEqual(testCase, budget, wholeBudget, 'A hold as long as the window needs no clock');
-verifyFalse(testCase, any(contains(notes, 'plays on to its end')));
+[~, wholeBudget, ~, reserved] = budgetOf(S, rig);
+verifyEqual(testCase, reserved.LightClock, 1);
+S.GUI.HoldLength = 2;
+S.GUI.FixedHold = 0.3;
+[~, budget] = lum.validateSettings(S, rig);
+verifyEqual(testCase, budget, wholeBudget, 'The same clock for either hold');
+S.Session.UseOpto = false;
+[~, ~, ~, reserved] = budgetOf(S, rig);
+verifyEqual(testCase, reserved.LightClock, 0, 'No light, no clock');
 end
 
-function testOldSettingsHoldForTheWholeStimulus(testCase)
+function testOldSettingsKeepTheirHoldAsRuntimeSettings(testCase)
 loaded = lum.defaultSettings;
-loaded.Task = rmfield(loaded.Task, {'HoldLength', 'FixedHold'});
+loaded.GUI = rmfield(loaded.GUI, {'HoldLength', 'FixedHold'});
+loaded.Task.HoldLength = 'Fixed';
+loaded.Task.FixedHold = 0.35;
 [S, added] = lum.mergeSettings(lum.defaultSettings, loaded);
-verifyEqual(testCase, S.Task.HoldLength, 'Whole stimulus');
-verifyTrue(testCase, any(strcmp(added, 'Task.HoldLength')));
+verifyEqual(testCase, S.GUI.HoldLength, 2);
+verifyEqual(testCase, S.GUI.FixedHold, 0.35);
+verifyFalse(testCase, isfield(S.Task, 'HoldLength'));
+verifyFalse(testCase, isfield(S.Task, 'FixedHold'));
+verifyTrue(testCase, any(startsWith(added, 'GUI.HoldLength (was Task.HoldLength')));
+verifyTrue(testCase, lum.HoldShaping.isFixed(S));
+
+older = lum.defaultSettings;
+older.GUI = rmfield(older.GUI, {'HoldLength', 'FixedHold'});
+S = lum.mergeSettings(lum.defaultSettings, older);
+verifyEqual(testCase, lum.HoldShaping.holdLength(S), 'Whole stimulus', 'Before 0.9.5: the whole stimulus');
+end
+
+function testTheOldDefaultITIBecomesZero(testCase)
+% Up to 0.9.7 the ITI was 1 s by default; files from then (no GUI.HoldLength) take 0 s.
+loaded = lum.defaultSettings;
+loaded.GUI = rmfield(loaded.GUI, {'HoldLength', 'FixedHold'});
+loaded.Task.HoldLength = 'Fixed';          % As a 0.9.5-0.9.7 file has it
+loaded.GUI.ITI = 1;
+[S, added] = lum.mergeSettings(lum.defaultSettings, loaded);
+verifyEqual(testCase, S.GUI.ITI, 0);
+verifyTrue(testCase, any(startsWith(added, 'GUI.ITI (the old default')));
+verifyEqual(testCase, S.GUI.HoldLength, 2, 'The hold is still moved after the check');
+
+loaded.GUI.ITI = 1.5;
+verifyEqual(testCase, lum.mergeSettings(lum.defaultSettings, loaded).GUI.ITI, 1.5, ...
+            'An ITI the operator chose is kept');
+again = lum.defaultSettings;
+again.GUI.ITI = 1;                          % Typed from 0.9.8 on
+verifyEqual(testCase, lum.mergeSettings(lum.defaultSettings, again).GUI.ITI, 1);
+end
+
+function [stimulusSet, budget, notes, reserved] = budgetOf(S, rig)
+[stimulusSet, budget, notes] = lum.validateSettings(S, rig);
+[~, reserved] = lum.timerBudget(S, rig);
 end
 
 function testACueThatStopsAtThePokeLeavesItsLineToTheStimulus(testCase)
@@ -607,17 +642,17 @@ S.Task.OnHoldBreak = 'Shrug';
 end
 
 function S = unknownHoldLength(S)
-S.Task.HoldLength = 'As long as it likes';
+S.GUI.HoldLength = 3;
 end
 
 function S = zeroFixedHold(S)
-S.Task.HoldLength = 'Fixed';
-S.Task.FixedHold = 0;
+S.GUI.HoldLength = 2;
+S.GUI.FixedHold = 0;
 end
 
 function S = fixedHoldBeyondTheWindow(S)
-S.Task.HoldLength = 'Fixed';
-S.Task.FixedHold = S.GUI.HoldWindow + 1;
+S.GUI.HoldLength = 2;
+S.GUI.FixedHold = S.GUI.HoldWindow + 1;
 end
 
 function S = unknownSessionType(S)

@@ -81,17 +81,63 @@ function text = version()
 % takes BpodSystem out of the base workspace as a session ends (MATLAB's Workspace browser ran
 % out of memory working through a session's changes to it), and keeps the plan of a sleep or
 % ePhys block the End button cut short (Session.StoppedBlock).
+% 0.9.8 counts the trial still running towards the same-side run limit (runs reached
+% MaxSameSide + 1 before), makes the hold without shaping a runtime setting
+% (S.GUI.HoldLength, S.GUI.FixedHold, on the Timing panel; they were S.Task.HoldLength and
+% S.Task.FixedHold), so every session with light keeps the light clock ready, says
+% "rewarded" rather than "correct" in habituation's runtime window, writes a behaviour
+% session's summary plots (Session Plots) and log (Session Logs) as it ends, and records
+% the commit on the rig, where MATLAB cannot run git (read from the repository's .git
+% folder).
 %
 % See also: LuminoseFM
 
-release = '0.9.7';
+release = '0.9.8';
 text = release;
 
+commit = '';
 try
     [status, output] = system(sprintf('git -C "%s" rev-parse --short HEAD', lum.repoRoot));
     if status == 0
-        text = sprintf('%s+%s', release, strtrim(output));
+        commit = strtrim(output);
     end
 catch
-    % No git, or no repository: the release number on its own is still useful.
+    % No git on the system path: read the repository's own files instead.
+end
+if isempty(commit) || ~all(isstrprop(commit, 'xdigit'))
+    commit = commitFromGitFolder(fullfile(lum.repoRoot, '.git'));
+end
+if ~isempty(commit)
+    text = sprintf('%s+%s', release, commit);
+end
+
+
+function commit = commitFromGitFolder(gitFolder)
+% The checked-out commit, short, from .git/HEAD and the branch it names (loose or packed);
+% '' when there is no repository. MATLAB on the rig has no git on its path, so every session
+% up to 0.9.7 recorded the release alone.
+commit = '';
+try
+    head = strtrim(fileread(fullfile(gitFolder, 'HEAD')));
+    if startsWith(head, 'ref:')
+        ref = strtrim(extractAfter(head, 'ref:'));
+        loose = fullfile(gitFolder, strrep(ref, '/', filesep));
+        if isfile(loose)
+            full = strtrim(fileread(loose));
+        else
+            full = '';
+            packed = splitlines(fileread(fullfile(gitFolder, 'packed-refs')));
+            match = packed(endsWith(strtrim(packed), [' ' ref]));
+            if ~isempty(match)
+                full = strtok(match{1});
+            end
+        end
+    else
+        full = head;  % A detached HEAD holds the commit itself
+    end
+    if numel(full) >= 7 && all(isstrprop(full, 'xdigit'))
+        commit = full(1:7);
+    end
+catch
+    % No repository, or one laid out otherwise: the release alone.
 end

@@ -25,7 +25,7 @@ right — D8 in [`architecture.md`](architecture.md).
 | slot | One of the equal parts the sequence family cuts the window into, holding one flash or nothing |
 | word, letter | The motif family's group, and its parts: letters A, B, X (both) and - (dark), one flash each |
 | turn | One handover from one channel to the other and back in the order family; the guarded cycle's turn has a short and a long overlap |
-| evidence | A family's decision variable, the psychometric axis: B share, A flashes minus B flashes, the deciding amount (`StimulusSet.Evidence`) |
+| evidence | A family's decision variable, the psychometric axis: A's share of the light or A minus B (mixture), A flashes minus B flashes (sequence), the deciding amount (the mixture's controls) (`StimulusSet.Evidence`, `EvidenceName`) |
 | family's contingency | The P(left) a family gives its groups (`FamilyPLeft`), used when `S.Task.GroupPLeft` is empty |
 | seed | The number that fixes every trial of a session, their order and whatever the family draws at random (`S.Stimulus.Generator.Seed`, `Session.StimulusSet.Seed`). New every session by default; typed in to repeat a session |
 | single-cue ceiling | The best score an observer reading one cue alone (A's amount, B's amount, total light, A's or B's time course) could reach (`StimulusSet.Shortcuts`) |
@@ -34,7 +34,9 @@ right — D8 in [`architecture.md`](architecture.md).
 | hold, hold break, grace | The centre-port hold; leaving during it; how long a break may last unpunished |
 | reward delay, drinking grace | After a correct side poke: the wait before the valve opens (`RewardDelay`), and how long the animal must then stay out of both side ports before the trial ends (`DrinkingGrace`; a side poke within it starts it again) |
 | hold window | `HoldWindow`: the time from trial start in which a hold must be completed, restarts included |
-| fixed hold | A hold of a set length from stimulus onset, used when automatic shaping does not grow the hold (`S.Task.HoldLength` *Fixed*, `S.Task.FixedHold`); the other choice, *Whole stimulus*, is the stimulus window plus the post-stimulus hold |
+| fixed hold | A hold of a set length from stimulus onset, used when automatic shaping does not grow the hold (*Hold without shaping* *Fixed*, `S.GUI.HoldLength` 2, `S.GUI.FixedHold`; runtime settings from 0.9.8, `S.Task.HoldLength` and `S.Task.FixedHold` before); the other choice, *Whole stimulus*, is the stimulus window plus the post-stimulus hold |
+| summary plots | A behaviour session's plots over the whole session, one image each, in `Session Plots` (`lum.report.summaryPlots`, D22) |
+| session log | A behaviour session's settings and behaviour in a short Markdown text, in `Session Logs` (`lum.report.sessionLog`, D22) |
 | light clock | The global timer, as long as a trial's light from stimulus onset, that tells the trial when the light is over after a completed hold shorter than it; the trial waits for it in `WaitForLightEnd` (D21) |
 | session type | Behaviour, sleep or ePhys calibration; `Session.Type` is `'Behaviour'`, `'Sleep'` or `'EphysCalibration'` |
 | carrier | What PulsePal does on a channel while it is on (frequency, pulse width, voltage) |
@@ -75,74 +77,49 @@ right — D8 in [`architecture.md`](architecture.md).
 Settings files are converted when loaded. Analysis code reading older **data** files needs the old
 names.
 
-### 0.1 → 0.2 — things say what they are
+Newest first. Each table puts the old behaviour or name on the left and the new on the right.
 
-| 0.1 | 0.2 |
-|-----|-----|
-| states `WaitForCenterPoke`, `CenterHold`, `WaitForPortOut` | `WaitForCentrePoke`, `CentreHold`, `WaitForCentreExit` |
-| state `Punish` (also reached by unpunished mistakes) | `IncorrectChoice` |
-| state `CorrectEarlyWithdrawal` (left the reward port early) | `WithdrewBeforeReward` |
-| — | new states `HoldBreak`, `CentreHoldResumed` |
-| `Data.StimulusIndex` | `Data.StimulusGroup` and `Data.PatternIndex` |
-| `Data.SyncDuration` | `Data.SyncPulseWidth` |
-| `Data.LeftProbabilityUsed` (was the bias target, not the stimulus's P(left)) | `Data.BiasTargetPLeft` |
-| `Session.Patterns` | `Session.StimulusSet` |
-| sync mode *Random width* | *Jittered width* (code 2 unchanged) |
-| runtime `StimulusOn`, `PortLEDIntensity` | `OptoOn`, `PortLightIntensity` |
-| `S.Stimulus.Waveform`, `S.Meta.FiberBundle` | `S.Light.Carrier`, `S.Light.Bundle` |
+### 0.9.7 → 0.9.8 — after LUMS0014's third session: the run limit, the hold as a runtime setting, summary plots and a log
 
-### 0.2 → 0.3 — a broken hold restarts the stimulus
+Found auditing `LUMS0014_LuminoseFM_20260927_130459` (habituation, 307 trials, 87 min, ended with
+the End button, 0.9.7 with the hold settings the operator typed: start 0.4 s, growth 2%, target
+0.6 s). The file is complete and consistent: 307 trials with every series filled; `Rewarded` matches
+the reward states visited (296: 152 `Correct`, 144 `Incorrect`, both sides paying) and rescoring
+every trial from its raw events reproduces `Outcome`, `Choice` and `Rewarded`; 11 trials without a
+choice (10 `HoldNotCompleted`, 1 `NoInitiation`); side valve states 20.7 and 19.6 ms (valves 1 and 3
+for 2 µL) and centre 16.0 ms (valve 2, 1.2 µL) on trials 1–10; every completed hold's last
+`CentreHold` lasted its `HoldDuration`. The hold grew from 0.4 s to the 0.6 s target by trial 23 and
+stepped back 6 times (trials 103, 219, 229, 268, 282, 294); the animal made 1177 hold attempts, 881
+of them early withdrawals, rising from 2.6 a trial in the first 50 trials to 5.3 in trials 251–300,
+and its trials lengthened (median 10.7 s to 16.4 s; the last 7 took 48 s each) as it drank 604 µL.
+The settings file hands on 0.54 s. Both cameras wrote 522,605 frames, none missed or dropped; the
+barcode `0CAD3402` decodes from each camera's `TTL_State`; 308 trial pulses follow it (the 308th is
+the trial the End button cut short), the first 307 matching `TrialStartTimestamp` with residuals SD
+2.8 ms, largest 6.1 ms, after a straight-line fit (host clock 9 ppm slow). `CameraTime` agrees with
+`_events.csv`'s `TrialEnd` rows to 6.3 ms. The Flex stream has 5,235,046 samples. MATLAB's memory
+stayed at 3.97–4.18 GB, and the 4-minute sampler after the session stayed flat at 2.35 GB: the
+0.9.7 fix held. The house light was off all session.
 
-| 0.2 | 0.3 |
-|-----|-----|
-| runtime `InitiationWindow` (state timer of `WaitForCentrePoke`) | `HoldWindow` (a global timer from trial start, across restarts); converted on load |
-| a broken hold always ended the trial (`EarlyWithdrawal` → `ITI`) | `S.Task.OnHoldBreak`: *Restart stimulus* (default, `EarlyWithdrawal` → `WaitForCentrePoke`) or *End trial* |
-| — | outcome `HoldNotCompleted` (code 6), series `HoldAttempts`, `Session.Type`, `Barcode.Kind`, `SyncPulses` (sleep) |
-| analog `Timestamps`/`TrialNumber` shifted by the barcode | corrected at merge |
+Two things were wrong. **The run limit let runs of `MaxSameSide` + 1 through**: 26 runs of 4
+with a limit of 3, most with bias correction aiming at 0.5, so not its doing. `lum.nextTrialSpec`
+counted only recorded trials, but trial *k*+1 is prepared while trial *k* runs, so the running
+trial's side was left out — the same one-trial lag automatic shaping had until 0.9.4. The
+validation of 2026-09-24 had simulated the policy without the lag. **The protocol version had no
+commit**: every rig session so far records `0.9.x` alone, because MATLAB on the rig cannot run git.
 
-### 0.3 → 0.4 — the cue lasts until the stimulus starts
-
-| 0.3 | 0.4 |
-|-----|-----|
-| states `Cue`, `Cue2`, `Cue3`… (the cue, from trial start) | gone: the cue is on in `WaitForCentrePoke` |
-| runtime `PreStimulusHold`, 0.05 s by default; leaving it re-armed the trial unpunished | pre-session `S.Stimulus.Latency` (Stimulus tab), 0 by default; leaving it is a broken hold. State `PreStimulusHold` is entered only when the latency is above 0, otherwise the poke enters `CentreHold`. The runtime setting is retired on load, not converted |
-| cue rows `Latency`, `Duration` from trial start; `Cue.CentreLightDuringHold` | cue rows `ThroughStimulus`, `Duration` from stimulus onset; converted on load (the centre light keeps its hold setting, tone and air go off as the stimulus starts) |
-| task-event sync low in `PreStimulusHold` | low on the poke: in `PreStimulusHold`, or `CentreHold` without a latency |
-
-### 0.4 → 0.5 — test pulses in sleep sessions
-
-| 0.4 | 0.5 |
-|-----|-----|
-| sleep block states `Pulse001`, `Gap001`… | `Level001`…: one state per span between edges of the sync line and channels A and B |
-| sleep sessions never open PulsePal | they do when test pulses are on, and are refused without it |
-| — | `S.Sleep.TestPulses` (filled in, switched off, on load), `SessionData.LightSegments`, `Session.TestPulses`, `Session.DeviceLog.PulsePal` |
-| PulsePal connected and stopped | also answers a handshake before a session uses it |
-| online panel *By side and light* | *By side*; new *Evidence, u_A vs u_B* and *Side bias* panels |
-
-### 0.5.0 → 0.5.1 — the trial sync pulse works
-
-| 0.5.0 | 0.5.1 |
+| 0.9.7 | 0.9.8 |
 |-------|-------|
-| trial sync pulse from a global timer, overwritten one cycle later (so ~100 µs reached the recording) | the pulse is `TrialStart`'s own state timer; no mode costs a global timer |
-| `TrialStart` had a zero timer in every mode | it lasts the pulse in a pulsed mode, zero in task-event mode |
-| task-event sync went low on leaving `TrialStart` | the line is held high through `WaitForCentrePoke` until the poke |
-| the cue and the stimulus were dropped by `PreStimulusHold`, `HoldBreak` and `CentreHoldResumed` | their levels are written again there (`lum.stim.Component.sustainActions`) |
-| — | `S.Task.Variant`, `S.Task.ReverseContingency`, `Session.StoppedReason`, `StimulusSet.BasePLeft` / `.Reversed` |
-| habituation was set up by hand | `lum.stageDefaults`: air and no light, applied when the stage is chosen |
-| a session that lost the Bpod link froze the protocol | the trials so far are saved, the rig is released, the error is reported |
+| the run limit counted the trials recorded, not the one running: runs reached `MaxSameSide` + 1 | it counts the trial still running (`history.preparedSide`, noted by `lum.HoldShaping.notePrepared`); a run on the side bias correction pushes towards may still go past the limit |
+| the hold without shaping was set only before the session, on the Task tab (*Hold for* `S.Task.HoldLength`, *Fixed hold* `S.Task.FixedHold`) | runtime settings: *Hold without shaping* (`S.GUI.HoldLength`, 1 Whole stimulus, 2 Fixed) and *Fixed hold* (`S.GUI.FixedHold`) on the Timing panel of the runtime window's *Trial* tab and of the setup dialog's Runtime tab, and still on the Task tab (the copies follow each other). The setup dialog's Timing panel and Task tab also show the stimulus window, a copy of the Stimulus tab's *Duration*; the runtime window names it in the Timing panel's title. A settings file's values are moved on load |
+| only a session whose hold could be shorter than the light (growing, or fixed below the window) kept the light clock, and prepared the next trial in the ITI | every session with light does, since the hold can now be shortened between trials: 14 timers left for light on the rig (3 in the emulator), one fewer for a whole-stimulus session. Trials whose hold covers their light are unchanged. The *light may outlast the hold* note is gone from the setup dialog |
+| the runtime window's header was one line, cut off at the window's edge, and said *Correct* or *Incorrect* in habituation, where both ports pay | up to five lines, wrapped. In habituation it says *rewarded, chose left* or *not rewarded*; in training and experiment *correct* or *incorrect*; a trial without a choice says why (`lum.trialStatus`). The running trial says *both sides pay* in habituation, and *(light off)* when no light is delivered. The online figure's title and summary line shrink their font rather than clip in a narrow window |
+| — | a behaviour session ends by writing its summary plots (`Session Plots`, 12 images over the whole session) and its log (`Session Logs`, `<data file name>_log.md`) from the saved data, after the rig is released: a few seconds, announced on the console (D22). `lum.report.fromFile` does the same for an older session, and can redraw its `_plots.png` with the current online figure |
+| `Session.ProtocolVersion` was the release alone on the rig | the commit is read from the repository's `.git` folder when git cannot run (`0.9.8+<commit>`) |
+| the ITI was 1 s by default | 0 s (`S.GUI.ITI`): the next trial starts as soon as it is prepared and sent. In a session with light that is prepared in the ITI, 4–411 ms (median 0.18 s) in LUMS0014's last two sessions; in one without, prepared earlier, often at once. The state machine starts a trial sent with `RunASAP` the moment it arrives when none is running (firmware v23), so nothing waits for an 'R'. A settings file from before 0.9.8 (no `GUI.HoldLength`) with the old 1 s takes 0 s on load (`lum.mergeSettings`); any other ITI, and 1 s typed from 0.9.8 on, is kept |
+| with *Task events* sync, `NoInitiation` dropped the line for one cycle before the ITI | with video it lasts two frames (20 ms at 100 Hz), so the cameras see the line low between a lapsed trial and the next one's start even at a 0 s ITI; the trial's other states are unchanged |
 
-### 0.5.1 → 0.6.0 — automatic shaping, video, sound checks, help
-
-| 0.5.1 | 0.6.0 |
-|-------|-------|
-| `S.Task.HoldShaping` Off / Grow hold / Shrink grace / Both | switch `S.Task.AutoShaping` (off by default) and method `S.Task.HoldShaping` (Grow hold / Shrink grace / Both); converted on load: *Off* becomes the switch off with *Grow hold*, any other keeps shaping |
-| stage defaults set light and air | also automatic shaping: on for Training, off for Experiment; an Experiment session refuses it |
-| a hold stopped growing while the animal withdrew | it steps back one growth step after `HoldStepBackAfter` (10) early withdrawals at one hold; `HoldStart` default 0.2 → 0.1 s (existing settings files keep theirs) |
-| — | per-trial `EarlyWithdrawals` and `CameraTime`; `Session.Cameras`, `DevicesAvailable.Cameras`, `DeviceLog.Cameras`; sleep `CameraTime` per block |
-| — | `S.Camera` and video through SpinCam into `Session Videos` (D14); Cameras tab with live preview in both setup dialogs; camera window during sessions |
-| — | the video stops after the final save (`SessionSaved` event), and a second save adds its summary; default format `avi-mjpeg-mt` (SpinCam 1.2.0 engine, multi-core MJPEG), with a note when a single-threaded format cannot keep up; the help line describes the format chosen; a SpinVideo format without SpinVideo is refused when the devices open; `Session.Cameras.EngineVersion` |
-| — | `GUIMeta.<name>.Help` for every runtime parameter; help line in the setup and runtime windows |
-| — | **▶ Play** buttons for the session's sounds in the setup dialog (`lum.testSounds`) |
+LUMS0014's three sessions were given summary plots and logs, and their `_plots.png` redrawn with
+the current figure, from their data files (read only), on 2026-09-27.
 
 ### 0.9.6 → 0.9.7 — after LUMS0014's second session: every habituation trial scored, a gentler hold
 
@@ -153,7 +130,8 @@ with the End button). The file is complete and consistent: 140 trials with every
 states 25.6/26.6 ms and centre 16.0 ms, as valves 1, 3 and 2's calibrations give for 3 and 1.2 µL;
 centre reward on trials 1–10 and, after *Centre reward again* at trial 77, 77–85 (trial 86 of the run
 completed no hold); the hold carried in at 0.775 s (90% of the first session's last), grew 2% per
-completed hold to 1 s, stepped back twice, and the settings file hands on 0.9 s; the Flex stream has
+completed hold to 1 s by trial 15, then stepped back 15 times (to 0.98 s, twice on to 0.96 s; this
+note said "twice" until 0.9.8's audit counted them), and the settings file hands on 0.9 s; the Flex stream has
 5,578,993 samples (5579 s); both cameras logged and wrote 556,903 frames with none missed or dropped,
 the barcode `0CABEBB4` decodes from each camera's `TTL_State`, and the 140 trial pulses after it
 match `TrialStartTimestamp` to 5.3 ms and `SyncPulseWidth` to one frame (a 141st pulse is the trial
@@ -168,7 +146,7 @@ ended: reproduced on the rig the same day and traced to MATLAB's Workspace brows
 | automatic shaping's defaults: `HoldStart` 0.1 s, `HoldGrowth` 5%, `HoldTarget` 1 s | 0.2 s, 1%, 0.6 s. Settings files keep their own values (LUMS0014's: 0.9 s handed on, 2%, 1 s); change them on the setup dialog's Task tab (*Shaping*). A `HoldStart` above `HoldTarget` starts at the target, and the setup dialog notes it; the log line says when the handed-on start was capped at the target |
 | a sleep or ePhys session stopped from the console mid-block recorded nothing of that block, though its pulses and light up to the stop reached the recordings (1–4 extra sync pulses on the cameras in rig tests) | the block's plan is kept as `Session.StoppedBlock` (offsets, widths, channels, LED currents, the camera time of the stop) and marked `BlockStopped` in `_events.csv` |
 | after a desktop session MATLAB's Workspace browser worked through the session's changes to `BpodSystem` (listed in the base workspace since `Bpod()`), taking memory in proportion to the session: LUMS0014's sessions ended in "Out of memory." | the session's last step removes `BpodSystem` from the base workspace (the global stays; `EndBpod` and the next session are unaffected) |
-| — | a desktop session ends by starting `lum.watchMemoryAfterSession`, which samples MATLAB's memory and threads for 4 min into `<data file>_memory.csv` |
+| — | a desktop behaviour session ends by starting `lum.watchMemoryAfterSession`, which samples MATLAB's memory and threads for 4 min into `<data file>_memory.csv` |
 
 ### 0.9.5 → 0.9.6 — after LUMS0014's first session: choices inside the response window, crops per session type
 
@@ -317,3 +295,72 @@ Found by the pre-deployment validation of 2026-09-24 (`docs/validation-2026-09-2
 | Flex2 went to the scope only; `TTL_State` 0 | Flex2 wired to both cameras' Line0 (3.3 V); `TTL_State` carries the barcode and trial pulses; with video, the barcode and sync pulses are widened to what the cameras can read (`lum.sync.fitToCameras`, `Session.SyncFit`) |
 | a second rig utility in the same MATLAB refused to run ("A protocol is running"): `RunStateMachine` leaves `Status.BeingUsed` at 1 | `TestHouseLight` and `TestSyncLine` put `BeingUsed` and `InStateMatrix` back when they finish |
 | barcode bits 10 / 30 ms, trial and sleep pulses 55 ± 45 ms | defaults 20 / 50 ms and 60 ± 40 ms (existing settings files keep theirs, fitted at session time) |
+
+### 0.5.1 → 0.6.0 — automatic shaping, video, sound checks, help
+
+| 0.5.1 | 0.6.0 |
+|-------|-------|
+| `S.Task.HoldShaping` Off / Grow hold / Shrink grace / Both | switch `S.Task.AutoShaping` (off by default) and method `S.Task.HoldShaping` (Grow hold / Shrink grace / Both); converted on load: *Off* becomes the switch off with *Grow hold*, any other keeps shaping |
+| stage defaults set light and air | also automatic shaping: on for Training, off for Experiment; an Experiment session refuses it |
+| a hold stopped growing while the animal withdrew | it steps back one growth step after `HoldStepBackAfter` (10) early withdrawals at one hold; `HoldStart` default 0.2 → 0.1 s (existing settings files keep theirs) |
+| — | per-trial `EarlyWithdrawals` and `CameraTime`; `Session.Cameras`, `DevicesAvailable.Cameras`, `DeviceLog.Cameras`; sleep `CameraTime` per block |
+| — | `S.Camera` and video through SpinCam into `Session Videos` (D14); Cameras tab with live preview in both setup dialogs; camera window during sessions |
+| — | the video stops after the final save (`SessionSaved` event), and a second save adds its summary; default format `avi-mjpeg-mt` (SpinCam 1.2.0 engine, multi-core MJPEG), with a note when a single-threaded format cannot keep up; the help line describes the format chosen; a SpinVideo format without SpinVideo is refused when the devices open; `Session.Cameras.EngineVersion` |
+| — | `GUIMeta.<name>.Help` for every runtime parameter; help line in the setup and runtime windows |
+| — | **▶ Play** buttons for the session's sounds in the setup dialog (`lum.testSounds`) |
+
+### 0.5.0 → 0.5.1 — the trial sync pulse works
+
+| 0.5.0 | 0.5.1 |
+|-------|-------|
+| trial sync pulse from a global timer, overwritten one cycle later (so ~100 µs reached the recording) | the pulse is `TrialStart`'s own state timer; no mode costs a global timer |
+| `TrialStart` had a zero timer in every mode | it lasts the pulse in a pulsed mode, zero in task-event mode |
+| task-event sync went low on leaving `TrialStart` | the line is held high through `WaitForCentrePoke` until the poke |
+| the cue and the stimulus were dropped by `PreStimulusHold`, `HoldBreak` and `CentreHoldResumed` | their levels are written again there (`lum.stim.Component.sustainActions`) |
+| — | `S.Task.Variant`, `S.Task.ReverseContingency`, `Session.StoppedReason`, `StimulusSet.BasePLeft` / `.Reversed` |
+| habituation was set up by hand | `lum.stageDefaults`: air and no light, applied when the stage is chosen |
+| a session that lost the Bpod link froze the protocol | the trials so far are saved, the rig is released, the error is reported |
+
+### 0.4 → 0.5 — test pulses in sleep sessions
+
+| 0.4 | 0.5 |
+|-----|-----|
+| sleep block states `Pulse001`, `Gap001`… | `Level001`…: one state per span between edges of the sync line and channels A and B |
+| sleep sessions never open PulsePal | they do when test pulses are on, and are refused without it |
+| — | `S.Sleep.TestPulses` (filled in, switched off, on load), `SessionData.LightSegments`, `Session.TestPulses`, `Session.DeviceLog.PulsePal` |
+| PulsePal connected and stopped | also answers a handshake before a session uses it |
+| online panel *By side and light* | *By side*; new *Evidence, u_A vs u_B* and *Side bias* panels |
+
+### 0.3 → 0.4 — the cue lasts until the stimulus starts
+
+| 0.3 | 0.4 |
+|-----|-----|
+| states `Cue`, `Cue2`, `Cue3`… (the cue, from trial start) | gone: the cue is on in `WaitForCentrePoke` |
+| runtime `PreStimulusHold`, 0.05 s by default; leaving it re-armed the trial unpunished | pre-session `S.Stimulus.Latency` (Stimulus tab), 0 by default; leaving it is a broken hold. State `PreStimulusHold` is entered only when the latency is above 0, otherwise the poke enters `CentreHold`. The runtime setting is retired on load, not converted |
+| cue rows `Latency`, `Duration` from trial start; `Cue.CentreLightDuringHold` | cue rows `ThroughStimulus`, `Duration` from stimulus onset; converted on load (the centre light keeps its hold setting, tone and air go off as the stimulus starts) |
+| task-event sync low in `PreStimulusHold` | low on the poke: in `PreStimulusHold`, or `CentreHold` without a latency |
+
+### 0.2 → 0.3 — a broken hold restarts the stimulus
+
+| 0.2 | 0.3 |
+|-----|-----|
+| runtime `InitiationWindow` (state timer of `WaitForCentrePoke`) | `HoldWindow` (a global timer from trial start, across restarts); converted on load |
+| a broken hold always ended the trial (`EarlyWithdrawal` → `ITI`) | `S.Task.OnHoldBreak`: *Restart stimulus* (default, `EarlyWithdrawal` → `WaitForCentrePoke`) or *End trial* |
+| — | outcome `HoldNotCompleted` (code 6), series `HoldAttempts`, `Session.Type`, `Barcode.Kind`, `SyncPulses` (sleep) |
+| analog `Timestamps`/`TrialNumber` shifted by the barcode | corrected at merge |
+
+### 0.1 → 0.2 — things say what they are
+
+| 0.1 | 0.2 |
+|-----|-----|
+| states `WaitForCenterPoke`, `CenterHold`, `WaitForPortOut` | `WaitForCentrePoke`, `CentreHold`, `WaitForCentreExit` |
+| state `Punish` (also reached by unpunished mistakes) | `IncorrectChoice` |
+| state `CorrectEarlyWithdrawal` (left the reward port early) | `WithdrewBeforeReward` |
+| — | new states `HoldBreak`, `CentreHoldResumed` |
+| `Data.StimulusIndex` | `Data.StimulusGroup` and `Data.PatternIndex` |
+| `Data.SyncDuration` | `Data.SyncPulseWidth` |
+| `Data.LeftProbabilityUsed` (was the bias target, not the stimulus's P(left)) | `Data.BiasTargetPLeft` |
+| `Session.Patterns` | `Session.StimulusSet` |
+| sync mode *Random width* | *Jittered width* (code 2 unchanged) |
+| runtime `StimulusOn`, `PortLEDIntensity` | `OptoOn`, `PortLightIntensity` |
+| `S.Stimulus.Waveform`, `S.Meta.FiberBundle` | `S.Light.Carrier`, `S.Light.Bundle` |

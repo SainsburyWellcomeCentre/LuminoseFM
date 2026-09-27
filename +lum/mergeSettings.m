@@ -311,6 +311,39 @@ if hasPath(loaded, 'Camera.Cameras') && ~hasPath(loaded, 'Camera.Crops') ...
                               lum.gui.Form.sessionLabel(kind, true));
 end
 
+%% Replaced default (version 0.9.8): the next trial starts as soon as it is sent
+% Up to 0.9.7 the ITI was 1 s by default; it is 0 s, so the time between trials is only
+% what the next trial takes to prepare and send. A file from before 0.9.8 (it has no
+% GUI.HoldLength; checked before that setting is moved below) whose ITI is still 1 s takes
+% 0 s. Any other ITI is the operator's, and is kept; so is 1 s typed from 0.9.8 on.
+if hasPath(loaded, 'GUI.ITI') && ~hasPath(loaded, 'GUI.HoldLength') ...
+        && isequal(loaded.GUI.ITI, 1)
+    loaded.GUI.ITI = defaults.GUI.ITI;
+    migrated{end+1} = sprintf(['GUI.ITI (the old default, 1 s, became the new one: %g s, the '...
+                               'next trial as soon as it is sent)'], defaults.GUI.ITI);
+end
+
+%% Moved (version 0.9.8): the hold without shaping is a runtime setting
+% Task.HoldLength ('Whole stimulus' or 'Fixed') and Task.FixedHold became GUI.HoldLength (an
+% index into lum.HoldShaping.holdLengths, as a runtime menu stores it) and GUI.FixedHold, so
+% the operator can set the hold between trials from the runtime window's Timing panel.
+if hasPath(loaded, 'Task.HoldLength')
+    old = loaded.Task.HoldLength;
+    index = find(strcmp(lum.HoldShaping.holdLengths(), char(string(old))), 1);
+    if ~isempty(index) && ~hasPath(loaded, 'GUI.HoldLength')
+        loaded.GUI.HoldLength = index;
+    end
+    loaded = removePath(loaded, 'Task.HoldLength');
+    migrated{end+1} = sprintf('GUI.HoldLength (was Task.HoldLength, ''%s'')', char(string(old)));
+end
+if hasPath(loaded, 'Task.FixedHold')
+    if ~hasPath(loaded, 'GUI.FixedHold')
+        loaded.GUI.FixedHold = loaded.Task.FixedHold;
+    end
+    loaded = removePath(loaded, 'Task.FixedHold');
+    migrated{end+1} = 'GUI.FixedHold (was Task.FixedHold)';
+end
+
 %% Retired (version 0.2, and 0.4)
 % The hand-written stimulus table was replaced by the stimulus generator; its rows
 % cannot be converted into generator parameters, so the defaults are used instead.

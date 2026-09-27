@@ -109,14 +109,15 @@ verifyEqual(testCase, holdDuration, round(holdDuration * 1e4) / 1e4, 'AbsTol', 1
 end
 
 function testGraceAndAGrowingHoldUnderLightEachCostAGlobalTimer(testCase)
-% Grace needs the hold clock; a growing hold may end before the light, which then needs
-% the light clock (D21). Without light a growing hold costs nothing.
+% Grace needs the hold clock; any hold may end before the light (it grows, or the operator
+% sets it shorter between trials), which then needs the light clock (D21). Without light
+% neither hold costs a clock for the light.
 rig = struct('Limits', struct('GlobalTimers', 16), 'Available', struct('Sync', false));
 for mode = [{'Off'}, lum.HoldShaping.modes()]
     S = shaped(mode{1});
     [~, reserved] = lum.timerBudget(S, rig);
     verifyEqual(testCase, reserved.HoldClock, double(lum.HoldShaping.hasGrace(mode{1})), mode{1});
-    verifyEqual(testCase, reserved.LightClock, double(lum.HoldShaping.growsHold(mode{1})), mode{1});
+    verifyEqual(testCase, reserved.LightClock, 1, mode{1});
     S.Session.UseOpto = false;
     [~, reserved] = lum.timerBudget(S, rig);
     verifyEqual(testCase, reserved.LightClock, 0, [mode{1} ' without light']);
@@ -134,7 +135,7 @@ verifyEqual(testCase, lum.HoldShaping.fullHold(S), 0.3);
 S.GUI.PostStimulusHold = 0.4;
 verifyEqual(testCase, lum.HoldShaping.next(S, lum.newHistory(5)), 0.3, 'AbsTol', 1e-12, ...
             'The post-stimulus hold belongs to the whole-stimulus hold only');
-S.Task.FixedHold = 1.7;
+S.GUI.FixedHold = 1.7;
 verifyEqual(testCase, lum.HoldShaping.next(S, lum.newHistory(5)), 1.7, 'AbsTol', 1e-12, ...
             'Longer than the window, it holds past it');
 end
@@ -148,23 +149,33 @@ verifyEqual(testCase, holdDuration, 0.3, 'AbsTol', 1e-12);
 verifyEqual(testCase, grace, S.GUI.GraceStart, 'AbsTol', 1e-12);
 end
 
-function testTheLightMayOutlastOnlyAHoldThatCanBeShorterThanIt(testCase)
+function testEverySessionWithLightMayHaveAHoldShorterThanTheLight(testCase)
+% The hold without shaping is a runtime setting (0.9.8): the operator may set a fixed hold
+% shorter than the window between trials, so every session with light keeps the light clock.
 S = lum.defaultSettings;
 S.Stimulus.Duration = 1;
-verifyFalse(testCase, lum.HoldShaping.lightMayOutlastHold(S), 'The whole stimulus');
+verifyTrue(testCase, lum.HoldShaping.lightMayOutlastHold(S), 'The whole stimulus, for now');
 verifyTrue(testCase, lum.HoldShaping.lightMayOutlastHold(fixedHold(S, 0.3)));
-verifyFalse(testCase, lum.HoldShaping.lightMayOutlastHold(fixedHold(S, 1)), 'As long as the window');
-verifyFalse(testCase, lum.HoldShaping.lightMayOutlastHold(fixedHold(S, 1.5)));
-grows = shaped('Grow hold');
-grows.GUI.HoldStart = 2;
-grows.GUI.HoldTarget = 2;
-verifyTrue(testCase, lum.HoldShaping.lightMayOutlastHold(grows), ...
-           'Start and target are runtime settings: a growing hold always reserves the clock');
-verifyTrue(testCase, lum.HoldShaping.lightMayOutlastHold(shaped('Both')));
-verifyFalse(testCase, lum.HoldShaping.lightMayOutlastHold(shaped('Shrink grace')));
+verifyTrue(testCase, lum.HoldShaping.lightMayOutlastHold(fixedHold(S, 1.5)));
+verifyTrue(testCase, lum.HoldShaping.lightMayOutlastHold(shaped('Grow hold')));
+verifyTrue(testCase, lum.HoldShaping.lightMayOutlastHold(shaped('Shrink grace')));
 noLight = fixedHold(S, 0.3);
 noLight.Session.UseOpto = false;
 verifyFalse(testCase, lum.HoldShaping.lightMayOutlastHold(noLight), 'No light, nothing to wait for');
+end
+
+function testTheHoldWithoutShapingIsARuntimeChoice(testCase)
+S = lum.defaultSettings;
+verifyEqual(testCase, lum.HoldShaping.holdLength(S), 'Whole stimulus');
+verifyFalse(testCase, lum.HoldShaping.isFixed(S));
+verifyTrue(testCase, ismember('HoldLength', S.GUIPanels.Timing));
+verifyTrue(testCase, ismember('FixedHold', S.GUIPanels.Timing));
+verifyEqual(testCase, S.GUIMeta.HoldLength.String, lum.HoldShaping.holdLengths());
+S.GUI.HoldLength = 2;
+verifyTrue(testCase, lum.HoldShaping.isFixed(S));
+verifyEqual(testCase, lum.HoldShaping.fullHold(S), S.GUI.FixedHold);
+S.GUI.HoldLength = 7;
+verifyEqual(testCase, lum.HoldShaping.holdLength(S), 'Whole stimulus', 'An unknown choice reads as the default');
 end
 
 function testTheNextTrialIsPreparedInTheITIWhenTheLightMayOutlastTheHold(testCase)
@@ -175,7 +186,10 @@ verifyEqual(testCase, lum.triggerStates(S), {'ITI'});
 S.Task.OnHoldBreak = 'End trial';
 verifyEqual(testCase, lum.triggerStates(S), {'ITI'});
 verifyEqual(testCase, lum.triggerStates(shaped('Grow hold')), {'ITI'});
-verifyFalse(testCase, isequal(lum.triggerStates(lum.defaultSettings), {'ITI'}));
+verifyEqual(testCase, lum.triggerStates(lum.defaultSettings), {'ITI'}, 'Every session with light');
+noLight = lum.defaultSettings;
+noLight.Session.UseOpto = false;
+verifyFalse(testCase, isequal(lum.triggerStates(noLight), {'ITI'}));
 end
 
 function testAFixedHoldIsDescribed(testCase)
@@ -184,7 +198,7 @@ S.Stimulus.Duration = 1;
 text = lum.HoldShaping.describeHold(S);
 verifySubstring(testCase, text, '0.3 s, from the poke');
 verifySubstring(testCase, text, 'light plays on');
-S.Task.FixedHold = 1.5;
+S.GUI.FixedHold = 1.5;
 verifySubstring(testCase, lum.HoldShaping.describeHold(S), '0.5 s after it');
 verifySubstring(testCase, lum.HoldShaping.describeHold(shaped('Grow hold')), 'light plays on');
 end
@@ -202,8 +216,10 @@ end
 
 function testEarlyWithdrawalOpensThePrepareWindowOnlyWhenItEndsTheTrial(testCase)
 % A restarted hold can deliver light straight after EarlyWithdrawal, so preparing the
-% next trial there would put USB traffic inside the stimulus.
+% next trial there would put USB traffic inside the stimulus. (A session with light
+% prepares in the ITI alone; this is one without.)
 S = lum.defaultSettings;
+S.Session.UseOpto = false;
 verifyFalse(testCase, ismember('EarlyWithdrawal', lum.triggerStates(S)));
 verifyTrue(testCase, all(ismember({'LeftReward', 'RightReward', 'IncorrectChoice', ...
     'NoResponse', 'NoInitiation', 'WithdrewBeforeReward'}, lum.triggerStates(S))));
@@ -375,8 +391,8 @@ end
 
 
 function S = fixedHold(S, seconds)
-S.Task.HoldLength = 'Fixed';
-S.Task.FixedHold = seconds;
+S.GUI.HoldLength = 2;              % Fixed
+S.GUI.FixedHold = seconds;
 end
 
 function S = shaped(mode)

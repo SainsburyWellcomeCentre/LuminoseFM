@@ -2,7 +2,14 @@
 
 What a session writes, what every field means, and what to know when reading an older file.
 The user-facing summary is in [`../README.md`](../README.md); the reasoning behind the layout is
-D5 and D7 in [`architecture.md`](architecture.md).
+D5 and D7 in [`architecture.md`](architecture.md); reading it all in Python, and the clocks, are in
+[`python-analysis.md`](python-analysis.md).
+
+**Contents:** [Where the files are](#where-the-files-are) · [How it is written](#how-it-is-written) ·
+[A behaviour session file](#a-behaviour-session-file) · [A sleep session file](#a-sleep-session-file) ·
+[An ePhys calibration session file](#an-ephys-calibration-session-file) · [Video](#video) ·
+[The Flex analog stream](#the-flex-analog-stream-flow-meter) · [Emulated sessions](#emulated-sessions) ·
+[Reading older files](#reading-older-files)
 
 ---
 
@@ -13,11 +20,13 @@ D:\luminoseData\<subject>\LuminoseFM\Session Data\<subject>_LuminoseFM_<YYYYMMDD
 D:\luminoseData\<subject>\LuminoseFM\Session Settings\<settings name>.mat
 D:\luminoseData\<subject>\LuminoseFM\Session Data\<...>_ANLG.dat   (Flex analog stream, raw)
 D:\luminoseData\<subject>\LuminoseFM\Session Data\<...>_plots.png  (the online figure at the end)
-D:\luminoseData\<subject>\LuminoseFM\Session Data\<...>_memory.csv  (MATLAB's memory after a desktop session)
+D:\luminoseData\<subject>\LuminoseFM\Session Data\<...>_memory.csv  (MATLAB's memory after a desktop behaviour session)
 D:\luminoseData\<subject>\LuminoseFM\Session Videos\<view>_<data file name>.avi   (video, one per camera)
 D:\luminoseData\<subject>\LuminoseFM\Session Videos\<view>_<data file name>.csv   (one row per frame)
 D:\luminoseData\<subject>\LuminoseFM\Session Videos\<data file name>_events.csv  (marks, host clock)
 D:\luminoseData\<subject>\LuminoseFM\Session Videos\<data file name>_session.json
+D:\luminoseData\<subject>\LuminoseFM\Session Plots\NN_<Plot>_PP_<subject>_<YYYYMMDD_HHMMSS>.png  (summary plots, 0.9.8)
+D:\luminoseData\<subject>\LuminoseFM\Session Logs\<data file name>_log.md                    (session log, 0.9.8)
 ```
 
 `<view>` is the camera's name in `S.Camera.Cameras` (`topview` = 24226887, `sideview` = 24226657 on
@@ -43,11 +52,16 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
   (and, per trial, `TrialSettings`); to reuse them in a new settings file, load that struct and
   save it as `ProtocolSettings`. A settings file from an older version is brought up to date when
   it is loaded (`lum.mergeSettings`); renamed settings keep their values, and the console lists
-  what was converted.
+  what was converted. Two things in it are written for the next session rather than taken from the
+  last one as it ran: `Camera.Crops` (0.9.6) holds the cameras' crops per session type (`Behaviour`,
+  `Sleep`, `EphysCalibration`, each a list of `Serial` and `Roi`), while the crops a session recorded
+  with are in its `Session.Settings.Camera.Cameras(k).Roi` and `Session.Cameras.Settings`; and after
+  a session that grew the hold, `GUI.HoldStart` is 90% of that session's last `HoldDuration`
+  (`lum.HoldShaping.nextSessionStart`).
 - At teardown the online figure is saved as `<data file name>_plots.png` beside the data file
   (`lum.gui.savePlotsImage`), before the final save, which records its path in
   `Session.PlotsImage` (`''` if it could not be written; the console says why).
-- As a desktop session ends (0.9.7, not headless), `lum.watchMemoryAfterSession` starts a separate
+- As a desktop behaviour session ends (0.9.7, not headless), `lum.watchMemoryAfterSession` starts a separate
   PowerShell process that writes `<data file name>_memory.csv` for four minutes: comment lines with
   the MATLAB timers still running, then one row a second with MATLAB's private and resident memory
   (`PrivateGB`, `WorkingSetGB`), its thread count, the CPU seconds MATLAB's own thread used in that
@@ -56,6 +70,19 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
   followed LUMS0014's sessions of 2026-09-25 and 2026-09-26 (MATLAB's Workspace browser; the session
   now takes `BpodSystem` out of the base workspace as it ends). Nothing reads it, and it may be
   deleted.
+- As a behaviour session ends (0.9.8), after the final save, the video's second save and the release
+  of every device, `lum.report.write` writes the summary plots into `Session Plots` and the log into
+  `Session Logs`, beside `Session Data` (`lum.report.folder`). Both are drawn from `SessionData`
+  alone (`lum.report.sessionTrials`); the data file does not record them and does not depend on
+  them. Plots are named `NN_<Plot>_PP_<subject>_<YYYYMMDD_HHMMSS>.png` (`lum.report.fileTag`): `NN`
+  the kind (`01_Outcomes` … `12_SessionTiming`, README §12), `PP` the page. The log is Markdown. For a
+  session recorded before, or to draw one again, `lum.report.fromFile(dataFile)` reads the data file
+  (never writes it) and writes both; `'OnlinePlots', true` also replaces `_plots.png` with the
+  online figure replayed trial by trial by the current `lum.OnlinePlots`
+  (`lum.report.replayOnlinePlots`; its header's clock is the trial's session time). Files before
+  0.9.6 are rescored in memory first. LUMS0014's sessions of 2026-09-25 to -27 were redrawn this way
+  on 2026-09-27 (their `.mat`, `_ANLG.dat` and videos untouched).
+- Reading the data in Python, and the HDF5 layout planned for it: [`python-analysis.md`](python-analysis.md).
 
 ---
 
@@ -76,8 +103,10 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
 - `DevicesAvailable` — which devices the session had (e.g. `FlexSync`)
 - the runner and runtime window used (`RunnerMode`, `RuntimeWindow`), and `TriggerStates` (0.9.5),
   the states that opened the window in which the next trial was prepared
-- `LightMayOutlastHold` (0.9.5) — true when a completed hold could end before the light: light on,
-  and a growing hold or a fixed one (`Settings.Task.HoldLength` `'Fixed'`, `Settings.Task.FixedHold`)
+- `LightMayOutlastHold` (0.9.5) — true when a completed hold could end before the light. From 0.9.8
+  every session with light (`Settings.Session.UseOpto`), since the hold without shaping is a
+  runtime setting (`TrialSettings{k}.HoldLength`, `.FixedHold`); from 0.9.5 to 0.9.7, light on and a
+  growing hold or a fixed one (`Settings.Task.HoldLength` `'Fixed'`, `Settings.Task.FixedHold`)
   shorter than the stimulus window. The light then played to its end after the hold, and each such
   trial waited for it in `WaitForLightEnd` (below)
 - `StartTime`, `EndTime`
@@ -176,13 +205,20 @@ centre poke that began it (the start of the latency, when there is one) to the f
 it, in seconds; NaN when the stimulus never started or the animal never left. Compare it with
 `HoldDuration` plus `Session.Settings.Stimulus.Latency`, the time asked for.
 
+In habituation (`TrainingStage` 1) both side ports pay, and the online plots score every trial by
+`Rewarded` (a trial with no choice has `Rewarded` 0); `Correct` stays the side the trial's group
+pays, as in every stage. The fraction of trials rewarded is `mean(Rewarded)`; the fraction correct
+of the choices is `mean(Correct(~isnan(Choice)))`.
+
 `CentreReward` counts every centre reward: habituation's and those given while *Centre reward
 again* was ticked (in any stage, for `CentreRewardAgainTrials` trials from the tick;
 `TrialSettings{k}.CentreRewardAgain` says whether the box was ticked as trial *k* was prepared).
 
 `HoldDuration` is the hold the trial asked for, from stimulus onset: the stimulus window plus
-`TrialSettings{k}.PostStimulusHold` with *Hold for* *Whole stimulus*, `Settings.Task.FixedHold` with
-*Fixed* (0.9.5), or automatic shaping's growing hold. The drinking after a side reward is in the
+`TrialSettings{k}.PostStimulusHold` with *Hold without shaping* *Whole stimulus*
+(`TrialSettings{k}.HoldLength` 1), `TrialSettings{k}.FixedHold` with *Fixed* (`HoldLength` 2; 0.9.8,
+runtime settings; from 0.9.5 to 0.9.7 `Settings.Task.HoldLength` and `Settings.Task.FixedHold`, the
+same all session), or automatic shaping's growing hold. The drinking after a side reward is in the
 trial's states: `DrinkingLeft`/`DrinkingRight` from the valve closing to the animal leaving the port,
 and `DrinkingGrace`, `TrialSettings{k}.DrinkingGrace` long, one row per time it ran (a side poke
 within it goes back to drinking and starts it again).
@@ -242,17 +278,6 @@ How long each trial's prepare, send, plot and save steps took, in seconds (`prep
 `memoryGB` (0.9.6), the memory MATLAB was using, in GB, on every trial with a save
 (`Settings.Session.SaveEveryNTrials`) and on the last trial as the session ended, NaN on the others
 and off Windows.
-
-In habituation (`TrainingStage` 1) both side ports pay, and the online plots score every trial by
-`Rewarded` (a trial with no choice has `Rewarded` 0); `Correct` stays the side the trial's group
-pays, as in every stage. The fraction of trials rewarded is `mean(Rewarded)`; the fraction correct
-of the choices is `mean(Correct(~isnan(Choice)))`.
-
-The settings file's `Camera.Crops` (0.9.6) holds the cameras' crops per session type
-(`Behaviour`, `Sleep`, `EphysCalibration`, each a list of `Serial` and `Roi`); the crops a session
-recorded with are `Session.Settings.Camera.Cameras(k).Roi` and `Session.Cameras.Settings`. The
-settings file's `GUI.HoldStart` after a session that grew the hold is 90% of that session's last
-`HoldDuration` (`lum.HoldShaping.nextSessionStart`).
 
 ---
 
@@ -434,6 +459,17 @@ the null device shims swallowed is recorded in `Data.Session.DeviceLog`. See
 ---
 
 ## Reading older files
+
+- **Sessions before 0.9.8** hold the hold without shaping in `Settings.Task.HoldLength` (`'Whole
+  stimulus'` or `'Fixed'`) and `Settings.Task.FixedHold`, fixed for the session; from 0.9.8 they are
+  runtime settings, `GUI.HoldLength` (1 or 2, an index into `GUIMeta.HoldLength.String`) and
+  `GUI.FixedHold`, per trial in `TrialSettings`. A session with light and a whole-stimulus hold did
+  not reserve the light clock, so its `TriggerStates` are the reward and other ending states, not
+  the ITI. The run limit did not count the trial still running, so same-side runs of `CorrectSide`
+  reached `Settings.Task.MaxSameSide` + 1 without bias correction pushing (LUMS0014 2026-09-27: 26
+  runs of 4 with a limit of 3). `Session.ProtocolVersion` has no commit for sessions run on the rig
+  (MATLAB there has no git on its path; from 0.9.8 the commit is read from the repository's `.git`
+  folder). No summary plots or log were written; `lum.report.fromFile` makes them.
 
 - **Videos before 0.9.6 with the default names are misnamed**: the defaults called 24226887
   `sideview` and 24226657 `topview`, the wrong way round. A file's `sideview_…` was filmed from the

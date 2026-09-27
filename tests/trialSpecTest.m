@@ -197,6 +197,38 @@ for trial = 4:60
 end
 end
 
+function testTheRunLimitCountsTheTrialStillRunning(testCase)
+% Trial k+1 is prepared while trial k runs, before it is recorded: its side ends the run.
+% Up to 0.9.7 it was left out, and runs reached MaxSameSide + 1 (LUMS0014, 2026-09-27).
+[S, stimulusSet] = fixture(testCase);
+S.Task.MaxSameSide = 3;
+history = lum.newHistory(100);
+history.nTrials = 2;
+history.correctSide(1:2) = 2;
+history = lum.HoldShaping.notePrepared(history, struct('TrialNumber', 3, 'HoldDuration', 1, ...
+                                                       'HoldGrace', 0, 'CorrectSide', 2));
+queue = stimulusSet.TrialPattern;
+for trial = 1:40
+    spec = lum.nextTrialSpec(S, stimulusSet, queue, history, 4);
+    verifyEqual(testCase, spec.CorrectSide, 1, 'Two recorded and one running: the fourth pays left');
+end
+history.preparedTrial = 2;   % Already recorded: counted once, not twice
+spec = lum.nextTrialSpec(S, stimulusSet, queue, history, 3);
+verifyEqual(testCase, spec.PatternIndex, stimulusSet.TrialPattern(3), 'Two in a row force nothing');
+end
+
+function testInTheSessionsOrderNoRunPassesTheLimit(testCase)
+% A whole session in the loop's order (trial k+1 prepared before trial k is recorded), with
+% bias correction on and an unbiased animal: no run of one side is longer than the limit
+% except where bias correction pushes towards that side.
+[S, stimulusSet] = fixture(testCase);
+S.Task.MaxSameSide = 3;
+S.GUI.BiasCorrection = 0;
+rng(21);
+sides = replaySides(S, stimulusSet, 600);
+verifyLessThanOrEqual(testCase, longestRun(sides), 3);
+end
+
 function testTheRunLimitIsInactiveBelowItsThreshold(testCase)
 [S, stimulusSet] = fixture(testCase);
 S.Task.MaxSameSide = 3;
@@ -404,6 +436,46 @@ S.GUI.CentreRewardAmount = 0;
 verifyEqual(testCase, history.centreRewardAgainFrom, 9);
 verifyFalse(testCase, lum.nextTrialSpec(S, stimulusSet, stimulusSet.TrialPattern, history, 9).CentreReward, ...
             'No volume, no reward');
+end
+
+function sides = replaySides(S, stimulusSet, n)
+% The rewarded side of every trial, prepared and recorded in the session loop's order.
+history = lum.newHistory(n);
+queue = stimulusSet.TrialPattern;
+sides = NaN(1, n);
+[spec, queue] = lum.nextTrialSpec(S, stimulusSet, queue, history, 1);
+history = lum.HoldShaping.notePrepared(history, spec);
+running = spec;
+for k = 1:n
+    if k < n
+        [next, queue] = lum.nextTrialSpec(S, stimulusSet, queue, history, k + 1);
+        history = lum.HoldShaping.notePrepared(history, next);
+    end
+    sides(k) = running.CorrectSide;
+    choice = 1 + (rand > 0.5);
+    result = struct('Choice', choice, 'Correct', double(choice == running.CorrectSide), ...
+                    'Rewarded', double(choice == running.CorrectSide), 'ReactionTime', 0.3, ...
+                    'Outcome', lum.Outcome.Correct, 'HoldBreaks', 0, 'HoldAttempts', 1, ...
+                    'EarlyWithdrawals', 0, 'CentreRewarded', 0, 'ResponseRetries', 0, ...
+                    'CentreHoldTime', 1);
+    history = lum.updateHistory(history, k, running, result);
+    if k < n
+        running = next;
+    end
+end
+end
+
+function longest = longestRun(sides)
+longest = 1;
+current = 1;
+for k = 2:numel(sides)
+    if sides(k) == sides(k - 1)
+        current = current + 1;
+    else
+        current = 1;
+    end
+    longest = max(longest, current);
+end
 end
 
 function [S, stimulusSet] = fixture(testCase)

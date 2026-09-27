@@ -130,7 +130,14 @@ controls = buildSyncTab(tabGroup, S, controls, t, @refresh);
 cameraTab = uitab(tabGroup, 'Title', 'Cameras', 'BackgroundColor', t.Background);
 controls.Tabs.Cameras = cameraTab;
 cameras = lum.gui.CameraSetup(cameraTab, S.Camera, t, @refresh, 'Subject', S.Meta.Subject);
-controls = buildRuntimeTab(tabGroup, runtime, controls, t, @refresh);
+controls = buildRuntimeTab(tabGroup, runtime, controls, S, t, @refresh);
+% The settings shown in two or three places are one setting each: a change to any copy
+% goes to the others before the dialog reads them back.
+linkTwins({controls.StimulusDuration, controls.TaskWindow, controls.TimingWindow}, @refresh);
+for name = {'HoldLength', 'FixedHold'}
+    linkTwins([runtimeHandles(controls.TaskHold, name), runtimeHandles(controls.Runtime, name)], ...
+              @refresh);
+end
 
 controls.Help = uilabel(outer, 'Text', '', 'WordWrap', 'on', 'FontSize', 11, ...
                         'FontColor', t.Ink, 'BackgroundColor', t.AccentSoft, ...
@@ -413,6 +420,27 @@ end
         setStatus(message, true);
     end
 
+    function syncTwins(candidate)
+        % The copies of the stimulus window and of the hold without shaping show what the
+        % settings hold, however they were changed (the designer, a stage's defaults).
+        c = controls;
+        windows = {c.TaskWindow, c.TimingWindow};
+        for i = 1:numel(windows)
+            if windows{i}.Value ~= candidate.Stimulus.Duration
+                windows{i}.Value = candidate.Stimulus.Duration;
+            end
+        end
+        names = lum.HoldShaping.holdLengths();
+        chosen = lum.HoldShaping.holdLength(candidate);
+        if isfield(c.TaskHold, 'HoldLength') && ~strcmp(c.TaskHold.HoldLength.Value, chosen) ...
+                && ismember(chosen, names)
+            c.TaskHold.HoldLength.Value = chosen;
+        end
+        if isfield(c.TaskHold, 'FixedHold') && c.TaskHold.FixedHold.Value ~= candidate.GUI.FixedHold
+            c.TaskHold.FixedHold.Value = candidate.GUI.FixedHold;
+        end
+    end
+
     function setStatus(message, isGood)
         controls.Status.Text = message;
         if isGood
@@ -449,8 +477,6 @@ end
         candidate.Task.AutoShaping = c.AutoShaping.Value;
         candidate.Task.HoldShaping = c.HoldShaping.Value;
         candidate.Task.OnHoldBreak = c.OnHoldBreak.Value;
-        candidate.Task.HoldLength = c.HoldLength.Value;
-        candidate.Task.FixedHold = c.FixedHold.Value;
         candidate.Task.GroupPLeft = pLeftTyped;
 
         for k = 1:numel(candidate.Cue.Components)
@@ -522,8 +548,12 @@ end
         c.HoldNote.Text = lum.HoldShaping.describeHold(candidate);
         setEnable({c.HoldShaping}, candidate.Task.AutoShaping);
         grows = lum.HoldShaping.growsHold(candidate);
-        setEnable({c.HoldLength}, ~grows);
-        setEnable({c.FixedHold}, ~grows && lum.HoldShaping.isFixed(candidate));
+        syncTwins(candidate);
+        setEnable(runtimeHandles(c.TaskHold, {'HoldLength'}), ~grows);
+        setEnable(runtimeHandles(c.Runtime, {'HoldLength'}), ~grows);
+        fixedUsed = ~grows && lum.HoldShaping.isFixed(candidate);
+        setEnable(runtimeHandles(c.TaskHold, {'FixedHold'}), fixedUsed);
+        setEnable(runtimeHandles(c.Runtime, {'FixedHold'}), fixedUsed);
         setEnable(runtimeHandles(c.Runtime, {'HoldStart', 'HoldGrowth', 'HoldTarget', ...
                                              'HoldStepBackAfter'}), ...
                   lum.HoldShaping.growsHold(candidate));
@@ -584,7 +614,7 @@ end
         flowKey = {candidate.Cue.Components, candidate.Stimulus.Duration, ...
                    candidate.Stimulus.Latency, candidate.GUI, ...
                    candidate.Task.AutoShaping, candidate.Task.HoldShaping, candidate.Task.OnHoldBreak, ...
-                   candidate.Task.HoldLength, candidate.Task.FixedHold, candidate.Session.UseOpto, ...
+                   candidate.Session.UseOpto, ...
                    round(c.FlowAxes.InnerPosition(3))};
         if ~isequal(flowKey, drawnKeys.Flow)
             lum.gui.drawTrialFlow(c.FlowAxes, candidate);
@@ -592,7 +622,7 @@ end
         end
         cueKey = {candidate.Cue.Components, candidate.Stimulus.Duration, ...
                   candidate.Stimulus.Latency, candidate.GUI.PostStimulusHold, ...
-                  candidate.Task.HoldLength, candidate.Task.FixedHold, ...
+                  candidate.GUI.HoldLength, candidate.GUI.FixedHold, ...
                   candidate.Task.AutoShaping, candidate.Task.HoldShaping};
         if ~isequal(cueKey, drawnKeys.Cue)
             drawCueTimeline(c.CueAxes, candidate, t);
@@ -788,25 +818,24 @@ controls.ReverseContingency = uicheckbox(form, 'Text', 'Reverse: swap the sides'
 
 panel = uipanel(left, 'Title', 'Centre hold', 'FontWeight', 'bold', ...
                 'BackgroundColor', t.Panel, 'ForegroundColor', t.Accent);
-form = uigridlayout(panel, [numel(shaping) + 7, 2], 'ColumnWidth', {170, '1x'}, ...
-                    'RowHeight', [{44, 26, 26, 26, 26, 26, 72}, repmat({26}, 1, numel(shaping))], ...
+form = uigridlayout(panel, [numel(shaping) + 8, 2], 'ColumnWidth', {170, '1x'}, ...
+                    'RowHeight', [{44, 26, 26, 26, 26, 26, 26, 72}, repmat({26}, 1, numel(shaping))], ...
                     'Padding', [10 8 10 8], 'RowSpacing', 6, 'ColumnSpacing', 10, ...
                     'BackgroundColor', t.Panel, 'Scrollable', 'on');
 label(form, 'Hold', t);
 controls.HoldNote = uilabel(form, 'Text', '', 'WordWrap', 'on', 'FontColor', t.Ink, ...
                             'FontSize', 11, 'VerticalAlignment', 'top');
-label(form, 'Hold for', t);
-controls.HoldLength = uidropdown(form, 'Items', lum.HoldShaping.holdLengths(), ...
-    'Value', holdLengthOf(S), 'ValueChangedFcn', @(~, ~) onEdit(), ...
-    'Tooltip', ['The hold while automatic shaping does not grow it. Whole stimulus: the stimulus '...
-                'window plus the post-stimulus hold. Fixed: the fixed hold below, from stimulus '...
-                'onset; shorter than the window, the animal may leave and choose while the light '...
-                'plays on to its end. Usable in an Experiment session.']);
-label(form, 'Fixed hold (s)', t);
-controls.FixedHold = numberField(form, S.Task.FixedHold, [0.001 60], onEdit, false);
-controls.FixedHold.Tooltip = ['Seconds from stimulus onset the animal holds when the hold is '...
-    'Fixed. The light pattern always plays to its end; a shorter hold only lets the animal leave '...
-    'sooner. Costs one global timer when shorter than the stimulus window.'];
+% The hold without shaping is a runtime setting, shown here and on the Runtime tab's Timing
+% panel; the two are kept the same (linkTwins). The stimulus window is the Stimulus tab's.
+holdFields = runtime(ismember({runtime.Name}, {'HoldLength', 'FixedHold'}));
+for k = 1:numel(holdFields)
+    label(form, holdFields(k).Label, t);
+    controls.TaskHold.(holdFields(k).Name) = runtimeControl(form, holdFields(k), onEdit);
+end
+label(form, 'Stimulus window (s)', t);
+controls.TaskWindow = numberField(form, S.Stimulus.Duration, [0.001 60], onEdit, false);
+controls.TaskWindow.Tooltip = ['The stimulus window, from stimulus onset: the same setting as '...
+    'the Stimulus tab''s Duration. Fixed for the session once it starts.'];
 label(form, 'When the hold breaks', t);
 controls.OnHoldBreak = uidropdown(form, 'Items', lum.HoldShaping.breakModes(), ...
     'Value', S.Task.OnHoldBreak, 'ValueChangedFcn', @(~, ~) onEdit(), ...
@@ -1233,9 +1262,11 @@ note(right, sprintf(['The barcode identifies the session on every device that re
 end
 
 
-function controls = buildRuntimeTab(tabGroup, fields, controls, t, onEdit)
+function controls = buildRuntimeTab(tabGroup, fields, controls, S, t, onEdit)
 % The runtime tier, built from its own declaration, grouped as the runtime window
-% groups it. Hold shaping is on the Task tab, beside the choice that uses it.
+% groups it. Hold shaping is on the Task tab, beside the choice that uses it. The Timing
+% panel also shows the stimulus window (the Stimulus tab's, fixed once the session starts),
+% so the hold can be set against it.
 tab = uitab(tabGroup, 'Title', 'Runtime', 'BackgroundColor', t.Background);
 fields = fields(~strcmp({fields.Panel}, 'Shaping'));
 grid = uigridlayout(tab, [2 1], 'RowHeight', {34, '1x'}, 'Padding', 12, 'RowSpacing', 8, ...
@@ -1252,7 +1283,8 @@ end
 for i = 1:numel(tabNames)
     inTab = fields(strcmp({fields.Tab}, tabNames{i}));
     panelNames = unique({inTab.Panel}, 'stable');
-    heights = cellfun(@(name) panelHeight(sum(strcmp({inTab.Panel}, name))), panelNames, ...
+    heights = cellfun(@(name) panelHeight(sum(strcmp({inTab.Panel}, name)) ...
+                                          + strcmp(name, 'Timing')), panelNames, ...
                       'UniformOutput', false);
     column = uigridlayout(columns, [numel(panelNames) + 2, 1], ...
                           'RowHeight', [{22}, heights, {'1x'}], 'Padding', 0, 'RowSpacing', 10, ...
@@ -1260,7 +1292,15 @@ for i = 1:numel(tabNames)
     uilabel(column, 'Text', tabNames{i}, 'FontSize', 14, 'FontWeight', 'bold', 'FontColor', t.Ink);
     for j = 1:numel(panelNames)
         members = inTab(strcmp({inTab.Panel}, panelNames{j}));
-        form = formPanel(column, panelNames{j}, numel(members), t, 200);
+        isTiming = strcmp(panelNames{j}, 'Timing');
+        form = formPanel(column, panelNames{j}, numel(members) + isTiming, t, 200);
+        if isTiming
+            label(form, 'Stimulus window (s)', t);
+            controls.TimingWindow = numberField(form, S.Stimulus.Duration, [0.001 60], onEdit, false);
+            controls.TimingWindow.Tooltip = ['The stimulus window, from stimulus onset: the same '...
+                'setting as the Stimulus tab''s Duration. Fixed for the session once it starts; '...
+                'the runtime window shows it.'];
+        end
         for k = 1:numel(members)
             label(form, members(k).Label, t);
             controls.Runtime.(members(k).Name) = runtimeControl(form, members(k), onEdit);
@@ -1357,7 +1397,7 @@ latency = max(S.Stimulus.Latency, 0);
 holdEnd = max(window + postHold, 0.01);
 if ~lum.HoldShaping.growsHold(S) && lum.HoldShaping.isFixed(S)
     % A fixed hold: the cue ends with it, and the light plays on to the window's end.
-    holdEnd = max(S.Task.FixedHold, 0.01);
+    holdEnd = max(S.GUI.FixedHold, 0.01);
     postHold = max(holdEnd - window, 0);
 end
 wait = 0.5 * (max(holdEnd, window) + latency);
@@ -1492,6 +1532,25 @@ handles = cellfun(@(name) runtimeControls.(name), names, 'UniformOutput', false)
 end
 
 
+function linkTwins(twins, onEdit)
+% Controls that show one setting: a change to any of them is copied to the others, then the
+% dialog refreshes.
+for i = 1:numel(twins)
+    twins{i}.ValueChangedFcn = @(source, ~) copyToTwins(source, twins, onEdit);
+end
+end
+
+
+function copyToTwins(source, twins, onEdit)
+for i = 1:numel(twins)
+    if twins{i} ~= source && ~isequal(twins{i}.Value, source.Value)
+        twins{i}.Value = source.Value;
+    end
+end
+onEdit();
+end
+
+
 function grid = formPanel(parent, title, nRows, t, labelWidth)
 % A titled panel holding a label/field form of nRows rows (lum.gui.Form.panel).
 grid = lum.gui.Form.panel(parent, title, nRows, t, labelWidth);
@@ -1543,16 +1602,6 @@ else
     chip.Text = 'off';
     chip.BackgroundColor = t.Faint;
     chip.FontColor = t.Muted;
-end
-end
-
-
-function value = holdLengthOf(S)
-% S.Task.HoldLength if it is one of the choices, else the first (the default).
-choices = lum.HoldShaping.holdLengths();
-value = choices{1};
-if isfield(S.Task, 'HoldLength') && ismember(S.Task.HoldLength, choices)
-    value = S.Task.HoldLength;
 end
 end
 

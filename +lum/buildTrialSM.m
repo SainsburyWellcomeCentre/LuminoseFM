@@ -147,8 +147,9 @@ if hasGrace
     nextTimer = nextTimer + 1;
 end
 
-% The light clock, when this trial's light outlasts its hold (D21). The session
-% reserved it (lum.timerBudget) whenever a hold may be shorter than the light.
+% The light clock, when this trial's light outlasts its hold (D21). Every session with
+% light reserves it (lum.timerBudget), since the hold may grow or be set shorter than the
+% light between trials; a trial whose hold covers its light leaves it unused.
 lightEnd = lightEndOf(context);
 lightClock = [];
 lightEnded = '';
@@ -156,8 +157,8 @@ if lightEnd > spec.HoldDuration + 5e-5
     if ~lum.HoldShaping.lightMayOutlastHold(S)
         error('lum:buildTrialSM:lightOutlastsHold', ...
               ['Trial %d asks for a %g s hold but its light lasts %g s, and the session '...
-               'did not reserve the light clock. This should have been caught by '...
-               'lum.validateSettings.'], spec.TrialNumber, spec.HoldDuration, lightEnd);
+               'did not reserve the light clock: a session set up without light '...
+               '(S.Session.UseOpto) cannot deliver it.'], spec.TrialNumber, spec.HoldDuration, lightEnd);
     end
     lightClock = nextTimer;
     nextTimer = nextTimer + 1;
@@ -234,11 +235,16 @@ holdWindowEnded = sprintf('GlobalTimer%d_End', holdWindowTimer);
 syncHigh = {};
 cueStateSync = {};
 pokeSync = {};
+noInitiationTimer = 0;
 if useSync
     syncHigh = {rig.Sync.Channel, 1};
     if syncByTaskEvents
         cueStateSync = syncHigh;   % Held high for as long as the animal is asked to poke
         pokeSync = {rig.Sync.Channel, 0};
+        [~, ~, framePeriod] = lum.sync.fitToCameras(S);
+        if isfinite(framePeriod)
+            noInitiationTimer = 2 * framePeriod;  % The shortest low the cameras cannot miss
+        end
     else
         cueStateSync = {rig.Sync.Channel, 0};  % The pulse ends as the cue comes on
     end
@@ -513,9 +519,12 @@ sma = AddState(sma, 'Name', 'NoResponse', ...
 
 % The hold window ran out without a completed hold: the trial lapses, and the cue
 % goes off. The scorer tells a trial whose stimulus never started from one whose holds
-% all broke.
+% all broke. With task-event sync the line drops here and rises again at the next trial's
+% start, and with a 0 s ITI only the time taken to prepare and send that trial lies between
+% the two (a few ms at the least);
+% with video the state lasts two frames, so the cameras always see the line low.
 sma = AddState(sma, 'Name', 'NoInitiation', ...
-    'Timer', 0, ...
+    'Timer', noInitiationTimer, ...
     'StateChangeConditions', {'Tup', trialEnd}, ...
     'OutputActions', lum.mergeActions(cueOff, centreOff, pokeSync));
 
@@ -534,8 +543,13 @@ sma = AddState(sma, 'Name', 'WaitForLightEnd', ...
     'StateChangeConditions', lightWait, ...
     'OutputActions', {});
 
-% The ITI is where the trial manager builds and uploads the next trial, so it is
-% also the protocol's slack: every per-trial cost has to fit inside it.
+% The ITI is where the trial manager builds and uploads the next trial in a session with
+% light (lum.triggerStates). At 0 s, the default, the trial ends here and the next one
+% starts as soon as it reaches the state machine: the state machine starts a description
+% sent with 'RunASAP' at once when no trial is running (firmware v23, 'C' command). The
+% time between trials is then MATLAB's preparation and upload: 4-411 ms, median 0.18 s, in
+% LUMS0014's sessions of 2026-09-26 and -27 (Data.Timing.prepare + send);
+% an ITI longer than that makes it the ITI, to a state machine cycle.
 sma = AddState(sma, 'Name', 'ITI', ...
     'Timer', S.GUI.ITI, ...
     'StateChangeConditions', {'Tup', '>exit'}, ...
@@ -544,7 +558,8 @@ sma = AddState(sma, 'Name', 'ITI', ...
 plan = struct('timers', {timerGrants}, 'cueTimers', {cueGrants}, 'holdClock', holdClock, ...
               'lightClock', lightClock, 'lightEnd', lightEnd, ...
               'syncPulse', syncPulse, 'syncDriven', useSync, ...
-              'syncByTaskEvents', syncByTaskEvents, 'holdWindowTimer', holdWindowTimer, ...
+              'syncByTaskEvents', syncByTaskEvents, 'noInitiationTimer', noInitiationTimer, ...
+              'holdWindowTimer', holdWindowTimer, ...
               'restartsOnBreak', restartsOnBreak, 'nTimersUsed', nextTimer - 1, ...
               'holdDuration', spec.HoldDuration, 'holdGrace', spec.HoldGrace, ...
               'latency', latency, ...

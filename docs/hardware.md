@@ -172,11 +172,10 @@ during it from the **House light** box in the plots' header (D15 in
 switches the light through PulsePal from a state machine and reports each `BNC1High` / `BNC1Low`
 edge and its latency; the light should blink, and every switch should arrive.
 
-**Status (2026-09-21): the loopback works.** Every switch in `TestHouseLight` reached BNC1, 18–33 ms
-after its command. Until then no switch had changed the output at all: 0.6.1 set only the resting
-voltage, which firmware v21 stores without writing (see [`rig-checks.md`](rig-checks.md), P1). Sessions
-up to 0.6.1 on this rig never lit the house light. Whether the light itself turns on is still to be
-seen at the rig.
+**Status (2026-09-21): it works.** The operator saw the light switch on and off, and every switch in
+`TestHouseLight` reached BNC1, 18–33 ms after its command ([`rig-checks.md`](rig-checks.md), P1).
+Until 0.7.0 no switch had changed the output at all: 0.6.1 set only the resting voltage, which
+firmware v21 stores without writing, so sessions up to 0.6.1 on this rig never lit the house light.
 
 The light moved here from port 5's LED line (`PWM5`) during 0.6.1, where a global timer had to hold it
 in every state machine and it went dark between them.

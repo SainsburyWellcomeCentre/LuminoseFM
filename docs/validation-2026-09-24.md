@@ -1,5 +1,10 @@
 # LuminoseFM — Pre-deployment validation, 2026-09-24
 
+> A record of the validation of 0.9.3 and its fixes in 0.9.4, as it stood on that day; it is not
+> updated. What changed afterwards is in [`naming-and-versions.md`](naming-and-versions.md), the
+> checks still pending are in [`rig-checks.md`](rig-checks.md), and the procedure to repeat it is
+> in [`CLAUDE.md`](../CLAUDE.md) (*Validation procedure*).
+
 LuminoseFM 0.9.3 (commit 942fc8f) was validated before use in experiments, and fixed to 0.9.4. The
 operator was away from the rig; there was no animal in the box and the fibers were terminated. The
 agent drove the devices over their own ports, played sessions in the emulator, simulated the trial
@@ -222,7 +227,7 @@ Each feature was checked enabled (a), disabled (b) and at its boundaries (c).
 | File | Read / written by | Result | Method |
 |------|-------------------|--------|--------|
 | `Session Settings\<name>.mat` (`ProtocolSettings`) | read at launch (`lum.mergeSettings` converts old ones); written at Start and at teardown | Pass | UT (`settingsTest`), CT |
-| `calibration\DoricLED_<bundle>_<cable>_<A|B>.mat` | read at session start (`lum.led.calibrations`); written only by the calibration window | Pass: 8 of 8 4-to-19 files, 18 points 0–1000 mA, rising, irradiance = power / area; Open (Q10) | LOG |
+| `calibration\DoricLED_<bundle>_<cable>_<A\|B>.mat` | read at session start (`lum.led.calibrations`); written only by the calibration window | Pass: 8 of 8 4-to-19 files, 18 points 0–1000 mA, rising, irradiance = power / area; Open (Q10) | LOG |
 | `Bpod Local\Calibration Files\LiquidCalibration.mat` | read by Bpod; used through `lum.valveTimes`; now copied into `Session.LiquidCalibration` | Pass | LOG, RIG |
 | `Bpod Local\Calibration Files\SoundCalibration.mat` | not used | Open (Q9) | CT |
 | `Session Data\<subject>_LuminoseFM_<date>.mat` | `SaveBpodSessionData`: every N trials, teardown, video summary | Pass; trials rebuilt from it alone (ES, RIG) | ES, RIG |

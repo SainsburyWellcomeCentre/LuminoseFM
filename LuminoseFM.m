@@ -29,7 +29,8 @@ function LuminoseFM
 %              camera clock, score, record, plot, save
 %   teardown   save the plots as an image, merge the analog stream, write the final
 %              file, keep the settings as they ended for the next session, stop the
-%              video and add its summary to the file, release devices
+%              video and add its summary to the file, release devices, then draw the
+%              summary plots and write the log from the saved data (lum.report.write)
 %
 % Everything with logic in it lives in the +lum package, where it can be tested
 % without hardware. See lum.buildTrialSM for the state graph, lum.nextTrialSpec for
@@ -279,7 +280,7 @@ try
     % What the first trials will deliver is known now, so it is shown before trial 1 starts
     % rather than after it ends.
     plots.showNext(spec, queue);
-    runtime.showStatus(sprintf('Session started  |  %s', runningText(spec, stimulusSet)));
+    runtime.showStatus(lum.trialStatus(0, [], [], spec, stimulusSet));
     nextSpec = spec;
     nextLEDCurrent = ledCurrent;
     % The runtime settings each trial was prepared with, kept beside its spec: the loop
@@ -373,7 +374,7 @@ try
 
         plotTimer = tic;
         plots.update(currentTrial, spec, result, nextSpec, queue, trialGUI.RewardAmount);
-        runtime.showStatus(statusLine(currentTrial, result, nextSpec, stimulusSet));
+        runtime.showStatus(lum.trialStatus(currentTrial, spec, result, nextSpec, stimulusSet));
         plotSeconds = toc(plotTimer);
 
         % Recorded before the save, so the file written this trial already carries this
@@ -489,10 +490,30 @@ plots.close();  % Only hidden by the console's End button, so it could be saved 
 closeDevices(devices);
 clear runner runtime devices plots cueComponents stimulusComponents cameraWindow ledWindow  % No lum.* object may outlive Stop
 
+% The summary plots and the log, from the saved data, once the rig is released: they take a
+% few seconds and change nothing in the data file (lum.report.write).
+report = [];
+if saved
+    fprintf(['LuminoseFM: the session is saved and the rig released; writing its summary plots '...
+             'and log (a few seconds)...\n']);
+    report = lum.report.write(BpodSystem.Data, BpodSystem.Path.CurrentDataFile);
+end
+
 fprintf('LuminoseFM: session ended after %d trial(s); MATLAB is using %.1f GB.\n', nCompleted, ...
         matlabMemoryGB());
 if nCompleted > 0
     fprintf('  %s\n  Data: %s\n', summary, BpodSystem.Path.CurrentDataFile);
+end
+if ~isempty(report)
+    reportFolder = '';
+    if ~isempty(report.Plots)
+        reportFolder = fileparts(report.Plots{1});
+    end
+    fprintf('  Summary plots: %d in %s (%.1f s)\n  Log: %s\n', numel(report.Plots), reportFolder, ...
+            report.Seconds, report.Log);
+    for i = 1:numel(report.Problems)
+        warning('lum:LuminoseFM:reportIncomplete', 'Not written: %s', report.Problems{i});
+    end
 end
 if ~headless && nCompleted > 0
     % A desktop MATLAB has twice run out of memory minutes after a session ended; the
@@ -600,39 +621,6 @@ for i = 1:numel(cueComponents)
 end
 
 sma = lum.buildTrialSM(context);
-
-
-function text = statusLine(trialNumber, result, nextSpec, stimulusSet)
-% The runtime window's header: how the last trial ended and what is running now.
-text = sprintf('Trial %d: %s', trialNumber, lum.Outcome.name(result.Outcome));
-if result.HoldAttempts > 1
-    text = sprintf('%s after %d holds', text, result.HoldAttempts);
-end
-if result.ResponseRetries > 0 && result.Rewarded
-    text = sprintf('%s, then rewarded on a retry', text);
-end
-if ~isempty(nextSpec)
-    text = sprintf('%s  |  %s', text, runningText(nextSpec, stimulusSet));
-end
-
-
-function text = runningText(spec, stimulusSet)
-% What the running trial delivers, in a few words.
-label = 'no group';
-if spec.StimulusGroup >= 1
-    label = stimulusSet.GroupLabels{spec.StimulusGroup};
-end
-sides = {'left', 'right'};
-text = sprintf('running %d: %s, pays %s, hold %.2f s', spec.TrialNumber, label, ...
-               sides{spec.CorrectSide}, spec.HoldDuration);
-if spec.HoldSteppedBack
-    text = sprintf('%s (stepped back after early withdrawals)', text);
-end
-if spec.CentreReward && spec.CentreRewardAgain
-    text = sprintf('%s, centre reward %g uL (again)', text, spec.CentreRewardAmount);
-elseif spec.CentreReward
-    text = sprintf('%s, centre reward %g uL', text, spec.CentreRewardAmount);
-end
 
 
 function subject = currentSubject()

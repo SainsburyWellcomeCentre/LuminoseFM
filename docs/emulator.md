@@ -35,18 +35,18 @@ below).
 
 `Bpod('EMU')` emulates a state machine **r0.7–1.0**, not the r2+:
 
-- **Five global timers, five counters, five conditions** instead of 16/8/16. A pattern with more
-  than four stretches of light is refused in the emulator (the hold window always takes one timer)
-  and accepted on the rig. Every stimulus family's defaults fit in four; the sequence family, whose
-  default is five flashes, loads three slots instead when it is chosen in the emulator
-  (`lum.pattern.familyDefaults`). A session whose hold can be shorter than the light (a growing
-  hold, or a fixed one shorter than the window) takes one more timer for the light clock, leaving
-  three (two with grace as well), and uses the fifth and last condition (D21). Every family's
-  defaults fit: the mixture takes fewer cycles, and with two timers the motif family loads two-letter
-  words; the setup dialog reloads a family's untouched defaults when the timers left change.
+- **Five global timers, five counters, five conditions** instead of 16/8/16. The hold window
+  always takes one timer, and a session with light one more for the light clock (every one from
+  0.9.8, since the hold can be set shorter than the light between trials), which also uses the fifth
+  and last condition (D21). That leaves **three timers for light** (two with grace shaping as well),
+  so a pattern with more than three stretches of light is refused in the emulator and accepted on
+  the rig. Every family's defaults fit (`lum.pattern.familyDefaults`): the sequence family loads
+  three slots instead of five, the mixture one cycle instead of five, and with two timers the motif
+  family two-letter words. The setup dialog reloads a family's untouched defaults when the timers
+  left change.
 - **No Flex I/O at all** — so no airflow stream, no sync pulses and no session barcode (it is
   recorded as not sent).
-- **PulsePal and the HiFi module are unavailable**, so sound states run silently and no light is
+- **PulsePal and the HiFi module are not connected** (null shims log what they would have sent), so sound states run silently and no light is
   delivered. The runtime window opens in its reduced, single-page form (Bpod's own parameter
   window, relabelled). The setup dialog's **▶ Play** buttons play through the PC's speakers.
 - **The Doric LED is simulated.** With the DoricLED package found, the session runs the package's
@@ -68,7 +68,8 @@ below).
   segment at stimulus onset, and the rig is unaffected.
 - **Timer cancellation is only partly emulated**: a light segment still waiting for its onset
   starts after an early withdrawal anyway, and the console can leave a cancelled line drawn high.
-  The data and the rig are not affected.
+  The rig is not affected; in the emulated data such a segment's `GlobalTimer<k>_Start` can follow
+  the withdrawal.
 - **`LoopMode` is not emulated** — a looping timer fires once and never repeats. This is why no
   stimulus structure is ever put in a looping timer (D1 in [`architecture.md`](architecture.md)).
 - **The house light's loopback is emulated.** On the rig PulsePal's output 3 drives the light and a

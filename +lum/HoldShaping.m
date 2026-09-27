@@ -28,18 +28,21 @@ classdef HoldShaping
     %
     %   Both          The two together.
     %
-    % With automatic shaping off, the hold is the same on every trial, whatever
-    % S.Task.HoldShaping says; activeMode(S) is 'Off'. S.Task.HoldLength says how long it
-    % is (fullHold): 'Whole stimulus', the stimulus window plus the post-stimulus hold, or
-    % 'Fixed', S.Task.FixedHold seconds from stimulus onset. The same hold is used while
-    % automatic shaping only shrinks the grace. Every decision about the hold goes
-    % through activeMode, never S.Task.HoldShaping directly.
+    % With automatic shaping off, the hold is set by the operator and is the same on every
+    % trial until they change it, whatever S.Task.HoldShaping says; activeMode(S) is 'Off'.
+    % S.GUI.HoldLength says how long it is (fullHold): 'Whole stimulus', the stimulus window
+    % plus the post-stimulus hold, or 'Fixed', S.GUI.FixedHold seconds from stimulus onset.
+    % Both are runtime settings (the runtime window's Timing panel) since 0.9.8; they were
+    % S.Task.HoldLength and S.Task.FixedHold. The same hold is used while automatic shaping
+    % only shrinks the grace. Every decision about the hold goes through activeMode, never
+    % S.Task.HoldShaping directly.
     %
     % A completed hold never stops the light pattern (D21). When the hold can be shorter
-    % than the light (lightMayOutlastHold: a growing hold, or a fixed one shorter than the
-    % stimulus window), the light plays to its end while the animal leaves and chooses, and
-    % the trial waits for it in WaitForLightEnd before the ITI; that costs one global timer,
-    % the light clock (lum.timerBudget). A broken hold still stops it (D10).
+    % than the light (lightMayOutlastHold: any session with light, since the hold may be
+    % grown or set shorter than the window between trials), the light plays to its end while
+    % the animal leaves and chooses, and the trial waits for it in WaitForLightEnd before the
+    % ITI; that costs one global timer, the light clock (lum.timerBudget). A broken hold
+    % still stops it (D10).
     %
     % What a break that is not forgiven does is a separate choice, S.Task.OnHoldBreak:
     %
@@ -112,22 +115,34 @@ classdef HoldShaping
         end
 
         function names = holdLengths()
-            % holdLengths() lists the choices for S.Task.HoldLength, the hold while
-            % automatic shaping does not grow it. The first is the default.
+            % holdLengths() lists the choices for S.GUI.HoldLength, the hold while
+            % automatic shaping does not grow it, in the order the runtime menu stores
+            % them (1, 2). The first is the default.
             names = {'Whole stimulus', 'Fixed'};
         end
 
+        function name = holdLength(S)
+            % holdLength(S) is the name of the hold without growth: 'Whole stimulus' or
+            % 'Fixed' (S.GUI.HoldLength, an index into holdLengths()).
+            names = lum.HoldShaping.holdLengths();
+            name = names{1};
+            if isfield(S.GUI, 'HoldLength') && isscalar(S.GUI.HoldLength) ...
+                    && any(S.GUI.HoldLength == 1:numel(names))
+                name = names{S.GUI.HoldLength};
+            end
+        end
+
         function tf = isFixed(S)
-            % isFixed(S) is true when the hold without growth is S.Task.FixedHold.
-            tf = isfield(S.Task, 'HoldLength') && strcmp(S.Task.HoldLength, 'Fixed');
+            % isFixed(S) is true when the hold without growth is S.GUI.FixedHold.
+            tf = strcmp(lum.HoldShaping.holdLength(S), 'Fixed');
         end
 
         function hold = fullHold(S)
             % fullHold(S) is the hold, from stimulus onset, while automatic shaping does
-            % not grow it: S.Task.FixedHold when the hold is fixed, otherwise the stimulus
+            % not grow it: S.GUI.FixedHold when the hold is fixed, otherwise the stimulus
             % window plus the post-stimulus hold.
             if lum.HoldShaping.isFixed(S)
-                hold = S.Task.FixedHold;
+                hold = S.GUI.FixedHold;
             else
                 hold = S.Stimulus.Duration + S.GUI.PostStimulusHold;
             end
@@ -135,14 +150,16 @@ classdef HoldShaping
 
         function tf = lightMayOutlastHold(S)
             % lightMayOutlastHold(S) is true when a completed hold may end before the
-            % light pattern does: the session delivers light and the hold grows, or is
-            % fixed shorter than the stimulus window. Such a session reserves the light
-            % clock (lum.timerBudget), waits for the light in WaitForLightEnd and
-            % prepares the next trial in the ITI (lum.triggerStates). Decided from
-            % pre-session settings only, since the budget is fixed before the session;
-            % the growing hold's runtime start and target do not enter into it.
-            tf = logical(S.Session.UseOpto) && (lum.HoldShaping.growsHold(S) || ...
-                 (lum.HoldShaping.isFixed(S) && S.Task.FixedHold < S.Stimulus.Duration));
+            % light pattern does, which any session with light allows: its hold grows,
+            % or the operator can set a fixed hold shorter than the stimulus window
+            % between trials (S.GUI.HoldLength, S.GUI.FixedHold). Such a session reserves
+            % the light clock (lum.timerBudget), waits for the light in WaitForLightEnd
+            % and prepares the next trial in the ITI (lum.triggerStates). Decided from
+            % pre-session settings only, since the budget is fixed before the session.
+            % Up to 0.9.7 a session holding for the whole stimulus did neither; its
+            % trials are the same, since the light clock is added to a trial only when
+            % its light ends after its hold (lum.buildTrialSM).
+            tf = logical(S.Session.UseOpto);
         end
 
         function names = breakModes()
@@ -239,12 +256,17 @@ classdef HoldShaping
         end
 
         function history = notePrepared(history, spec)
-            % notePrepared(history, spec) notes the hold and grace of the trial just
+            % notePrepared(history, spec) notes the hold, grace and side of the trial just
             % prepared, which will be running while the next one is prepared: next()
-            % shapes from it. Call it after lum.nextTrialSpec, in the prepare window.
+            % shapes from it, and lum.nextTrialSpec's run limit counts its side (from 0.9.8;
+            % before, a run could reach MaxSameSide + 1). Call it after lum.nextTrialSpec,
+            % in the prepare window.
             history.preparedTrial = spec.TrialNumber;
             history.preparedHold = spec.HoldDuration;
             history.preparedGrace = spec.HoldGrace;
+            if isfield(spec, 'CorrectSide')
+                history.preparedSide = spec.CorrectSide;
+            end
         end
 
         function text = describeHold(S)
@@ -268,18 +290,18 @@ classdef HoldShaping
                                lead, min(S.GUI.HoldStart, S.GUI.HoldTarget), S.GUI.HoldTarget, ...
                                fullHold);
             elseif lum.HoldShaping.isFixed(S)
-                if S.Task.FixedHold < window
+                if S.GUI.FixedHold < window
                     after = sprintf(['; the light plays on to the end of the %g s window while '...
                                      'the animal chooses'], window);
                 else
                     after = sprintf(', the stimulus window (%g s) and %g s after it', window, ...
-                                    S.Task.FixedHold - window);
+                                    S.GUI.FixedHold - window);
                 end
                 text = sprintf('%g s, from the poke: %s%g s from stimulus onset%s.', ...
-                               latency + S.Task.FixedHold, latencyText, S.Task.FixedHold, after);
+                               latency + S.GUI.FixedHold, latencyText, S.GUI.FixedHold, after);
             else
-                text = sprintf(['%g s, from the poke: %sthe stimulus window (%g s, Stimulus tab) '...
-                                'plus the post-stimulus hold (%g s, Runtime tab).'], ...
+                text = sprintf(['%g s, from the poke: %sthe stimulus window (%g s) plus the '...
+                                'post-stimulus hold (%g s).'], ...
                                latency + fullHold, latencyText, window, S.GUI.PostStimulusHold);
             end
         end

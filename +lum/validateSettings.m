@@ -161,22 +161,19 @@ if lum.HoldShaping.growsHold(S)
                                S.GUI.HoldStart, S.GUI.HoldTarget);
     end
 end
-if ~(isfield(S.Task, 'HoldLength') && ismember(S.Task.HoldLength, lum.HoldShaping.holdLengths()))
-    fail('badHoldLength', 'The hold must be one of: %s.', ...
+if ~(isfield(S.GUI, 'HoldLength') && isscalar(S.GUI.HoldLength) ...
+        && any(S.GUI.HoldLength == 1:numel(lum.HoldShaping.holdLengths())))
+    fail('badHoldLength', 'The hold without shaping must be one of: %s.', ...
          strjoin(lum.HoldShaping.holdLengths(), ', '));
 end
-if lum.HoldShaping.isFixed(S) && ~(isscalar(S.Task.FixedHold) && S.Task.FixedHold > 0 ...
-                                  && isfinite(S.Task.FixedHold))
+% Checked whichever hold is chosen: the operator may switch to the fixed hold mid-session.
+if ~(isfield(S.GUI, 'FixedHold') && isscalar(S.GUI.FixedHold) && S.GUI.FixedHold > 0 ...
+     && isfinite(S.GUI.FixedHold))
     fail('badFixedHold', 'The fixed hold must be longer than 0 s.');
 end
 if lum.HoldShaping.isFixed(S) && lum.HoldShaping.growsHold(S)
     notes{end+1} = sprintf(['The fixed hold (%g s) is not used while automatic shaping '...
-                            'grows the hold.'], S.Task.FixedHold);
-end
-if lum.HoldShaping.lightMayOutlastHold(S)
-    notes{end+1} = ['A hold shorter than the light pattern lets the animal leave and choose '...
-                    'while the light plays on to its end; the trial then waits for the light '...
-                    'before the ITI. This costs one global timer.'];
+                            'grows the hold.'], S.GUI.FixedHold);
 end
 if ~ismember(S.Task.HoldShaping, lum.HoldShaping.modes())
     fail('badHoldShaping', 'Hold shaping must be one of: %s.', ...

@@ -14,11 +14,11 @@ function [budget, reserved] = timerBudget(S, rig)
 %   HoldClock  One when breaks in the hold are forgiven (lum.HoldShaping), because
 %              the hold has to be timed across the animal leaving and returning.
 %   LightClock One when a completed hold may end before the light pattern does
-%              (lum.HoldShaping.lightMayOutlastHold: a growing hold, or a fixed hold
-%              shorter than the stimulus window). It lasts the light, from stimulus
-%              onset, so the trial can wait for the light to end before the ITI (D21):
-%              the pattern's own timers cannot tell the state machine whether light is
-%              still to come.
+%              (lum.HoldShaping.lightMayOutlastHold: every session with light since
+%              0.9.8, because the hold can be set shorter than the window between
+%              trials). It lasts the light, from stimulus onset, so the trial can wait
+%              for the light to end before the ITI (D21): the pattern's own timers
+%              cannot tell the state machine whether light is still to come.
 %   Components One for each stimulus component that switches on after stimulus
 %              onset or off before the window ends, and for a cue light or cue air
 %              that goes off part way through the stimulus (lum.stim.timerCost).

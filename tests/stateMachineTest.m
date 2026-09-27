@@ -204,10 +204,11 @@ end
 
 function testTheHoldTriggersEveryLightTimerAtOnce(testCase)
 global BpodSystem %#ok<GVMIS>
-S = withPulses(lum.defaultSettings, [1 1 0 0.25; 1 2 0.25 0.5; 1 1 0.5 0.75; 1 2 0.75 1]);  % The emulator leaves 4
+% The emulator leaves 3 for light: the hold window and the light clock take the others.
+S = withPulses(lum.defaultSettings, [1 1 0 0.3; 1 2 0.3 0.6; 1 1 0.6 1]);
 sma = lum.buildTrialSM(makeTestContext('Settings', S));
 verifyEqual(testCase, sma.OutputMatrix(stateIndex(sma, 'CentreHold'), ...
-            BpodSystem.HW.Pos.GlobalTimerTrig), 15, 'All four timers together (binary 1111)');
+            BpodSystem.HW.Pos.GlobalTimerTrig), 7, 'All three timers together (binary 111)');
 end
 
 function testAnEarlyWithdrawalCancelsTheLight(testCase)
@@ -533,8 +534,11 @@ end
 
 function testAShortHoldNeedsTheLightClockReserved(testCase)
 % A trial whose light outlasts its hold in a session that reserved no light clock would
-% end with the light still playing; the builder refuses it.
+% end with the light still playing; the builder refuses it. Every session with light
+% reserves it (0.9.8), so only a session set up without light could get here.
 context = makeTestContext();
+context.S.Session.UseOpto = false;
+context.spec.OptoOn = true;
 context.spec.HoldDuration = 0.1;
 verifyError(testCase, @() lum.buildTrialSM(context), 'lum:buildTrialSM:lightOutlastsHold');
 end
@@ -790,8 +794,10 @@ verifyEqual(testCase, stateTimer(sma, 'EarlyWithdrawal'), S.Sound.NoiseDuration,
 end
 
 function testRetryResponseIsNotATriggerState(testCase)
-% The trial goes on after it, to a reward or NoResponse, which open the prepare window.
+% The trial goes on after it, to a reward or NoResponse, which open the prepare window
+% (in a session without light; with light the ITI alone does).
 S = lum.defaultSettings;
+S.Session.UseOpto = false;
 verifyFalse(testCase, ismember('RetryResponse', lum.triggerStates(S)));
 verifyFalse(testCase, ismember('CentreReward', lum.triggerStates(S)));
 verifyTrue(testCase, ismember('IncorrectChoice', lum.triggerStates(S)));
@@ -907,6 +913,36 @@ verifyEqual(testCase, latencySma.OutputMatrix(stateIndex(latencySma, 'PreStimulu
 verifyEqual(testCase, sma.OutputMatrix(stateIndex(sma, 'NoInitiation'), column), 0);
 end
 
+function testTaskEventSyncStaysLowForTwoFramesWithoutAnInitiation(testCase)
+% With a 0 s ITI the line dropped in NoInitiation rises again as soon as the next trial
+% reaches the state machine, a few ms later at the least; with video NoInitiation holds it
+% low for two frames, so the cameras see both edges. Without video, or in a pulsed mode,
+% the state passes straight on.
+S = lum.defaultSettings;
+verifyEqual(testCase, S.GUI.ITI, 0, 'The next trial starts as soon as it is sent');
+S.Sync.Mode = lum.SyncMode.TaskEvents;
+S.Camera.Enabled = true;
+S.Camera.FrameRate = 100;
+spec = makeTestContext().spec;
+spec.SyncMode = lum.SyncMode.TaskEvents;
+spec.SyncPulseWidth = NaN;
+[sma, plan] = lum.buildTrialSM(makeTestContext('Settings', S, 'SyncChannel', 'BNC2', 'Spec', spec));
+verifyEqual(testCase, stateTimer(sma, 'NoInitiation'), 0.02, 'AbsTol', 1e-9);
+verifyEqual(testCase, plan.noInitiationTimer, 0.02, 'AbsTol', 1e-9);
+verifyEqual(testCase, stateTimer(sma, 'ITI'), 0);
+
+S.Camera.Enabled = false;
+sma = lum.buildTrialSM(makeTestContext('Settings', S, 'SyncChannel', 'BNC2', 'Spec', spec));
+verifyEqual(testCase, stateTimer(sma, 'NoInitiation'), 0, 'Without video');
+
+S.Camera.Enabled = true;
+S.Sync.Mode = lum.SyncMode.FixedWidth;
+spec.SyncMode = lum.SyncMode.FixedWidth;
+spec.SyncPulseWidth = 0.05;
+sma = lum.buildTrialSM(makeTestContext('Settings', S, 'SyncChannel', 'BNC2', 'Spec', spec));
+verifyEqual(testCase, stateTimer(sma, 'NoInitiation'), 0, 'A pulsed mode has no low to keep');
+end
+
 %% Levels a later state has to write again -----------------------------------------
 
 function testTheCueSurvivesTheLatency(testCase)
@@ -970,9 +1006,10 @@ context.spec.SyncPulseWidth = 0.02;
 [~, plan] = lum.buildTrialSM(context);
 [budget, reserved] = lum.timerBudget(context.S, context.rig);
 nLight = size(context.pattern.Segments, 1);
+verifyEqual(testCase, reserved.LightClock, 1, 'Every session with light keeps the clock ready');
 verifyEqual(testCase, plan.nTimersUsed, ...
             nLight + reserved.HoldWindow + reserved.Sync + reserved.HoldClock + ...
-            reserved.LightClock + reserved.Components);
+            reserved.Components, 'A hold as long as the light leaves the clock unused');
 verifyLessThanOrEqual(testCase, nLight, budget);
 
 % A hold shorter than the light takes the light clock as well.
@@ -1077,8 +1114,8 @@ S.Task.HoldShaping = mode;
 end
 
 function S = withFixedHold(S, seconds)
-S.Task.HoldLength = 'Fixed';
-S.Task.FixedHold = seconds;
+S.GUI.HoldLength = 2;              % Fixed
+S.GUI.FixedHold = seconds;
 end
 
 function S = withLatency(S, latency)

@@ -1,7 +1,24 @@
 # LuminoseFM — Architecture
 
-Design record for the LuminoseFM protocol. Status: **implemented** (version 0.9.5); decisions
-D1–D21 confirmed. Update this file whenever the architecture changes.
+Design record for the LuminoseFM protocol. Status: **implemented** (version 0.9.8); decisions
+D1–D22 confirmed. Update this file whenever the architecture changes.
+
+Each decision gives what was decided, why, and what follows from it. After them: where each part
+lives in the code, the Bpod constraints that shaped it, and the questions still open.
+
+| | Decision | | Decision |
+|---|---|---|---|
+| [D1](#d1--bpod-owns-the-light-pattern-pulsepal-owns-the-carrier) | Bpod owns the light pattern, PulsePal the carrier | [D12](#d12--the-cue-lasts-until-the-stimulus-starts-a-set-latency-after-the-poke) | The cue lasts until the stimulus starts |
+| [D2](#d2--two-tier-gui-split-by-when-a-parameter-may-legally-change) | Two-tier GUI | [D13](#d13--test-pulses-in-sleep-sessions-one-timeline-of-gates-cut-into-blocks-where-it-is-safe) | Test pulses in sleep sessions |
+| [D3](#d3--one-session-rhythm-two-execution-strategies) | One session rhythm, two runners | [D14](#d14--video-through-spincam-recorded-off-the-matlab-thread) | Video through SpinCam |
+| [D4](#d4--sync-ttl-trial-pulses-in-one-of-three-modes-all-driven-by-states) | Sync TTL driven by states | [D15](#d15--the-house-light-is-pulsepals-looped-back-into-bpod) | The house light on PulsePal |
+| [D5](#d5--the-stimulus-is-a-stimulus-set-generated-before-the-session) | The stimulus set | [D16](#d16--a-session-leaves-its-figure-and-its-settings-behind) | Plots image and settings at teardown |
+| [D6](#d6--hold-shaping-without-changing-the-state-graph) | Hold shaping | [D17](#d17--the-doric-led-sets-the-intensity-bpod-and-pulsepal-keep-the-timing) | The Doric LED sets the intensity |
+| [D7](#d7--a-session-barcode-before-the-first-trial) | Session barcode | [D18](#d18--ephys-calibration-sessions-steps-of-light-run-as-a-sleep-session-is) | ePhys calibration sessions |
+| [D8](#d8--names-say-what-things-are) | Names | [D19](#d19--centre-reward-in-habituation-and-a-retry-after-an-unpunished-incorrect-choice) | Centre reward and retry |
+| [D9](#d9--stimulus-components-timed-within-the-hold) | Timed stimulus components | [D20](#d20--a-stimulus-family-is-a-question-with-its-own-contingency-and-its-shortcuts-measured) | Stimulus families as questions |
+| [D10](#d10--a-broken-hold-restarts-the-stimulus-within-a-hold-window) | Restarting holds, the hold window | [D21](#d21--the-light-plays-to-its-end-after-a-completed-hold) | The light plays to its end |
+| [D11](#d11--two-session-types-behaviour-and-sleep) | Behaviour and sleep sessions | [D22](#d22--a-behaviour-session-leaves-summary-plots-and-a-log-drawn-from-its-saved-data) | Summary plots and log |
 
 ---
 
@@ -73,7 +90,9 @@ is then a set of one-shot timers, with no MATLAB code in the timing path.
 **Decision.**
 
 1. **Pre-session setup** — `lum.gui.SetupDialog`, a `uifigure` in tabs, shown once before
-   the trial loop: Experiment, Task, Cue, Stimulus, Light path, Left, Right, Sync, Runtime.
+   the trial loop: Experiment, Task, Cue, Stimulus, Light path, Doric LED, Left, Right, Sync,
+   Cameras, Runtime. Sleep and ePhys calibration sessions have their own, smaller dialogs (D11,
+   D18).
    It writes a validated settings struct `S`, saved as the subject's settings file. The
    stimulus designer (`lum.gui.StimulusDesigner`) opens from its Stimulus tab.
 2. **Runtime window** — only parameters that are safe to change with an animal in the box:
@@ -152,8 +171,10 @@ and keeps the *observable* behaviour identical. The mode is recorded in
   machine is uploaded during the trial. When a completed hold may end before the light
   (`lum.HoldShaping.lightMayOutlastHold`, D21) the light can still be on in any of those states,
   so the `ITI`, reached through `WaitForLightEnd` once the light is over, is the only trigger
-  state; the next trial is then prepared in the ITI. Anything computed from history — bias correction, hold shaping — therefore
-  follows trial *n-1* when preparing trial *n+1*.
+  state; the next trial is then prepared in the ITI. From 0.9.8 that is every session with
+  light. Anything computed from history — bias correction, hold shaping — therefore
+  follows trial *n-1* when preparing trial *n+1*; hold shaping and the run limit take the trial
+  still running (*n*) from `history.prepared*` (`lum.HoldShaping.notePrepared`).
 - In the emulator the same calls run the trial to completion first.
 - `lum.dev.open` is the only place that reads `BpodSystem.EmulatorMode`.
 
@@ -170,7 +191,9 @@ never from a global timer:
 - *Task events* — no pulse: the line goes high in `TrialStart`, is held high through
   `WaitForCentrePoke` for as long as the animal is asked to poke, and goes low on the poke
   (`PreStimulusHold`, or `CentreHold` without a latency) and in `NoInitiation`. `TrialStart`
-  keeps a zero timer.
+  keeps a zero timer. With video, `NoInitiation` lasts two frame periods (0.9.8): with the 0 s
+  ITI, the next trial can raise the line a few ms after a lapsed trial dropped it, too soon for a
+  frame to see.
 
 **Why.** A train of identical pulses only supports alignment by counting edges, which breaks
 if a device starts late or drops samples. Pulses of near-unique width are self-identifying:
@@ -230,8 +253,9 @@ library — and compiled by `lum.pattern.stimulusSet`:
 - The set is **refused** if any pattern needs more global timers than `lum.timerBudget`
   leaves for light, or if two groups deliver identical light but pay different sides.
 - `lum.nextTrialSpec` takes the next pattern from a queue initialised to the order. The run
-  limit and bias correction **swap** the next entry with a later one (within 50) that pays
-  the needed side, so every group is still delivered exactly as often as it was balanced.
+  limit and bias correction **swap** the next entry with a later one that pays the needed side
+  (anywhere in the rest of the order since 0.9.4; within the next 50 before), so every group is
+  still delivered exactly as often as it was balanced.
 
 **Why.** A pre-generated set makes the preview the session: the operator scrolls through the
 very trials that will run (`lum.gui.PatternBrowser`), sees each group's timer cost, and the
@@ -262,8 +286,8 @@ sync widths use — independent of when the set was built.
 (`S.Task.AutoShaping`, off by default; since 0.6.0), with the way chosen before the session
 (`S.Task.HoldShaping`: Grow hold, Shrink grace, Both) and tuned during it (`S.GUI.Hold*`,
 `S.GUI.Grace*`), implemented by `lum.HoldShaping`. Every decision goes through
-`lum.HoldShaping.activeMode(S)`, which is `'Off'` while the switch is off. Choosing *Training*
-switches it on and *Experiment* off (`lum.stageDefaults`), and `lum.validateSettings` refuses it in
+`lum.HoldShaping.activeMode(S)`, which is `'Off'` while the switch is off. Choosing *Habituation*
+or *Training* switches it on and *Experiment* off (`lum.stageDefaults`), and `lum.validateSettings` refuses it in
 an Experiment session — the one stage default that is enforced, because an experiment's trials
 must not vary with the animal's performance.
 
@@ -321,8 +345,8 @@ withdrawing is not asked for more.
   0.9.4): the light plays to its end while the animal chooses, and a growing hold under light
   costs the light clock (D21).
 - Without growth the hold is `lum.HoldShaping.fullHold(S)`: the stimulus window plus the
-  post-stimulus hold, or a fixed hold (`S.Task.HoldLength` *Fixed*, `S.Task.FixedHold`), which an
-  Experiment session may use (D21).
+  post-stimulus hold, or a fixed hold (`S.GUI.HoldLength` *Fixed*, `S.GUI.FixedHold`, runtime
+  settings from 0.9.8), which an Experiment session may use (D21).
 - **Between sessions (0.9.6).** A session that grew the hold writes `S.GUI.HoldStart` =
   `lum.HoldShaping.nextSessionStart(S, lastHold)` (90% of its last trial's `HoldDuration`, to the ms,
   capped at `HoldTarget`) into the settings file at teardown, so the next session starts a step below
@@ -355,9 +379,9 @@ of the trial record, and states cost no timers.
 - A trial pulse as long as the marker could be mistaken for one; the defaults keep the marker
   at 100 ms against trial pulses of at most 100 ms, and the decoder requires exactly `nBits`
   pulses between markers.
-- The markers carry the session type (D11): `MarkerWidth` (100 ms) for behaviour,
-  `SleepMarkerWidth` (200 ms) for sleep. `decodeBarcode` returns the kind from the opening
-  marker; `Barcode.Kind` is recorded.
+- The markers carry the session type (D11, D18): `MarkerWidth` (100 ms) for behaviour,
+  `SleepMarkerWidth` (200 ms) for sleep, `EphysMarkerWidth` (300 ms) for ePhys calibration.
+  `decodeBarcode` returns the kind from the opening marker; `Barcode.Kind` is recorded.
 - **The barcode shifts Bpod's analog timeline.** `RunStateMachine` starts the Flex analog stream
   on a session's *first* run — the barcode's — and the firmware numbers each sample by run, but
   `AddFlexIOAnalogData` stamps the first sample with `TrialStartTimestamp(1)`. In version 0.2 every
@@ -456,8 +480,8 @@ transitions rather than states keeps the trial-flow contract.
 **Consequences.**
 
 - The hold window costs one global timer on every trial (`lum.timerBudget`, `reserved.HoldWindow`),
-  and condition 4 is used. The emulator's five timers leave four for light (three when the light
-  clock is reserved, D21).
+  and condition 4 is used. The emulator's five timers leave four for light, and three in a session
+  with light, which also reserves the light clock (D21).
 - Outcome `HoldNotCompleted` (code 6): `NoInitiation` reached after `CentreHold` was visited.
   `NoInitiation` now means the stimulus never started. `EarlyWithdrawal` is the outcome only when
   `EarlyWithdrawal` was visited and `WaitForCentreExit` was not. `HoldAttempts` (visits to
@@ -470,6 +494,8 @@ transitions rather than states keeps the trial-flow contract.
   `mergeSettings` renames `GUI.InitiationWindow` → `GUI.HoldWindow`.
 
 ### D11 — Two session types: behaviour and sleep
+
+A third, ePhys calibration, runs on the same engine as sleep (D18).
 
 **Decision.** `LuminoseFM` first asks what kind of session is starting
 (`lum.gui.SessionTypeDialog`, preselected from `S.Session.Type`). *Behaviour* runs the task as
@@ -677,8 +703,9 @@ encoder never delays a trial (overflow is flagged per frame, never silent). A se
 would isolate the cameras further but adds start-up, IPC and failure modes for no gain in the
 recording, which is already off-thread. Passive logging keeps the cameras free-running, so a
 missing or unwired sync line costs alignment precision, not frames. The per-trial mark gives an
-alignment to within a few ms (the time a trial's events take to reach MATLAB, averaged by a fit)
-until Flex2 is wired to the cameras' Line0, when the barcode and trial pulses mark frames directly.
+alignment to within a few ms (the time a trial's events take to reach MATLAB, averaged by a fit);
+since Flex2 was wired to the cameras' Line0 (2026-09-17) the barcode and trial pulses mark frames
+directly, and the per-trial mark is the fallback.
 A session that silently records no video is found only afterwards, hence the refusal (as for
 PulsePal, D1).
 
@@ -777,8 +804,8 @@ edge is the light's own command line.
 
 **Consequences.**
 
-- The house light costs no global timer, no output and no state: 15 timers for light on the rig, 4 in
-  the emulator. No state machine takes it into account.
+- The house light costs no global timer, no output and no state (0.6.1's `PWM5` light cost one in
+  every trial). No state machine takes it into account.
 - **Every session on the rig opens PulsePal**, behaviour, sleep or ePhys calibration. One with light refuses to start
   without it (`lum.dev.openPulsePal`); one without light runs on the null shim, warned, and
   `lum.dev.openHouseLight` gives it `lum.dev.DisabledHouseLight`: off, `Switchable` false, the box
@@ -928,8 +955,8 @@ unchanged. What MATLAB adds is the current:
 - `Data.LEDCurrentA/B` is NaN when the LED was set by hand. `Session.DoricLED.Controlled` says which.
 - The emulator's LED answers like the device and logs every command; the LED window's first drawing
   can hold up the emulator's loop, so timing tests run without it (`S.Doric.ShowWindow`).
-- A current changed during a session is acknowledged by the driver; whether the brightness follows
-  at once in external TTL mode is a rig check (`rig-checks.md` P3).
+- A current changed during a session is acknowledged by the driver, and the brightness follows from
+  the next block or trial in external TTL mode (seen on the rig, 2026-09-21: `rig-checks.md` P3).
 - The package keeps the 1000 mA ceiling of the 465 nm LED (`doric.Channel.DeviceMaxCurrentmA`);
   `S.Doric.MaxCurrentmA` is refused above it here as well. It is 1000 mA by default since 0.9.3
   (700 mA, Doric's recommended current for an LED held on, before): the LED is rated 1000 mA, the
@@ -1012,7 +1039,8 @@ The scorer keeps scoring by the first side poke, and adds `CentreRewarded`, `Res
 **Why.** A new animal has to learn that the centre port is worth visiting before the hold means
 anything, and water there does it fastest; paying the completed hold rather than the poke keeps the
 poke's path free of any state (D12), so the stimulus starts exactly as in every other trial, and with
-automatic shaping (now on in habituation too) the first holds are 0.1 s. Counting the centre reward
+automatic shaping (now on in habituation too) the first holds are short (0.2 s by default since
+0.9.7, 0.1 s before). Counting the centre reward
 in trials rather than in rewards given keeps `nextTrialSpec` pure: on the rig trial *n+1* is prepared
 before trial *n* is scored (D3), so a count of rewards given would overshoot by one. The retry needs its
 own state because `IncorrectChoice` opens the prepare window (`lum.triggerStates`): the trial must pass
@@ -1101,7 +1129,8 @@ commonest setup error: a contingency typed for one set of groups applied to anot
   amounts are spread over the window in cycles by default (`MixtureLayout` `'spread'`,
   `MixtureCycles`), both channels starting every cycle, so the mixture lasts the whole window rather
   than ending early and leaving the rest dark; each cycle costs a timer per channel, so the defaults
-  take 5 cycles on the rig and 2 in the emulator. Groups that round to the same light are refused.
+  take 5 cycles on the rig and 1 in the emulator (3 timers left for light; 2 before 0.9.8 made the
+  light clock permanent). Groups that round to the same light are refused.
   Coding amount as intensity (the LED current per trial) instead of time lit would remove the dark
   altogether; it is not built.
 
@@ -1115,16 +1144,20 @@ ends, as before. A broken hold still stops everything (D10). Before the ITI ever
 through **`WaitForLightEnd`**, which waits for the light to end: Bpod drops every output line when
 a state machine ends, so the trial must not end before it.
 
-The hold can be shorter than the light in two ways, both decided before the session:
+The hold can be shorter than the light in two ways:
 
 - **A growing hold** (automatic shaping, D6), in habituation or training.
-- **A fixed hold** (`S.Task.HoldLength` *Fixed*, `S.Task.FixedHold` seconds from stimulus onset),
-  in any stage, an Experiment session included. *Whole stimulus* (the default) is the stimulus
+- **A fixed hold** (`S.GUI.HoldLength` 2, *Fixed*, `S.GUI.FixedHold` seconds from stimulus onset),
+  in any stage, an Experiment session included. *Whole stimulus* (1, the default) is the stimulus
   window plus the post-stimulus hold, as before; a fixed hold ignores the post-stimulus hold, and
-  one longer than the window holds past it. A growing hold replaces either.
+  one longer than the window holds past it. A growing hold replaces either. From 0.9.5 to 0.9.7 the
+  two were pre-session settings (`S.Task.HoldLength`, `S.Task.FixedHold`); from 0.9.8 they are
+  runtime settings on the Timing panel, so the operator can set the hold between trials without
+  shaping (asked for after LUMS0014's third session: the hold was hard to find on the Task tab).
 
-`lum.HoldShaping.lightMayOutlastHold(S)` says whether a session can have such a trial (light on, and
-a growing hold or a fixed one shorter than the window). Such a session:
+`lum.HoldShaping.lightMayOutlastHold(S)` says whether a session can have such a trial. Since the
+hold is a runtime setting, that is **every session with light** (0.9.8; up to 0.9.7, light on and a
+growing hold or a fixed one shorter than the window). Such a session:
 
 - reserves **the light clock** (`lum.timerBudget`, `reserved.LightClock`): a global timer as long as
   the trial's light, from stimulus onset, triggered in `CentreHold` with the light and cancelled
@@ -1153,23 +1186,69 @@ One timer running from onset can, hence the light clock.
 - The animal may answer before the light is over. Reward, drinking, a retry or a punishment
   noise can come with the light on. The light's timers (`GlobalTimer<k>_Start/_End`) against
   `WaitForCentreExit` and the side poke show it per trial; `WaitForLightEnd`'s span is the wait.
-- One global timer while the hold may be shorter than the light: the rig's 16 leave 14 for light
-  (13 with grace), the emulator's 5 leave 3 (2 with grace). Every family's defaults fit each of
+- One global timer in every session with light (0.9.8; before, only while the hold could be
+  shorter than the light): the rig's 16 leave 14 for light (13 with grace), the emulator's 5 leave
+  3 (2 with grace). A trial whose hold covers its light leaves the clock unused, so a whole-stimulus
+  session's trials are the same as before; what changes is one segment fewer for light and the ITI
+  as the prepare window. Refusing a fixed hold below the window mid-session in a session that had
+  not reserved the clock was the alternative; it would have made the runtime setting work only
+  sometimes. Every family's defaults fit each of
   these (`generateTest`); in the emulator the mixture takes fewer cycles and, with 2 timers, the
   motif family two-letter words. The setup dialog loads a family's defaults again when the budget
   changes while the stimulus is still those defaults (choosing Training after a family, say); an
   edited stimulus over the budget is refused, naming its group. Condition 5 is the emulator's last.
 - The light clock is numbered after the light, the timed components' and the cue's timers and the
   hold clock, before the hold window; its index varies with the trial's number of segments.
-- The next trial is prepared in the ITI: at least `S.GUI.ITI` for the work, as after
-  `NoInitiation` and `NoResponse` already. An ITI of 0 s would make the next trial start once it is
-  prepared and uploaded.
+- The next trial is prepared in the ITI. The ITI is 0 s by default from 0.9.8, so the next trial
+  starts once it is prepared and uploaded (4–411 ms, median 0.18 s, in LUMS0014's sessions of
+  2026-09-26 and -27): the trial manager sends it with `RunASAP`, and firmware v23 starts such a
+  description at once when no trial is running (the `'C'` command), as it starts it at the end of
+  the running trial when it arrives earlier. An ITI longer than the preparation makes the gap the
+  ITI.
 - `WaitForLightEnd` is a new state in every trial (the trial-flow contract, *Trial engine* below); `Data.Session`
   records `LightMayOutlastHold` and `TriggerStates`.
-- `lum.validateSettings` notes a session whose light may outlast the hold, refuses an unknown
-  `HoldLength` and a fixed hold of 0 s or less, and checks the hold window against the fixed hold.
-  `lum.buildTrialSM` refuses a trial whose light outlasts its hold in a session that did not
-  reserve the clock.
+- `lum.validateSettings` refuses an unknown `HoldLength` and a fixed hold of 0 s or less (whichever
+  hold is chosen, since it can be switched mid-session), and checks the hold window against the
+  hold. `lum.buildTrialSM` refuses a trial whose light outlasts its hold in a session that did not
+  reserve the clock, which only a session set up without light could reach.
+
+### D22 — A behaviour session leaves summary plots and a log, drawn from its saved data
+
+**Context.** The online figure shows the last 80 trials and is saved as one image
+(`_plots.png`, D16). The experimenter and colleagues going through an animal's sessions want every
+plot over the whole session, one kind at a time across sessions, and a short text for the lab
+notebook; asked for after LUMS0014's third session (2026-09-27).
+
+**Decision.** As a behaviour session ends, after the final save, the video's summary save and the
+release of every device, `lum.report.write(BpodSystem.Data, dataFile)` draws the summary plots
+(`lum.report.summaryPlots`) into `Session Plots` and writes the log (`lum.report.sessionLog`) into
+`Session Logs`, both beside `Session Data` as `Session Videos` is. Both read `SessionData` alone,
+through one pass (`lum.report.sessionTrials`), so an older file draws the same way:
+`lum.report.fromFile(dataFile)` loads a data file (never writing it), rescoring it in memory when
+it predates 0.9.6, and with `'OnlinePlots', true` redraws `_plots.png` by feeding every trial to
+the current `lum.OnlinePlots` (`lum.report.replayOnlinePlots`).
+
+Plots are named `NN_<Plot>_PP_<subject>_<YYYYMMDD_HHMMSS>.png`: sorted by name, one kind of plot
+from every session comes together in date order. They reuse the online figure's theme, scoring
+(habituation by the reward, other stages by the side, per trial's stage), psychometric layout and
+raster rule (`lum.OnlinePlots.psychometricLayoutOf`, `rasterByEvidenceOf`), and add what the live
+figure has no room for (outcome reasons, every hold attempt, engagement, port activity, MATLAB's
+timing).
+
+**Why at the end, from the data.** Nothing extra runs in the trial loop, so the real-time budget
+is untouched; nothing extra is stored in the data file, so the saves stay the size they were; the
+rig is released before the drawing starts. One figure at a time is made invisible, exported and
+deleted (about 0.3 s and 40–100 kB a plot). The cost is a few seconds before the session's last
+line, which the console announces.
+
+**Consequences.**
+
+- The teardown order (D16) gains a last step before `RunProtocol('Stop')`: data saved, video
+  stopped and its summary saved, windows closed, devices released, then the plots and the log. A
+  failure there is a warning; the session is already saved.
+- Sleep and ePhys sessions write neither yet.
+- The online figure's image and the summary plots can differ in their last trial's now-and-next
+  panel (the replay has nothing running) and header clock (the replay shows the last trial's end).
 
 ---
 
@@ -1221,7 +1300,7 @@ outlasts the hold and otherwise passes straight on (D21).
 A side reward: `LeftRewardDelay`/`RightRewardDelay` last `S.GUI.RewardDelay` (leaving the port
 goes to `WithdrewBeforeReward`); `LeftReward`/`RightReward` open the valve for its calibrated time;
 `DrinkingLeft`/`DrinkingRight` close it and wait, with no timer, for the port to be clear
-(condition 1 or 2); `DrinkingGrace` lasts `S.GUI.DrinkingGrace` (0.3 s from 0.5), and a poke at
+(condition 1 or 2); `DrinkingGrace` lasts `S.GUI.DrinkingGrace` (0.3 s by default since 0.9.5), and a poke at
 either side port there returns (`>back`) to the drinking state, which leaves again once the rewarded
 port is clear, so the grace restarts; its end goes to `WaitForLightEnd`. No drinking state has a
 time limit, and none gives more water.
@@ -1318,6 +1397,12 @@ and only then is the error reported — as a warning, with `Data.Session.Stopped
 it. `lum.SessionRunner` turns the one failure this exists for, a USB link that has lost its place
 in the byte stream, into `lum:SessionRunner:linkLost` and says what to do about it (restart
 MATLAB, power-cycle the state machine and PulsePal).
+
+### Summary plots and log
+`+lum/+report/` (D22): `write` (the behaviour teardown's call), `summaryPlots`, `sessionLog`,
+`sessionTrials` (the one pass over `SessionData` both read), `folder`, `fileTag`, `heading`,
+`replayOnlinePlots` and `fromFile` (a saved session, read only). `lum.trialStatus` is the runtime
+window's trial lines.
 
 ### Sleep sessions
 `+lum/+sleep/`: `run` (the session sequence), `pulseSchedule` and `syncPulseTimes` (sync pulses),
@@ -1429,9 +1514,8 @@ These are properties of Bpod v1.9.0 that shaped the code and are easy to redisco
 
 ## Open questions
 
-- Whether a current changed with `ls_send_current` while a channel runs in external TTL mode changes
-  the light at once (D17; `rig-checks.md` P3). If not, `applyPending` must re-apply the settings
-  instead, which restarts the channel.
+Questions answered on the rig move to [`rig-checks.md`](rig-checks.md) (*Done*), with their sessions.
+
 - Bias correction reorders a balanced order (D5), so its long-run effect is bounded by the
   set's own side proportion. If sustained correction is needed, the alternative is to let it
   draw outside the balance and record the imbalance.
@@ -1442,23 +1526,27 @@ These are properties of Bpod v1.9.0 that shaped the code and are easy to redisco
   stimulus and, if the animal leaves at once, is a broken hold.
 - Confirm on the rig that the HiFi module loops the cue tone without a seam and that the tail
   replaces it cleanly at the poke.
-- Confirm on the rig that a sleep session's pulses and sleep barcode reach the acquisition
-  devices on Flex2. (A behaviour session's merged airflow does rise with `CentreHold`: 44 of 44
-  trials, 4–11 ms after it, in `FakeSubject_LuminoseFM_20260917_082143`.)
-- Confirm on the rig, with `TestSyncLine` and a scope on Flex2, that the state-driven train
-  arrives at full width and that the global-timer train is the one that did not (D4). If the
-  timer train arrives too, the diagnosis stands anyway — the state write one cycle later is what
-  truncated the pulse — but it is worth recording which.
-- `TestHouseLight` on the rig (2026-09-21): every switch reaches BNC input 1, 18–33 ms after its
-  command. Still to confirm by eye that the light switches both ways, mid-trial and mid-block, and
-  stays on through a behaviour and a sleep session and between sleep blocks (D15).
-- Whether a sleep session's sync pulses (20–100 ms jittered) all reach the cameras as well as the
-  barcode did in behaviour (D14).
-- Confirm on the rig that the camera window at 5 Hz leaves `Data.Timing.prepare` unchanged, and
-  that a multi-hour session records with 0 missed frames and 0 writer drops.
+- Confirm that a sleep session's pulses and barcode reach the Neuropixels acquisition on Flex2. The
+  cameras have logged every sleep and ePhys calibration pulse and decoded each barcode since
+  2026-09-17 (`rig-checks.md`).
+- `TestSyncLine` with a scope on Flex2, to record whether the global-timer train arrives at all
+  (D4). The state-driven pulses are known to arrive at full width: the cameras read every trial
+  pulse's width to within a frame from 0.5.1 on.
+- The house light switches both ways (P1, 2026-09-21). Still to see by eye: switched mid-trial and
+  mid-block, and steady through a behaviour and a sleep session and between sleep blocks (D15).
+- Whether the camera window at 5 Hz leaves `Data.Timing.prepare` unchanged, and whether a
+  multi-hour session records with 0 missed frames and 0 writer drops, as LUMS0014's 87–93 minute
+  sessions did (2026-09-25 to -27; D14).
 - Whether stepping the hold back should also grow the grace back when *Shrink grace* is in force (D6).
 - Confirm on the rig, with a scope downstream of PulsePal, that a sleep session's probes are 10 ms of
   light 50 ms apart, that a theta-burst gate holds exactly four pulses, and that PulsePal changes
   carrier between steps with nothing emitted.
 - Whether 5 ms is the right pulse width for the provided 100 Hz trains in OSN-ChR mice. (Paired
   probes alternate between A and B by default since 0.9.2, 30 s apart; see D13.)
+- Questions left from the validation of 2026-09-24 (Q3, Q4, Q6, Q9 in
+  [`validation-2026-09-24.md`](validation-2026-09-24.md)): the run limit pulling a psychometric
+  group's delivered P(left) towards 0.5; balance over the whole session rather than in blocks; the
+  drinking grace restarting on either side poke; sound level not calibrated.
+
+Answered since they were first listed: a current changed in external TTL mode changes the light
+from the next block (P3, 2026-09-21).

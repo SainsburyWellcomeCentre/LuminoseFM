@@ -26,9 +26,10 @@ classdef OnlinePlots < handle
     %     Performance   Fraction correct over a moving window: all, left- and
     %                   right-rewarded trials
     %     Psychometric  P(choose left) with binomial error bars, laid out for the set:
-    %                   along the family's evidence (B share, flash difference, the
-    %                   deciding amount), a point per value or eight bins when it runs
-    %                   continuously, or one point per group when the family has none —
+    %                   along the family's evidence (A share or A minus B, flash
+    %                   difference, the deciding amount), a point per value or eight
+    %                   bins when it runs continuously, or one point per group when the
+    %                   family has none —
     %                   with the contingency the animal is trained on drawn behind it
     %     Evidence      Every choice at the latent evidence its trial's stimulus carried
     %                   on each channel, u_A against u_B (the fraction of the stimulus
@@ -130,6 +131,8 @@ classdef OnlinePlots < handle
         holdNow = NaN             % The hold the running trial asks for
         lastTrial = 0
         clock
+        elapsedSeconds = NaN      % Session time shown in the header when replaying a file
+        titleControl              % The header's title, fitted to the width
     end
 
     methods
@@ -291,7 +294,15 @@ classdef OnlinePlots < handle
             end
 
             set(h.summary, 'String', obj.summaryMarkup(trialNumber));
+            fitToWidth(h.summary, 10, 7);
             drawnow limitrate;
+        end
+
+        function setElapsed(obj, seconds)
+            % setElapsed(seconds) makes the header show this session time rather than the
+            % time since the figure was made: for a figure replayed from a saved session
+            % (lum.report.replayOnlinePlots). NaN goes back to the clock.
+            obj.elapsedSeconds = seconds;
         end
 
         function showNext(obj, nextSpec, queue)
@@ -337,6 +348,9 @@ classdef OnlinePlots < handle
             % summaryParts(n) is the summary in four pieces: the trial, the performance,
             % the water total and the rest, so the header can emphasise the first and third.
             elapsed = toc(obj.clock);
+            if ~isnan(obj.elapsedSeconds)
+                elapsed = obj.elapsedSeconds;
+            end
             if obj.bothSidesPay && obj.nScored > 0
                 performance = sprintf('%.0f%% of %d trials rewarded (%d choices)', ...
                                       100 * ratio(obj.nCorrect, obj.nScored), obj.nScored, ...
@@ -372,6 +386,21 @@ classdef OnlinePlots < handle
             if ~isempty(obj.Figure) && isvalid(obj.Figure)
                 delete(obj.Figure);
             end
+        end
+    end
+
+    methods (Static)
+        function layout = psychometricLayoutOf(stimulusSet)
+            % psychometricLayoutOf(set) is where each pattern's choices land on the
+            % psychometric panel: .X, .Index (per pattern), .Target, .TickLabels, .XLabel,
+            % .Title. Shared with the session's summary plots (lum.report.summaryPlots).
+            layout = psychometricLayout(stimulusSet);
+        end
+
+        function tf = rasterByEvidenceOf(stimulusSet)
+            % rasterByEvidenceOf(set) is true when the outcome raster runs along the
+            % evidence rather than a row per group.
+            tf = rasterByEvidence(stimulusSet);
         end
     end
 
@@ -591,10 +620,11 @@ classdef OnlinePlots < handle
             titleText = sprintf('LuminoseFM  |  %s  |  %s  |  %s, %d group(s), seed %d  |  %s', ...
                                 orDash(subject), stage, family.Label, ...
                                 obj.stimulusSet.nGroups, obj.stimulusSet.Seed, breakText);
-            uicontrol(header, 'Style', 'text', 'Units', 'normalized', ...
+            obj.titleControl = uicontrol(header, 'Style', 'text', 'Units', 'normalized', ...
                       'Position', [0.05 0.5 0.8 0.42], 'String', titleText, 'FontSize', 12, ...
                       'FontWeight', 'bold', 'HorizontalAlignment', 'left', ...
                       'BackgroundColor', t.Background, 'ForegroundColor', t.Ink);
+            fitToWidth(obj.titleControl, 12, 8);  % A long family label shrinks, not clips
             obj.handles.houseLight = lum.gui.houseLightSwitch(header, [0.87 0.5 0.12 0.42], ...
                                                               houseLight, t);
             % A text in a bare axes rather than a text uicontrol, so the trial number and
@@ -998,6 +1028,28 @@ function text = orDash(text)
 % A placeholder for an empty name.
 if isempty(text)
     text = '-';
+end
+end
+
+
+function fitToWidth(handle, largest, smallest)
+% Shrink a header line's font, down to smallest, until the line fits the width it has, so a
+% long line (or a narrow window) shows all of it rather than cutting it off; back up to
+% largest when it fits again. A text object in the header's 0-1 axes, or a text uicontrol
+% (whose Extent is in its own normalised units).
+if ~isgraphics(handle)
+    return
+end
+if isa(handle, 'matlab.graphics.primitive.Text')
+    available = 1 - handle.Position(1);
+else
+    available = handle.Position(3);
+end
+fontSize = largest;
+handle.FontSize = fontSize;
+while fontSize > smallest && handle.Extent(3) > available
+    fontSize = fontSize - 1;
+    handle.FontSize = fontSize;
 end
 end
 

@@ -22,7 +22,7 @@ the [README](../README.md#4-the-stimulus).
 There are two channels, **A** and **B**. During the **stimulus window**, a time interval of length
 $T$ seconds that starts at stimulus onset, each channel is either on or off:
 
-$$q_A(t),\; q_B(t) \in \{0, 1\}, \qquad 0 \le t < T .$$
+$$q_A(t),\enspace q_B(t) \in \lbrace 0, 1\rbrace, \qquad 0 \le t < T .$$
 
 $q_A(t) = 1$ means channel A is on at time $t$. Nothing else about a channel is varied by a
 family: how bright a channel is when it is on, and what it carries while it is on, are set
@@ -31,8 +31,8 @@ elsewhere and are the same on every trial. A **light pattern** is the pair $x = 
 ### 1.2 Bins
 
 Patterns are drawn on a grid of $N$ equal **bins** of width $\Delta = T/N$. Bin $n$ ($n = 1 \dots N$)
-covers $[(n-1)\Delta,\, n\Delta)$, and each channel is on or off for a whole bin:
-$q_A[n], q_B[n] \in \{0, 1\}$. You type a bin width; if it does not divide $T$ exactly, $N$ is
+covers $[(n-1)\Delta,\thinspace n\Delta)$, and each channel is on or off for a whole bin:
+$q_A[n], q_B[n] \in \lbrace 0, 1\rbrace$. You type a bin width; if it does not divide $T$ exactly, $N$ is
 rounded to the nearest whole number and $\Delta = T/N$ is used (a 10 ms bin in a 0.333 s window
 becomes 33 bins of 10.09 ms). Every quantity below is a sum over bins.
 
@@ -40,7 +40,7 @@ becomes 33 bins of 10.09 ms). Every quantity below is a sum over bins.
 
 At each bin the two channels together are in one of four **joint states**:
 
-$$s[n] = q_A[n] + 2\,q_B[n] \in \{0, 1, 2, 3\}$$
+$$s[n] = q_A[n] + 2\thinspace q_B[n] \in \lbrace 0, 1, 2, 3\rbrace$$
 
 | $s$ | name | $q_A$ | $q_B$ |
 |:---:|------|:---:|:---:|
@@ -77,8 +77,10 @@ plots and the families' settings use fractions; the data file stores seconds.
 
 ### 2.2 Overlap, dark, total and share
 
-$$u_{AB} = \Delta \sum_n q_A[n]\,q_B[n] \quad\text{(both on)}, \qquad
-u_0 = \Delta \sum_n (1 - q_A[n])(1 - q_B[n]) \quad\text{(dark)} .$$
+$$
+u_{AB} = \Delta \sum_n q_A[n]\thinspace q_B[n] \quad\text{(both on)}, \qquad
+u_0 = \Delta \sum_n (1 - q_A[n])(1 - q_B[n]) \quad\text{(dark)} .
+$$
 
 A only lasts $u_A - u_{AB}$ and B only $u_B - u_{AB}$, and the four joint states fill the window:
 
@@ -158,7 +160,7 @@ $p_g$ by $1 - p_g$.
 
 ### 4.1 Rule and categories
 
-On trial $t$ the subject receives $x_t$ and chooses $c_t \in \{L, R\}$. With a fixed contingency
+On trial $t$ the subject receives $x_t$ and chooses $c_t \in \lbrace L, R\rbrace$. With a fixed contingency
 the groups fall into two **categories**, those paying left and those paying right, and the task is a
 **rule** $d(x)$ from patterns to sides. The subject can reach 100% only by computing $d$ (or
 something that agrees with it on every pattern delivered).
@@ -170,8 +172,8 @@ family's **evidence** $e(x)$, also called its decision variable:
 
 | Family | Evidence $e$ | Pays left when |
 |--------|-------------|----------------|
-| mixture, A share | A share $\pi$ | $\pi > \pi^{*}$ (default $\tfrac12$) |
-| mixture, A minus B | $\delta = \bar u_A - \bar u_B$ | $\delta > \delta^{*}$ (default 0) |
+| mixture, A share | A share $\pi$ | $\pi > \pi^{\ast}$ (default $\tfrac12$) |
+| mixture, A minus B | $\delta = \bar u_A - \bar u_B$ | $\delta > \delta^{\ast}$ (default 0) |
 | mixture, A alone | $\bar u_A$ | $\bar u_A > \theta$ |
 | mixture, B alone | $\bar u_B$ | $\bar u_B < \theta$ |
 | sequence | $n_A - n_B$, A flashes minus B flashes | $n_A > n_B$ |
@@ -189,7 +191,7 @@ The online plot shows it with one point per value of $e$ (or eight bins when $e$
 continuously). A standard parametric form, with lapse rates $\gamma$ (left) and $\lambda$ (right),
 bias $\mu$ and slope $s$:
 
-$$\psi(e) = \gamma + (1 - \gamma - \lambda)\,\frac{1}{1 + \exp\!\big(-(e - \mu)/s\big)} .$$
+$$\psi(e) = \gamma + (1 - \gamma - \lambda)\thinspace \frac{1}{1 + \exp\big(-(e - \mu)/s\big)} .$$
 
 For evidence that falls as the left side becomes less likely (B's amount, under *B alone*), expect
 $s < 0$.
@@ -202,16 +204,16 @@ A rule that depends only on the amounts divides the plane of section 2.4 by a **
 - **horizontal**, $\bar u_B = \theta$: only B's amount matters (*B alone decides*);
 - **diagonal**, $\bar u_A = \bar u_B$: the side depends on which amount is larger (A share against
   ½, or A minus B against 0);
-- **a line through the origin**, $\bar u_B = \frac{1-\pi^{*}}{\pi^{*}} \bar u_A$: A's share against a
-  boundary ratio $\pi^{*}$;
-- **a line parallel to the diagonal**, $\bar u_B = \bar u_A - \delta^{*}$: A minus B against
-  $\delta^{*}$.
+- **a line through the origin**, $\bar u_B = \frac{1-\pi^{\ast}}{\pi^{\ast}} \bar u_A$: A's share against a
+  boundary ratio $\pi^{\ast}$;
+- **a line parallel to the diagonal**, $\bar u_B = \bar u_A - \delta^{\ast}$: A minus B against
+  $\delta^{\ast}$.
 
 More generally a linear boundary is $w_0 + w_A \bar u_A + w_B \bar u_B = 0$, and the direction of
 the weight vector $(w_A, w_B)$ says how much each channel counts. The stimulus set records the
 contingency's own boundary (`Boundary.Kind`; `Boundary.Value` for a vertical or horizontal one,
-`Boundary.Slope` and `Boundary.Intercept` for a line $\bar u_B = \text{Slope}\cdot\bar u_A +
-\text{Intercept}$), and the *Evidence* panel draws it behind the choices. Section 7.3 fits the
+`Boundary.Slope` and `Boundary.Intercept` for a line
+$\bar u_B = \text{Slope}\cdot\bar u_A + \text{Intercept}$), and the *Evidence* panel draws it behind the choices. Section 7.3 fits the
 subject's own boundary.
 
 ---
@@ -238,20 +240,20 @@ Suppose an observer sees only the value $v = f(x)$ of one cue, and knows the con
 it can do is to answer, for each value $v$, the side more often paid when the cue takes that value.
 Its accuracy is the **single-cue ceiling**
 
-$$\kappa_f = \sum_{v} \max\Big( \sum_{g:\, f(x_g) = v} w_g\, p_g,\;\; \sum_{g:\, f(x_g) = v} w_g\,(1 - p_g) \Big) .$$
+$$\kappa_f = \sum_{v} \max\Big( \sum_{g:\thinspace f(x_g) = v} w_g\thinspace p_g,\quad \sum_{g:\thinspace f(x_g) = v} w_g\thinspace (1 - p_g) \Big) .$$
 
 An observer that reads the whole pattern can reach
 
-$$\kappa^{*} = \sum_g w_g \max(p_g,\, 1 - p_g),$$
+$$\kappa^{\ast} = \sum_g w_g \max(p_g,\thinspace 1 - p_g),$$
 
 which is 1 for a fixed contingency. Then:
 
-- $\kappa_f = \kappa^{*}$: the cue alone solves the task as well as anything can;
+- $\kappa_f = \kappa^{\ast}$: the cue alone solves the task as well as anything can;
 - $\kappa_f = \tfrac12$: the cue tells nothing about the side;
 - in between: the cue helps, up to that accuracy.
 
 A task **needs both channels** when every single-channel cue (A's amount, B's amount, A's time
-course, B's time course) has $\kappa_f < \kappa^{*}$: no strategy that ignores a channel can reach
+course, B's time course) has $\kappa_f < \kappa^{\ast}$: no strategy that ignores a channel can reach
 the top. A subject that performs above a cue's ceiling must be using more than that cue.
 
 When every trial has its own pattern, each $x_t$ is unique and the value-by-value rule above would
@@ -261,7 +263,7 @@ course ceilings are not computed.
 
 The stimulus designer and the setup dialog print the ceilings in one line (*One cue alone could
 score at most: …*); the data file stores them in `StimulusSet.Shortcuts` (`AAmount`, `BAmount`,
-`TotalLight`, `ATimeCourse`, `BTimeCourse`, `AllLight` $=\kappa^{*}$, and `Method`, `'exact'` or
+`TotalLight`, `ATimeCourse`, `BTimeCourse`, `AllLight` $=\kappa^{\ast}$, and `Method`, `'exact'` or
 `'threshold'`). `lum.pattern.shortcuts(stimulusSet)` recomputes them from a stored set.
 
 ### 5.3 Three common shortcuts
@@ -269,7 +271,7 @@ score at most: …*); the data file stores them in `StimulusSet.Shortcuts` (`AAm
 1. **Amount.** If the categories differ in how long A is on, A's amount alone reveals the side.
 2. **Complement.** If every bin is lit by exactly one channel ($q_B[n] = 1 - q_A[n]$, no dark and
    no overlap), then A's trace determines B's, and A's time course alone carries all the
-   information: $\kappa_{q_A} = \kappa^{*}$. The same holds for amounts when every slot of a
+   information: $\kappa_{q_A} = \kappa^{\ast}$. The same holds for amounts when every slot of a
    sequence is filled: $n_B = m - n_A$.
 3. **Total light.** If the categories differ in $u_A + u_B$, how much light there is, whichever the
    channel, reveals the side.
@@ -278,12 +280,12 @@ score at most: …*); the data file stores them in `StimulusSet.Shortcuts` (`AAm
 
 For a rule that pays the side with the larger amount, some information always leaks into one
 amount or the other. Take any set of patterns with $u_A \ne u_B$ in each, paying left exactly when
-$u_A > u_B$. Let $a^{*}$ be the smallest A amount in the set and $b^{*}$ the smallest B amount.
+$u_A > u_B$. Let $a^{\ast}$ be the smallest A amount in the set and $b^{\ast}$ the smallest B amount.
 
-- If $b^{*} < a^{*}$: every pattern with $u_B = b^{*}$ has $u_A \ge a^{*} > u_B$, so it pays
-  left. The value $b^{*}$ of B's amount only ever pays left.
-- If $b^{*} \ge a^{*}$: every pattern with $u_A = a^{*}$ has $u_B \ge b^{*} \ge a^{*} = u_A$,
-  so (no ties) it pays right. The value $a^{*}$ of A's amount only ever pays right.
+- If $b^{\ast} < a^{\ast}$: every pattern with $u_B = b^{\ast}$ has $u_A \ge a^{\ast} > u_B$, so it pays
+  left. The value $b^{\ast}$ of B's amount only ever pays left.
+- If $b^{\ast} \ge a^{\ast}$: every pattern with $u_A = a^{\ast}$ has $u_B \ge b^{\ast} \ge a^{\ast} = u_A$,
+  so (no ties) it pays right. The value $a^{\ast}$ of A's amount only ever pays right.
 
 Either way one amount has a value that gives the side away, so $\kappa_{u_A} > \tfrac12$ or
 $\kappa_{u_B} > \tfrac12$. The leak can be made small but not zero; the mixture family's *ladder*
@@ -357,8 +359,9 @@ under every placement; only the time course differs. Why spread is the default: 
 window is then always dark, and the light is over within the first 20% of the window at the lowest
 total. Spread over cycles, every part of the window carries the same mixture. The cost is timers:
 each cycle is one light segment per channel, so $2C$ global timers. The defaults use 5 cycles where
-10 timers are left for light (the rig) and fewer where not (2 in the emulator), and no more cycles
-than the smallest default amount (0.1 of the window) has bins: 3 in a 0.3 s window of 10 ms bins.
+10 or more timers are left for light (the rig) and as many as fit where fewer are (1 in the emulator,
+which has 3 left for light), and no more cycles than the smallest default amount (0.1 of the window)
+has bins: 3 in a 0.3 s window of 10 ms bins.
 An amount with fewer bins than there are cycles is refused, naming the group; so are two groups that
 come to the same light once rounded to bins (a 0.3 s window in 100 ms bins has only three bins, and
 2:1 and 1:2 at the low totals both become one bin of each). Choosing a family (any family) avoids
@@ -369,19 +372,21 @@ both: when its defaults cannot be drawn in the bin set, the bin is made finer, 1
 
 Two measures of how much A there is relative to B:
 
-- **A's share** of the light, its relative abundance in the mixture:
-  $$\pi = \frac{u_A}{u_A + u_B} \in [0, 1] \qquad (\pi = 1 - \beta);$$
+- **A's share** of the light, its relative abundance in the mixture,
+  $\pi = u_A / (u_A + u_B) \in [0, 1]$ (so $\pi = 1 - \beta$);
 - the **difference** $\delta = \bar u_A - \bar u_B \in [-1, 1]$.
 
-Each rule pays left when its measure is above a **boundary**, $\pi^{*}$ or $\delta^{*}$, right when
+Each rule pays left when its measure is above a **boundary**, $\pi^{\ast}$ or $\delta^{\ast}$, right when
 below, and either side on it. The share boundary is typed as a mixture ratio A:B (1:1 is
-$\pi^{*} = \tfrac12$, 60:40 is $\pi^{*} = 0.6$), the difference boundary as a fraction of the window.
+$\pi^{\ast} = \tfrac12$, 60:40 is $\pi^{\ast} = 0.6$), the difference boundary as a fraction of the window.
 
 **Groups.** A list of values of the measure crossed with a list of **totals**
 $s = \bar u_A + \bar u_B$, the total light, which roves:
 
-$$\text{share: } (\bar u_A, \bar u_B) = \big(\pi s,\ (1-\pi)\,s\big), \qquad
-\text{difference: } (\bar u_A, \bar u_B) = \Big(\frac{s + \delta}{2},\ \frac{s - \delta}{2}\Big).$$
+$$
+\text{share: } (\bar u_A, \bar u_B) = \big(\pi s,\ (1-\pi)\thinspace s\big), \qquad
+\text{difference: } (\bar u_A, \bar u_B) = \Big(\frac{s + \delta}{2},\ \frac{s - \delta}{2}\Big).
+$$
 
 Share values are typed as **mixture ratios** A:B (2:1 is $\pi = \tfrac23$; 80:20 is $\pi = 0.8$; 1:0 is
 A alone). A combination that would light a channel for more than the whole window, or for less than
@@ -390,10 +395,10 @@ nothing, is refused, naming it. The contingency is decided on the amounts as del
 **Evidence and boundary.** The measure itself ($\pi$, or $\delta$ as a fraction of the window). In the
 plane of amounts the share boundary is a line through the origin, a mixture ratio,
 
-$$\bar u_B = \frac{1 - \pi^{*}}{\pi^{*}}\,\bar u_A ,$$
+$$\bar u_B = \frac{1 - \pi^{\ast}}{\pi^{\ast}}\thinspace \bar u_A ,$$
 
-and the difference boundary a line parallel to the diagonal, $\bar u_B = \bar u_A - \delta^{*}$. At
-$\pi^{*} = \tfrac12$ and $\delta^{*} = 0$ both are the diagonal, and the two rules pay every pattern the
+and the difference boundary a line parallel to the diagonal, $\bar u_B = \bar u_A - \delta^{\ast}$. At
+$\pi^{\ast} = \tfrac12$ and $\delta^{\ast} = 0$ both are the diagonal, and the two rules pay every pattern the
 same side; they part as soon as the boundary moves. (`Boundary.Kind` is `'diagonal'`, or `'line'` with
 `Slope` and `Intercept`.)
 
@@ -402,7 +407,7 @@ share and the difference away (the complement shortcut, section 5.3). Roving the
 and one rove does it best, a **ladder**:
 
 - share rule with the ratios $\pi$ and $1-\pi$: totals that grow by the factor $r = \pi/(1-\pi)$ (for
-  2:1 and 1:2, totals that double), so that $\pi s_k = (1-\pi)\,s_{k+1}$;
+  2:1 and 1:2, totals that double), so that $\pi s_k = (1-\pi)\thinspace s_{k+1}$;
 - difference rule with $\pm\delta$: totals that grow by $2\delta$ (0.3 0.5 0.7 0.9 for $\pm 0.1$).
 
 Then every amount is the larger in one group and the smaller in another, except the lowest and
@@ -463,7 +468,7 @@ amount, a little above 50% for total light.
 | Total light (difference) | `MixtureDifferenceTotals` | 0.3 0.5 0.7 0.9 |
 | Amount levels (controls) | `MixtureLevels` | 0.1 0.2 0.4 0.8 |
 | Placement | `MixtureLayout` | `'spread'` (`'onset'`, `'centred'`) |
-| Cycles (spread) | `MixtureCycles` | 5 (fewer where the timers or bins are short) |
+| Cycles (spread) | `MixtureCycles` | 5 (fewer where the timers or bins are short: 1 in the emulator) |
 | Every trial | `Continuous` | off |
 
 **Why.** Two mixture ratios, 2:1 and 1:2, at totals that double: every trial is as hard as every
@@ -503,7 +508,7 @@ A's amount 100%, B's amount 100%, total light 50%.
 
 | Setting | Field | Default |
 |---------|-------|---------|
-| Slots in the window | `CountSlots` | 5 (3 on a machine with fewer than 5 timers left for light) |
+| Slots in the window | `CountSlots` | 5 (3 with 3 or 4 timers left for light, as in the emulator; 1 with 2) |
 | Counts, A:B | `CountPairs` | 5:0 4:1 3:2 2:3 1:4 0:5 |
 | Flash length (of a slot) | `CountFill` | 0.5 |
 | Every trial | `Continuous` | on: a new order of the flashes |
@@ -532,9 +537,10 @@ tells the side (A early or A late): $\kappa_{q_A} = \kappa_{q_B} = 1$.
 
 #### Guarded cycle
 
-A turn is $[\,\text{lead alone } \pi\,][\,\text{both } g_s\,][\,\text{other alone } \pi\,][\,\text{both } g_L\,]$ with
-a short overlap $g_s$, a long overlap $g_L > g_s$, and $\pi = (1 - g_s - g_L)/2$. The groups are
-*A leads* and *B leads*. Each channel is on in one stretch of $\pi + g_s + g_L$ per turn, and the
+A turn is four stretches in a row: the leading channel alone for $\rho$, both for $g_s$, the other
+channel alone for $\rho$, then both for $g_L$ (fractions of the turn), with a short overlap $g_s$, a
+long overlap $g_L > g_s$, and $\rho = (1 - g_s - g_L)/2$. The groups are
+*A leads* and *B leads*. Each channel is on in one stretch of $\rho + g_s + g_L$ per turn, and the
 two stretches overlap twice: briefly where the leading channel hands over ($g_s$), for longer where
 the other hands back ($g_L$). What separates the groups is which handover is the short one.
 
@@ -567,7 +573,7 @@ guarded cycle is the version in which order is the only thing that differs.
 **Question.** Which word is it?
 
 **Construction.** A **word** is a string of $L$ letters from the alphabet
-$\{\mathtt{A}, \mathtt{B}, \mathtt{X}, \mathtt{-}\}$: A lights channel A, B lights B, X lights both,
+$\lbrace \mathtt{A}, \mathtt{B}, \mathtt{X}, \mathtt{-}\rbrace$: A lights channel A, B lights B, X lights both,
 and - is dark. The window is cut into $L$ slots and letter $j$ is one flash in slot $j$, lasting a
 fraction $\phi$ of it. Every word has the same length.
 
@@ -582,8 +588,8 @@ is lit in every slot by one channel, so the complement shortcut applies to time 
 course identifies the word ($\kappa_{q_A} = 1$). The design question is which simpler features of a
 word could give the side away. For the default split
 
-$$\text{left} = \{\mathtt{AAA}, \mathtt{AAB}, \mathtt{ABB}, \mathtt{BAB}\}, \qquad
-\text{right} = \{\mathtt{ABA}, \mathtt{BAA}, \mathtt{BBA}, \mathtt{BBB}\}$$
+$$\text{left} = \lbrace \mathtt{AAA}, \mathtt{AAB}, \mathtt{ABB}, \mathtt{BAB}\rbrace, \qquad
+\text{right} = \lbrace \mathtt{ABA}, \mathtt{BAA}, \mathtt{BBA}, \mathtt{BBB}\rbrace$$
 
 the best accuracy of each feature is:
 
@@ -600,8 +606,8 @@ No split of the eight words can bring the count of A below 75%: AAA and BBB are 
 with three and with no A, so their side is always given away, and the six others (three with one A,
 three with two) leave at least two of three on the majority side of each count. The side can be
 known for certain only from the word as a whole: the subject has to learn each word, not a rule.
-For a rule instead, use a structural split: $\{\mathtt{AAB}, \mathtt{BBA}\}$ against
-$\{\mathtt{ABA}, \mathtt{BAB}\}$ has the count and every position at 50%, but *the first two letters
+For a rule instead, use a structural split: $\lbrace \mathtt{AAB}, \mathtt{BBA}\rbrace$ against
+$\lbrace \mathtt{ABA}, \mathtt{BAB}\rbrace$ has the count and every position at 50%, but *the first two letters
 repeat* at 100% — an abstract rule over any letters. To make a time course ambiguous, use X and -
 letters, so that A's trace no longer determines B's.
 
@@ -616,7 +622,7 @@ courses 100%.
 
 **Cost.** One segment per lit letter (two for X). Where fewer than three timers are left for light
 (only the emulator, with both the hold clock and the light clock), the defaults are the four
-two-letter words, $\{\mathtt{AA}, \mathtt{BB}\}$ left against $\{\mathtt{AB}, \mathtt{BA}\}$
+two-letter words, $\lbrace \mathtt{AA}, \mathtt{BB}\rbrace$ left against $\lbrace \mathtt{AB}, \mathtt{BA}\rbrace$
 right: repeat against change, each position at 50%, the count of A at 75%.
 
 ### 6.6 Hand-drawn pulses (`arbitrary`)
@@ -678,12 +684,12 @@ nTrials = accumarray(which(:), 1);
 Fit $P(c = L) = 1 / \big(1 + \exp(-(w_0 + w_A \bar u_A + w_B \bar u_B))\big)$ to the choices. The
 angle
 
-$$\alpha = \operatorname{atan2}(-w_B,\; w_A)$$
+$$\alpha = \operatorname{atan2}(-w_B,\enspace w_A)$$
 
 is 0° when only A counts (a vertical boundary), 90° when only B counts (horizontal), and 45° when
 both count equally with opposite signs (the diagonal: more A left, more B right). With a moved share
-boundary $\pi^{*}$, a subject that has learnt it weighs the channels as the boundary line does:
-$\alpha = \arctan\big(\pi^{*}/(1-\pi^{*})\big)$, 56° for $\pi^{*} = 0.6$ (a boundary through the
+boundary $\pi^{\ast}$, a subject that has learnt it weighs the channels as the boundary line does:
+$\alpha = \arctan\big(\pi^{\ast}/(1-\pi^{\ast})\big)$, 56° for $\pi^{\ast} = 0.6$ (a boundary through the
 origin also needs $w_0 \approx 0$).
 Base MATLAB, no toolbox (a small ridge keeps the weights finite when the choices separate
 perfectly):
@@ -751,15 +757,17 @@ end
 ## 8. What the machine allows
 
 Each segment is one of the state machine's global timers, and the timer budget is checked before a
-session starts (`lum.timerBudget`): the rig's state machine has 16 timers and the emulator's 5; the
-hold window always takes one; grace shaping, a hold that may be shorter than the light (the light
-clock) and stimulus components timed within the window take more. A pattern with more segments than
-the budget is refused, naming its group. The families' defaults are fitted to the timers left when a
-family is chosen: the sequence family's 5 flashes drop to 3 slots (1 with only 2 timers), the
-mixture's 5 cycles to as many as fit, and the motif family's three-letter words to two letters with
-fewer than 3 timers. The setup dialog loads a family's defaults again when the timers left change
-(a training stage, shaping, a fixed hold), as long as the stimulus is still those defaults. Segment edges fall on the 100 µs cycle of the
-state machine.
+session starts (`lum.timerBudget`). The rig's state machine has 16 timers and the emulator's 5. The
+hold window always takes one, and every session with light keeps one for the light clock (D21 in
+[`architecture.md`](architecture.md)), which leaves 14 for light on the rig and 3 in the emulator.
+Grace shaping and stimulus components timed within the window take one more each. A pattern with
+more segments than the budget is refused, naming its group.
+
+The families' defaults are fitted to the timers left when a family is chosen: the sequence family's
+5 flashes drop to 3 slots (1 with only 2 timers), the mixture's 5 cycles to as many as fit, and the
+motif family's three-letter words to two letters with fewer than 3 timers. The setup dialog loads a
+family's defaults again when the timers left change (a training stage, shaping), as long as the
+stimulus is still those defaults. Segment edges fall on the 100 µs cycle of the state machine.
 
 ---
 
