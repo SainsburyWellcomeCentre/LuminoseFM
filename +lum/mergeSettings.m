@@ -16,8 +16,11 @@ function [S, added] = mergeSettings(defaults, loaded)
 %              channel, a list of cue names that became rows) is converted.
 %   Retired    A setting nothing reads any more is removed, and listed, so that a
 %              stale value cannot be mistaken for a live one.
-%   Replaced   An old default the operator never changed (the ITI's 1 s, the LED's
-%   default    700 mA limit...) takes the new default; a value that differs is kept.
+%   Replaced   An old default the operator never changed (the ITI's 1 s and 0 s, the
+%   default    LED's 700 mA limit...) takes the new default; a value that differs is kept.
+%
+% Session.SettingsVersion is the release that last wrote the file (0.9.11 on), always set
+% from the defaults after merging; its absence marks a file from before 0.9.11.
 %
 % Declarations are always taken from the defaults, never from the file: GUIMeta,
 % GUIPanels and GUITabs, and the name lists Sync.ModeNames and
@@ -54,6 +57,9 @@ for name = {'GUIMeta', 'GUIPanels', 'GUITabs'}
 end
 S.Sync.ModeNames = defaults.Sync.ModeNames;
 S.Task.TrainingStageNames = defaults.Task.TrainingStageNames;
+% The release that last wrote them: this one, once merged. A file from before 0.9.11 has
+% none, which is how migrateLegacy tells its defaults from the operator's choices.
+S.Session.SettingsVersion = defaults.Session.SettingsVersion;
 
 
 function [loaded, migrated] = migrateLegacy(defaults, loaded)
@@ -321,8 +327,33 @@ end
 if hasPath(loaded, 'GUI.ITI') && ~hasPath(loaded, 'GUI.HoldLength') ...
         && isequal(loaded.GUI.ITI, 1)
     loaded.GUI.ITI = defaults.GUI.ITI;
-    migrated{end+1} = sprintf(['GUI.ITI (the old default, 1 s, became the new one: %g s, the '...
-                               'next trial as soon as it is sent)'], defaults.GUI.ITI);
+    migrated{end+1} = sprintf(['GUI.ITI (the old default, 1 s, became the new one: %g s, '...
+                               'lum.minimumITI)'], defaults.GUI.ITI);
+end
+
+%% Replaced default (version 0.9.11): the ITI is the shortest that keeps every trial on time
+% From 0.9.8 to 0.9.10 the ITI was 0 s by default. With light, a trial after a change of LED
+% current then starts late (lum.minimumITI), so the default is 0.25 s. A
+% file from before 0.9.11 (no Session.SettingsVersion) whose ITI is still 0 s takes it; any
+% other ITI, and 0 s typed from 0.9.11 on, is the operator's and is kept.
+if hasPath(loaded, 'GUI.ITI') && ~hasPath(loaded, 'Session.SettingsVersion') ...
+        && isequal(loaded.GUI.ITI, 0)
+    loaded.GUI.ITI = defaults.GUI.ITI;
+    migrated{end+1} = sprintf(['GUI.ITI (the 0.9.8 default, 0 s, became the new one: %g s, so '...
+                               'every trial starts one ITI after the last; lum.minimumITI)'], ...
+                              defaults.GUI.ITI);
+end
+
+%% Replaced default (version 0.9.11): a longer trial order for bias correction to draw on
+% Up to 0.9.10 MaxTrials was 1000 by default; bias correction pulls trials of the side the
+% animal avoids forward from the rest of the order, which a long session with a biased animal
+% could use up. A file from before 0.9.11 still at 1000 takes 3000; any other value is kept.
+if hasPath(loaded, 'Session.MaxTrials') && ~hasPath(loaded, 'Session.SettingsVersion') ...
+        && isequal(loaded.Session.MaxTrials, 1000)
+    loaded.Session.MaxTrials = defaults.Session.MaxTrials;
+    migrated{end+1} = sprintf(['Session.MaxTrials (the old default, 1000, became the new one: '...
+                               '%d, more trials for bias correction to draw on)'], ...
+                              defaults.Session.MaxTrials);
 end
 
 %% Moved (version 0.9.8): the hold without shaping is a runtime setting

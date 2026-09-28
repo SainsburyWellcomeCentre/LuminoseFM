@@ -52,9 +52,9 @@ Three modes (`S.Sync.Mode`, `lum.SyncMode`), and every one of them drives the li
   trial rather than by counting edges. (Called *Random width* before version 0.2.)
 - *Task events* — no pulse: the line goes high at trial start, stays high while the animal is
   asked to poke, and goes low when it pokes the centre port, so its own edges mark the events.
-  A trial with no poke drops it in `NoInitiation` when the hold window runs out. With the 0 s
-  default ITI the next trial can raise it again a few ms later, so with video `NoInitiation` lasts
-  two frames (20 ms at 100 Hz) and the cameras always see it low (0.9.8).
+  A trial with no poke drops it in `NoInitiation` when the hold window runs out. With a 0 s
+  ITI the next trial raises it again 0.1 ms later, so with video `NoInitiation` lasts two frames
+  (20 ms at 100 Hz) and the cameras always see it low (0.9.8), whatever the ITI.
 
 In a pulsed mode the pulse **is** the trial's first state: `TrialStart` drives the line high and
 lasts the pulse's width, and `WaitForCentrePoke` drives it low as the cue comes on. The cue

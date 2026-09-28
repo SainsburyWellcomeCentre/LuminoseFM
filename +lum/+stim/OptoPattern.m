@@ -4,8 +4,8 @@ classdef OptoPattern < lum.stim.Component
     % This is the component that implements architecture decision D1. The
     % pattern's envelope - which of channel A (BNC1) and channel B (BNC2) is high,
     % when, for how long - is compiled into one-shot Bpod global timers, all
-    % triggered together from the hold state. PulsePal, programmed in the
-    % inter-trial window, turns each gate into its channel's carrier. Nothing in the
+    % triggered together from the hold state. PulsePal, programmed between trials,
+    % turns each gate into its channel's carrier. Nothing in the
     % timing path runs in MATLAB.
     %
     % One global timer per stretch of light, so the stimulus set is validated
@@ -33,6 +33,13 @@ classdef OptoPattern < lum.stim.Component
             end
         end
 
+        function tf = needsConfigure(obj, context)
+            % needsConfigure() is true when PulsePal's carrier has to be programmed for
+            % this trial: the first, since the stimulus window is fixed for the session.
+            tf = context.spec.OptoOn && ...
+                 context.devices.pulsePal.needsReprogramming(obj.carrierFor(context));
+        end
+
         function configure(obj, context)
             % configure() programs the PulsePal carrier for this session.
             % Cheap on every trial after the first: nothing is sent unless a value
@@ -40,10 +47,7 @@ classdef OptoPattern < lum.stim.Component
             if ~context.spec.OptoOn
                 return
             end
-            % Every channel's train has to outlast the longest gate, so its length
-            % comes from the stimulus window rather than from the operator.
-            carrier = context.S.Light.Carrier;
-            [carrier.MaxDuration] = deal(context.S.Stimulus.Duration + obj.TrainMargin);
+            carrier = obj.carrierFor(context);
             if context.devices.pulsePal.needsReprogramming(carrier)
                 context.devices.pulsePal.configure(carrier);
             end
@@ -75,6 +79,16 @@ classdef OptoPattern < lum.stim.Component
             actions = cell(1, 2 * numel(channels));
             actions(1:2:end) = context.rig.Opto.Channels(channels);
             actions(2:2:end) = {0};
+        end
+    end
+
+    methods (Access = private)
+        function carrier = carrierFor(obj, context)
+            % The carrier PulsePal must hold for this trial. Every channel's train has to
+            % outlast the longest gate, so its length comes from the stimulus window
+            % rather than from the operator.
+            carrier = context.S.Light.Carrier;
+            [carrier.MaxDuration] = deal(context.S.Stimulus.Duration + obj.TrainMargin);
         end
     end
 end

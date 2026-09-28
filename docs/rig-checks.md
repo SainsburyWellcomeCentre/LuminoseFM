@@ -47,7 +47,7 @@ once it has passed.
 | [P10](#p10-what-094-changed-seen-in-a-desktop-session-094) | a refused reward volume and the hold plot in a desktop session | 0.9.4 |
 | [P11](#p11-the-light-playing-on-after-a-short-hold-095) | light at the fiber tips after a short hold (step 1 can run headless) | 0.9.5 |
 | [P12](#p12-what-096-changed-in-a-desktop-session-096) | the mouse-drawn crop, crops per session type, the carried hold, the memory after a desktop behaviour session | 0.9.6 |
-| [P13](#p13-the-hold-on-the-timing-panel-the-wrapped-header-and-the-summary-plots-098) | the runtime hold, the wrapped header, the teardown's plots on screen, the animal and the 0 s ITI (step 4's file checks passed 2026-09-27) | 0.9.8 |
+| [P13](#p13-the-hold-on-the-timing-panel-the-wrapped-header-and-the-summary-plots-098) | the runtime hold, the wrapped header, the teardown's plots on screen, the animal at the new timing (step 4's file checks passed 2026-09-27 and, for 0.9.11's upload, 2026-09-28) | 0.9.8, 0.9.11 |
 
 ### P4. Calibrate the 2-to-19 bundle (0.9.1)
 
@@ -186,21 +186,71 @@ The pieces are tested under the emulator; these need the desktop MATLAB and the 
 2. In a habituation session, watch the runtime window's header: *rewarded, chose left*, never
    *correct*; a long line (a stepped-back hold, a centre reward) wraps rather than running off the
    window. In a Training session with shaping off, change *Fixed hold* in the runtime window's
-   *Timing* panel mid-session: the next trial's *Centre hold* plot line and the header's *hold* follow.
+   *Timing* panel mid-session: the *Centre hold* plot line and the header's *hold* follow from the
+   next trial prepared (the next trial, or the one after when the next was already prepared).
 3. End the session with the End button. The console says *writing its summary plots and log* and then
    where they went; note how many seconds it took (the line after it). Open `Session Plots` and
    `Session Logs` beside `Session Data`, and look through one of each.
-4. **The 0 s ITI.** The file and camera checks passed on 2026-09-27 (*Done*); what is left is the
-   animal at the rig. Can be run headless with permission (no animal). A behaviour session with light
-   at the default ITI of 0 s, some trials lapsing (no poke): from the file, every trial after the
-   first starts (`TrialStartTimestamp(k+1)`) within about 0.5 s of the previous one's end
-   (`TrialEndTimestamp(k)`), a gap close to `Timing.prepare(k) + Timing.send(k)`, and no trial is
-   lost or late (the session never waits on an upload). With *Task events* sync and video, each
-   camera's `TTL_State` is low for at least two frames between a `NoInitiation` and the next trial's
-   rise. At the rig: the animal is not hurried by it (the drinking grace still ends each rewarded
-   trial).
+4. **The 0 s ITI.** The file and camera checks passed on 2026-09-27 (0.9.9) and again on
+   2026-09-28 with 0.9.11's upload during the trial (*Done*): from the file, every trial after the
+   first starts (`TrialStartTimestamp(k+1)`) 0.1 ms after the previous one's end
+   (`TrialEndTimestamp(k)`), except the trial after one with `Timing.devices` above 0. With *Task
+   events* sync and video, each camera's `TTL_State` is low for at least two frames between a
+   `NoInitiation` and the next trial's rise. What is left is at the rig, with the animal: it is not
+   hurried by it (the drinking grace still ends each rewarded trial); the command window shows no
+   *inter-trial dead time* box; the LED window reads *waiting to be sent between trials* after
+   **Apply** until the current is sent.
 
 ## Done
+
+### 2026-09-28 (evening) — the 0.25 s ITI and SpinCam 1.3.0 on the rig, no animal, run by an agent with the operator's permission
+
+No other MATLAB running, COM3 free, SpinView closed. Behaviour sessions headless in `-batch` as in
+the entry below (LUMS0014's settings of that day, virtual pokes, video, files in
+`%TEMP%\LuminoseFM_rigcheck`), each LED change made from the LED window (`startLEDRequest`):
+
+| Check | Result |
+|-------|--------|
+| The settings file's 0 s ITI (0.9.8's default) | Converted on loading: `GUI.ITI (the 0.9.8 default, 0 s, became the new one: 0.25 s ...)`, `Session.SettingsVersion` filled in |
+| `FakeSubject_LuminoseFM_20260928_165901`: 40 trials at 0.25 s, A's current changed twice (from trials 12 and 27) | All 39 gaps 0.1 ms; no dead time warning. `Timing.devices` 120.1 and 91.2 ms on trials 11 and 26 only, inside the ITI; every `ITI` state lasted `TrialSettings{k}.ITI`. LED A 253 → 95 → 42 mA from those trials. No missed-deadline codes; 40 light timers exact; 40 trial pulses on both cameras (residuals ≤ 6.0 ms) |
+| `FakeSubject_LuminoseFM_20260928_170356`: 20 trials at 0 s, one change | The change's trial 10 started 103 ms late with one warning after the console's *trial 10 waits for its LED current* line, as designed. **Trial 2 also started 153 ms late**: trial 1's prepare + upload (102 ms) plus the time to notice, so trial 2 had been prepared after trial 1 ended. `BpodTrialManager.getCurrentEvents` learns its trigger states only when first called; trial 1's `TrialStart` (29 ms, the shortest of the sessions) had already been left when it was. Fixed: `lum.SessionRunner.awaitPrepareWindow` polls `BpodSystem.Status.CurrentStateName` |
+| After the fix, `_170849` and `_171130` (12 trials each at 0 s, one change) and `_171407` (15 at 0.25 s, one change) | At 0 s every gap 0.1 ms, trial 2 included, but the change's (107.4 and 99.4 ms, one warning each). At 0.25 s all 14 gaps 0.1 ms, no warning, the change 123.7 ms. No missed-deadline codes; light timers exact; trial pulses on both cameras |
+| MATLAB's time per trial | Uploads during a trial reached 241–380 ms three times in these sessions, under the virtual-poke timer writing to the state machine's port 50 times a second (LUMS0014's session that day: at most 213 ms). An upload of an LED change's trial has so far taken ≤ 124 ms |
+| The ITI warnings on screen (desktop MATLAB, emulator) | The setup dialog's alert and status-line note on typing 0 in *Inter-trial interval*; the tabbed runtime window's floating warning over the session, which goes on. The text named a stimulus-window change, which cannot happen mid-session (the window is fixed; the runtime window only shows it): reworded to the LED current |
+| SpinCam 1.3.0, `runTests('hardware')` | 128 of 128, the 10 hardware tests on both cameras included; `spincam.tools.probeCameras` afterwards: full frame and the 640×640 behaviour crop, 100.058 Hz, trigger off, FRAME_INFO `0x87FF0000`, as before |
+
+Not seen: the animal at the new timing (P13 step 4), and the 128 s correction on a real camera
+(about one an hour; the next long session's log names any).
+
+### 2026-09-28 — LUMS0014's first session with light audited, and 0.9.11's upload during the trial on the rig, no animal, fibers terminated, run by an agent with the operator's permission
+
+**The session** `LUMS0014_LuminoseFM_20260928_123501` (Training, 333 trials, 0.9.10) was audited
+from its files: everything in it held (the numbers are in `naming-and-versions.md`, 0.9.11) but
+two things. Every trial after the first started 9–351 ms (median 196 ms) after the one before
+ended, with no state machine running, and `BpodTrialManager` warned of the dead time 332 times: the
+next trial was prepared in the ITI. The topview camera's hardware clock stepped forward by 128 s
+twice (SpinCam's; `docs/python-analysis.md`). 0.9.11 prepares and uploads the next trial as each
+trial starts, and holds back only an LED current or PulsePal program, until the trial's end.
+
+**On the rig** (no other MATLAB running, COM3 free), after the suite's affected files passed under
+the emulator:
+
+| Check | Result |
+|-------|--------|
+| Behaviour session `FakeSubject_LuminoseFM_20260928_153508`, headless `-batch` (files in `%TEMP%\LuminoseFM_rigcheck`): LUMS0014's settings of that day (4-to-19, orange on A 253 mA and blue on B 496 mA, pure channel A or B, 0.5 s, 20 Hz carrier, jittered sync, video), hold window and response window 3 s, ITI 0 s; virtual pokes on a 4 s cycle from a timer writing `'V'` bytes (every 6th cycle an early withdrawal first, every 7th none); channel A's current changed from the LED window (`startLEDRequest`) once 10 trials were recorded | Ran its 30 trials under `BpodTrialManager` with `TriggerStates` `{'WaitForCentrePoke'}`: 11 correct, 12 incorrect (retried to the reward), 6 `NoInitiation`, 1 `HoldNotCompleted`. Version `0.9.11+25a5601` |
+| The gap between trials | 28 of 29 were 0.1 ms, one state machine cycle. Trial 12, the first at the new LED current, started 22.9 ms after trial 11 ended (`Timing.devices(11)` 19.8 ms): the only *inter-trial dead time* warning of the session, after the console's line naming trial 12 |
+| The light while the next trial uploaded during it | No trial has a state machine error code (missed deadlines); all 27 `CentreHold` visits started the light timer one cycle later, every completed hold's light lasted 0.5000 s, every broken hold's ended with the withdrawal |
+| The LED | A 253 mA on trials 1–11, 95 mA from trial 12 (the request halved the typed irradiance), B 496 mA throughout; the driver's record has the change tagged trial 12 |
+| MATLAB's time per trial | prepare 112 ms (median; up to 424), send 21 ms, plot 232 ms: all while the trial ran |
+| Cameras | 11,977 frames each, none missed; both decoded barcode `0CAEA84B` as Behaviour, and 30 trial pulses for 30 trials, within 6.0 ms of `TrialStartTimestamp` after a straight-line fit, widths within one frame of `SyncPulseWidth` |
+
+Not seen: the windows on screen (headless), and the animal at the new timing (P13 step 4).
+
+Later the same day, at the operator's request: the default ITI became 0.25 s and device changes
+moved into the ITI (0.9.11; on the rig that evening, entry above), SpinCam 1.3.0 takes the 128 s steps out
+(its unit and integration tests 118/118; `spincam.io.readFrameLog` repaired LUMS0014's topview log
+of that day: 2 steps), and the rig-check folder's videos and extras were deleted (17 GB; the
+session `.mat` files kept).
 
 ### 2026-09-27 — 0.9.9's plots on the rig and P13 step 4, no animal, fibers terminated, run by an agent with the operator's permission
 

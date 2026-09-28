@@ -12,7 +12,7 @@ end
 
 function testAnEmptySettingsFileGivesTheDefaults(testCase)
 [S, added] = lum.mergeSettings(lum.defaultSettings, struct());
-verifyEqual(testCase, S.Session.MaxTrials, 1000);
+verifyEqual(testCase, S.Session.MaxTrials, 3000);
 verifyNotEmpty(testCase, added);
 end
 
@@ -21,7 +21,7 @@ loaded = lum.defaultSettings;
 loaded.GUI = rmfield(loaded.GUI, 'ITI');
 loaded.Sync = rmfield(loaded.Sync, 'WidthJitter');
 [S, added] = lum.mergeSettings(lum.defaultSettings, loaded);
-verifyEqual(testCase, S.GUI.ITI, 0);
+verifyEqual(testCase, S.GUI.ITI, 0.25);
 verifyEqual(testCase, S.Sync.WidthJitter, 0.04);
 verifyEqual(testCase, sort(added), {'GUI.ITI', 'Sync.WidthJitter'});
 end
@@ -518,14 +518,16 @@ S = lum.mergeSettings(lum.defaultSettings, older);
 verifyEqual(testCase, lum.HoldShaping.holdLength(S), 'Whole stimulus', 'Before 0.9.5: the whole stimulus');
 end
 
-function testTheOldDefaultITIBecomesZero(testCase)
-% Up to 0.9.7 the ITI was 1 s by default; files from then (no GUI.HoldLength) take 0 s.
+function testTheOldDefaultITIsBecomeTheNewOne(testCase)
+% Up to 0.9.7 the ITI was 1 s by default; files from then (no GUI.HoldLength) take the
+% default, the shortest that keeps every trial on time (lum.minimumITI).
 loaded = lum.defaultSettings;
+loaded.Session = rmfield(loaded.Session, 'SettingsVersion');
 loaded.GUI = rmfield(loaded.GUI, {'HoldLength', 'FixedHold'});
 loaded.Task.HoldLength = 'Fixed';          % As a 0.9.5-0.9.7 file has it
 loaded.GUI.ITI = 1;
 [S, added] = lum.mergeSettings(lum.defaultSettings, loaded);
-verifyEqual(testCase, S.GUI.ITI, 0);
+verifyEqual(testCase, S.GUI.ITI, lum.minimumITI());
 verifyTrue(testCase, any(startsWith(added, 'GUI.ITI (the old default')));
 verifyEqual(testCase, S.GUI.HoldLength, 2, 'The hold is still moved after the check');
 
@@ -535,6 +537,66 @@ verifyEqual(testCase, lum.mergeSettings(lum.defaultSettings, loaded).GUI.ITI, 1.
 again = lum.defaultSettings;
 again.GUI.ITI = 1;                          % Typed from 0.9.8 on
 verifyEqual(testCase, lum.mergeSettings(lum.defaultSettings, again).GUI.ITI, 1);
+
+% From 0.9.8 to 0.9.10 it was 0 s (LUMS0014's file of 2026-09-28): such a file, which has no
+% Session.SettingsVersion, takes the default too; 0 s typed from 0.9.11 on is kept.
+old = lum.defaultSettings;
+old.Session = rmfield(old.Session, 'SettingsVersion');
+old.GUI.ITI = 0;
+[S, added] = lum.mergeSettings(lum.defaultSettings, old);
+verifyEqual(testCase, S.GUI.ITI, 0.25);
+verifyTrue(testCase, any(startsWith(added, 'GUI.ITI (the 0.9.8 default')));
+verifyEqual(testCase, S.Session.SettingsVersion, lum.version('release'));
+old.GUI.ITI = 0.1;
+verifyEqual(testCase, lum.mergeSettings(lum.defaultSettings, old).GUI.ITI, 0.1, 'Typed before');
+typed = lum.defaultSettings;
+typed.GUI.ITI = 0;
+verifyEqual(testCase, lum.mergeSettings(lum.defaultSettings, typed).GUI.ITI, 0, 'Typed in 0.9.11');
+end
+
+function testTheOldDefaultMaxTrialsBecomesTheNewOne(testCase)
+% Up to 0.9.10 the order was 1000 trials by default; a file from then takes 3000, so bias
+% correction has trials to draw on. A number the operator chose, then or since, is kept.
+old = lum.defaultSettings;
+old.Session = rmfield(old.Session, 'SettingsVersion');
+old.Session.MaxTrials = 1000;
+[S, added] = lum.mergeSettings(lum.defaultSettings, old);
+verifyEqual(testCase, S.Session.MaxTrials, 3000);
+verifyTrue(testCase, any(startsWith(added, 'Session.MaxTrials (the old default')));
+old.Session.MaxTrials = 500;
+verifyEqual(testCase, lum.mergeSettings(lum.defaultSettings, old).Session.MaxTrials, 500);
+typed = lum.defaultSettings;
+typed.Session.MaxTrials = 1000;                % Typed from 0.9.11 on
+verifyEqual(testCase, lum.mergeSettings(lum.defaultSettings, typed).Session.MaxTrials, 1000);
+end
+
+function testTheSettingsSayWhichReleaseWroteThem(testCase)
+% Always this release once merged, whatever the file said: what the next release's
+% migrations read.
+loaded = lum.defaultSettings;
+loaded.Session.SettingsVersion = '0.0.1';
+verifyEqual(testCase, lum.mergeSettings(lum.defaultSettings, loaded).Session.SettingsVersion, ...
+            lum.version('release'));
+verifyEqual(testCase, lum.version('release'), strtok(lum.version(), '+'));
+end
+
+function testTheShortestITIThatKeepsEveryTrialOnTime(testCase)
+% With light, a trial after an LED current change is uploaded in the ITI, which
+% must cover the commands and the upload; without light nothing waits, so any ITI holds.
+S = lum.defaultSettings;
+verifyEqual(testCase, S.GUI.ITI, lum.minimumITI(), 'The default is the minimum');
+[minimum, note] = lum.minimumITI(S);
+verifyEqual(testCase, minimum, 0.25);
+verifyEmpty(testCase, note);
+S.GUI.ITI = 0;
+[~, note] = lum.minimumITI(S);
+verifySubstring(testCase, note, 'start late');
+[~, ~, notes] = lum.validateSettings(S, RigConfig);
+verifyTrue(testCase, any(contains(notes, 'shorter than 0.25 s')), 'The setup dialog says so');
+S.Session.UseOpto = false;
+[minimum, note] = lum.minimumITI(S);
+verifyEqual(testCase, minimum, 0);
+verifyEmpty(testCase, note, 'Without light 0 s is kept on every trial');
 end
 
 function [stimulusSet, budget, notes, reserved] = budgetOf(S, rig)

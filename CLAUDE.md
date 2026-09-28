@@ -42,8 +42,9 @@ before changing the stimulus path, the state graph, sleep blocks or the GUI. The
 **Where things stand** is in the docs, not here: the last release's changes in
 `docs/naming-and-versions.md`, the checks waiting for someone at the rig in `docs/rig-checks.md`
 *Pending* (P4–P13 now; all need someone at the rig or a desktop MATLAB, except P11 step 1, which
-can run headless with permission; P13 step 4's file checks passed on 2026-09-27). The operator works remotely at times: run a
-pending check the next time they say they are at the rig.
+can run headless with permission; P13 step 4's file checks passed on 2026-09-27, and 0.9.11's
+upload and 0.25 s ITI on 2026-09-28). The operator works remotely at times: run a pending check the next
+time they say they are at the rig.
 
 **Working loop.** Read the relevant docs and code → change `+lum` (the protocol file stays thin) →
 add or update a test → bring the help text and comments of everything touched up to date
@@ -104,7 +105,7 @@ Agents run in WSL; MATLAB and all hardware are on Windows.
 | Examples | `../../Bpod_Gen2/Examples/Protocols`, and `../FreelyMoving2AFC` (the lab's earlier 2-AFC) |
 | Stimulus generator origin | `../../generatePattern` (`generateStimuli.m`), ported into `+lum/+pattern/generate.m` |
 | GUI inspiration | `../../luminose_hf` (head-fixed Luminose protocols): structure only, not its colours |
-| SpinCam | `../../SpinCam`, the lab's camera package, its own repository (read its `CLAUDE.md` before touching the camera path). On the saved MATLAB path here; sessions name it by `S.Camera.SpinCamFolder`. Engine 1.2.0 (`spincam.version()` still returns 1.1.0: SpinCam's to bump). Its `DefaultCameraNames` match ours: 24226887 `topview` |
+| SpinCam | `../../SpinCam`, the lab's camera package, its own repository (read its `CLAUDE.md` before touching the camera path). On the saved MATLAB path here; sessions name it by `S.Camera.SpinCamFolder`. Engine and package 1.3.0 (2026-09-28: the engine takes the Chameleon3's spurious 128 s timestamp steps out, `TimestampGuard`; changed in SpinCam's repository at the operator's request). Its `DefaultCameraNames` match ours: 24226887 `topview` |
 | Spinnaker SDK | `C:\Program Files\Teledyne\Spinnaker` 4.2.0.83, .NET assemblies incl. `SpinVideoNET` in `bin64\vs2015`; SpinCam builds its engine against them with Windows' `csc.exe` (.NET Framework 4.8) |
 | DoricLED | `../../DoricLED`, the Doric LED package (`doric.*`), its own project with its own `CLAUDE.md`; on the saved MATLAB path here, otherwise named by `S.Doric.Folder`. Its bridge `bin/doric_bridge.exe` runs `DoricSystem.dll` out of process. The driver is "LED Driver" on Doric port 4 (a rotary joint on port 3 is skipped by name) |
 | LED calibrations | `calibration/` at the repo root: `DoricLED_<bundle>_<cable>_<A\|B>.mat` (+ `.png`) per cable and channel; a per-cable `DoricLED_<bundle>_<cable>.mat` (0.7.2–0.9.0) is still read for the channel it was measured on. Rig-local, git-ignored |
@@ -151,7 +152,8 @@ can be tested with no hardware. `docs/repository.md` has the full tree.
 | `+lum/newHistory.m`, `updateHistory.m` | The running history the policy reads, kept in O(1) per trial |
 | `+lum/centreRewardAgain.m` | The centre reward asked for again mid-session: starts, ends and unticks its run |
 | `+lum/HoldShaping.m` | Automatic shaping of the hold (active mode, next hold and grace, step back, description); break modes; the hold without growth (`fullHold`, `holdLength`, `isFixed`); whether the light may outlast the hold (`lightMayOutlastHold`) |
-| `+lum/triggerStates.m` | The states that open the prepare window, by break mode; the ITI alone when the light may outlast the hold |
+| `+lum/triggerStates.m` | The state that opens the prepare window: `WaitForCentrePoke`, as every trial starts (0.9.11) |
+| `+lum/minimumITI.m` | The shortest ITI at which every trial starts on time (0.25 s with light, 0 without; the default ITI), and the warning for a shorter one |
 | `+lum/scoreTrial.m`, `Outcome.m` | Outcome classification from states and events; the outcome codes |
 | `+lum/punishmentFor.m` | Which mistakes are punished, and how; whether a wrong choice may be retried |
 | `+lum/valveTimes.m` | Valve open times for a volume from Bpod's liquid calibration: 0 µL opens nothing, a volume past the fit's peak is refused, one outside the measurements noted. Every valve time goes through it |
@@ -428,8 +430,7 @@ WaitForCentrePoke → NoInitiation → WaitForLightEnd           (hold window ov
   `S.Task.OnHoldBreak` *Restart stimulus* (default) it returns to `WaitForCentrePoke`, and the next
   `CentreHold` re-triggers every stimulus timer. The hold window is a global timer triggered only in
   `TrialStart` and never cancelled; `WaitForCentrePoke` has no state timer and leaves on that timer's
-  end or condition 4. Never trigger or cancel the hold window anywhere else, and keep
-  `EarlyWithdrawal` out of the trigger states in restart mode (`lum.triggerStates`).
+  end or condition 4. Never trigger or cancel the hold window anywhere else.
 - **Grace (D6).** `HoldBreak` and `CentreHoldResumed` exist in every trial. Without grace they are
   unreachable; with it, `CentreHold` triggers the stimulus timers and the hold clock, and
   `CentreHoldResumed` must **not** re-trigger them.
@@ -441,24 +442,45 @@ WaitForCentrePoke → NoInitiation → WaitForLightEnd           (hold window ov
   triggered in `CentreHold`, cancelled in `EarlyWithdrawal`) and condition 5 (clock not running);
   `WaitForLightEnd` leaves on either, and otherwise passes straight on. Every session with light
   (`lum.HoldShaping.lightMayOutlastHold`, from 0.9.8, since the hold can be set shorter than the
-  window between trials) reserves the clock (`lum.timerBudget`) and prepares the next trial in the
-  `ITI`, its only trigger state, because the prepare window changes LED currents. Decide it from
-  pre-session settings only; never let the light's timers be cancelled at the hold's end again, and
-  never end a trial while the light may be on.
+  window between trials) reserves the clock (`lum.timerBudget`). Decide it from pre-session
+  settings only; never let the light's timers be cancelled at the hold's end again, and never end a
+  trial while the light may be on.
+- **The next trial is prepared and uploaded as each trial starts (0.9.11, D3).** The prepare window
+  opens on `WaitForCentrePoke` (`lum.triggerStates`), the state every trial enters from
+  `TrialStart`: `lum.SessionRunner.awaitPrepareWindow` waits for the running trial to leave its
+  first state (*Gotchas*, the dead time warning). The window may overlap the trial's light: building and uploading a state machine
+  does not touch it (rig check 2026-09-28: no missed-deadline codes, every light timer exact), but a
+  device command would. So `prepareTrial` sends nothing to a device; the loop asks
+  `needsDevices` (`lum.dev.DoricLED.hasPending`, `lum.stim.Component.needsConfigure`), and a
+  trial that needs an LED current or a PulsePal program waits for the running trial's `ITI`
+  (`lum.SessionRunner.awaitState`: the light is over), gets them (`changeDevices`) and only then is
+  uploaded (`Data.Timing.devices`). The default ITI covers that (`lum.minimumITI`), so it starts
+  on time too; a shorter ITI delays it with one dead time warning. Any new device command a trial
+  needs goes through the same two functions. A runtime setting or LED change made during trial *k*
+  reaches trial *k*+2 when trial *k*+1 was already prepared.
 - **The hold ends in `WaitForCentreExit`**, which waits for `Port2Out` (or condition 3, the centre
   port already clear) before opening the response window. Do not shortcut `CentreHold` straight
   into `WaitForResponse`: the side ports would be live with the animal's nose still in the centre
   port, and its withdrawal beam break would be scored as a choice.
-- **The ITI is 0 s by default (0.9.8).** The runner sends the next trial with `RunASAP`, which
-  firmware v23 starts at once when no trial is running, so the gap between trials is the prepare and
-  send time (4–411 ms in LUMS0014's sessions, `Data.Timing.prepare` + `send`). Nothing may rely on
-  the ITI for time between trials: a sound, a valve, a line or a punishment that must last lasts in
-  its own state (the drinking grace, the punishment states' noise, `NoInitiation` for task-event
-  sync). On the rig, `BpodTrialManager` prints its *inter-trial dead time of >500 microseconds*
-  warning after most trials of a session with light, because the next trial is prepared in the ITI
-  and sent after the trial ends: expected, and not a lost trial (rig check 2026-09-27: 23 warnings
-  in 24 trials, gaps 11–338 ms, none lost). Do not "fix" it by preparing earlier: the prepare window
-  changes LED currents, so it must stay in the ITI (D21).
+- **The ITI is 0.25 s by default (0.9.11), `lum.minimumITI`: the shortest at which every trial
+  starts one ITI after the last one's light.** The next trial was uploaded with `RunASAP` during
+  this one, and the state machine starts it the cycle after the ITI (0.1 ms). A trial after an LED
+  current change (the LED window; the stimulus window is fixed for the session, so PulsePal is
+  programmed only before trial 1) is uploaded in the ITI instead, after the command; 0.25 s covers
+  it and the upload (upload median 45 ms, at most 213 ms in 810 rig trials; rig check 2026-09-28:
+  88–124 ms for the change and upload, every gap 0.1 ms). The operator
+  may type less, 0 s included: kept, with a warning (`uialert` in the setup dialog, `warndlg` in
+  the runtime window, a validation note, a console warning when changed mid-session), because such a
+  trial then starts late. Without light the minimum is 0 (nothing waits). A settings file from
+  before 0.9.11 (no `Session.SettingsVersion`) still at 0.9.8's 0 s takes 0.25 s. Nothing may rely
+  on the ITI for time between trials: a sound, a valve, a line or a punishment that must last lasts
+  in its own state (the drinking grace, the punishment states' noise, `NoInitiation` for
+  task-event sync). `BpodTrialManager`'s *inter-trial dead time of >500 microseconds* warning means
+  a trial started after its upload: expected only after an LED-window change with an ITI below
+  the minimum (the console says so on the line before). From 0.9.8 to
+  0.9.10 a session with light prepared in the ITI at 0 s, so every trial started 0.01–0.35 s late
+  with the warning (LUMS0014, 2026-09-28: 332 of 332 gaps, median 196 ms, with no state machine
+  running and no pokes recorded).
 - **No reward delay, no withdrawal (0.9.6).** A side valve opens only after a poke at a paying
   port: `WaitForResponse` -`PortNIn`→ `*RewardDelay` -`Tup`→ `*Reward`, and nothing else enters those
   states (`stateMachineTest` checks it). With `S.GUI.RewardDelay` 0 the `*RewardDelay` states leave
@@ -468,13 +490,12 @@ WaitForCentrePoke → NoInitiation → WaitForLightEnd           (hold window ov
   open for the calibrated time, response configuration up) only when `spec.CentreReward` (amount
   above 0 and either habituation with trial number ≤ `S.GUI.CentreRewardTrials`, or a run of
   *Centre reward again*; `lum.nextTrialSpec`); never put it on the poke's path. The run is kept by
-  `lum.centreRewardAgain` in `history.centreRewardAgainFrom`, called in the prepare window before
-  `nextTrialSpec`; it unticks `S.GUI.CentreRewardAgain` when its trials are done, and the session
+  `lum.centreRewardAgain` in `history.centreRewardAgainFrom`, called as the next trial is prepared,
+  before `nextTrialSpec`; it unticks `S.GUI.CentreRewardAgain` when its trials are done, and the session
   syncs the runtime window again so the box shows it at once. A wrong side poke goes to
   `RetryResponse` (0 s, back to `WaitForResponse`, whose timer restarts) when
   `lum.punishmentFor(S, 'IncorrectChoice').Retry` (the default, `PunishCondition` 1), and to
-  `IncorrectChoice` (a trigger state; timeout, noise, no reward, ITI) when punished. Neither new state
-  may be a trigger state: the trial passes through exactly one. A punishment that plays the noise
+  `IncorrectChoice` (timeout, noise, no reward, ITI) when punished. A punishment that plays the noise
   lasts at least `S.Sound.NoiseDuration`, because the ITI sends the HiFi stop command.
 - **The HiFi module plays one sound at a time**; a new play command replaces the sound playing.
   `lum.validateSettings` refuses two sounds that start with the stimulus (`soundClash`), and with
@@ -499,7 +520,7 @@ WaitForCentrePoke → NoInitiation → WaitForLightEnd           (hold window ov
   `HoldTarget` 0.6 s (defaults since 0.9.7; a settings file keeps its own), and steps back one growth
   step after `S.GUI.HoldStepBackAfter` (10) early withdrawals at one hold (`history.withdrawalsAtHold`,
   kept by `lum.updateHistory`). Each step is taken from the hold of the trial still running
-  (`lum.HoldShaping.notePrepared`, called in the prepare window after `nextTrialSpec`), so every
+  (`lum.HoldShaping.notePrepared`, called as the next trial is prepared, after `nextTrialSpec`), so every
   completed hold is one step, one trial late. A session that grew the hold writes `S.GUI.HoldStart`
   = 90% of its last trial's `HoldDuration` into the settings file at teardown
   (`lum.HoldShaping.nextSessionStart`, `handOnHold` in `LuminoseFM`), from the settings file only,
@@ -561,7 +582,7 @@ WaitForCentrePoke → NoInitiation → WaitForLightEnd           (hold window ov
   `WaitForCentrePoke` as the cue comes on. `TaskEvents` leaves `TrialStart` at zero, holds the line
   high through `WaitForCentrePoke`, and drops it on the poke (in `PreStimulusHold`, or `CentreHold`
   without a latency) and in `NoInitiation`, which lasts two frame periods with video (0.9.8) because
-  the 0 s ITI can let the next trial raise the line a few ms later.
+  a 0 s ITI lets the next trial raise the line 0.1 ms later.
 - **No mode costs a global timer, and none may.** Before 0.5.1 a pulsed mode was a global timer
   linked to the channel and triggered in `TrialStart`; its zero timer meant `WaitForCentrePoke`
   re-wrote the line low one cycle later, so every pulse reached the recording as a ~100 µs glitch
@@ -596,10 +617,12 @@ WaitForCentrePoke → NoInitiation → WaitForLightEnd           (hold window ov
     (`ensureReady`) and sets it up (`setUp`), and refuses a session with light (or any ePhys session)
     on the rig when it fails. **Every return path releases it** (`releaseLED`), and both teardowns
     close it first (`closeDevices`).
-  - Currents change only in the prepare window (`applyPending(trial)`, which returns what the next
-    trial runs at) or between blocks (`applyPending(block)`; ePhys `setCurrents(step.CurrentmA)`,
-    blocking). Nothing is sent per trial otherwise: a change is one non-blocking command per channel
-    (~0.8 ms MATLAB-side, 5–9 ms to the driver's acknowledgement), with no light gated.
+  - Currents change only between trials, in the running trial's ITI (`applyPending(trial)`,
+    which returns what the next trial runs at; the loop asks `hasPending` as it prepares, and holds
+    that trial's upload back until then), or between blocks (`applyPending(block)`; ePhys
+    `setCurrents(step.CurrentmA)`, blocking). Nothing is sent per trial otherwise: a change is one
+    non-blocking command per channel (~0.8 ms MATLAB-side, 5–9 ms to the driver's acknowledgement),
+    with no light gated.
   - **Intensity (0.9.1).** Each session type keeps its intensity per channel in two forms, read and
     written only through `lum.led.intensitySetting(S, type)`: irradiance for a calibrated channel and
     mA for one that is not. Behaviour `S.Doric.IrradiancemWmm2` [8 8] / `S.Doric.CurrentmA`; sleep
@@ -739,18 +762,21 @@ This is the hard constraint of the project.
 
 - Drive trials through `lum.SessionRunner`, which uses `BpodTrialManager` on the rig and blocking
   `RunStateMachine` calls in the emulator (D3). All per-trial work belongs in the prepare window it
-  opens.
+  opens as each trial starts; device commands wait for the trial's ITI (*The next trial is prepared
+  and uploaded as each trial starts*).
 - Preallocate; never grow arrays, structs or plot data inside the trial loop.
 - No `figure`, `plot`, `cla` or bare `drawnow` in the loop: update existing handles
   (`set(h,'YData',...)`) and use `drawnow limitrate` at most once per trial. The setup dialog and
   designers may redraw freely; they never run during a session.
 - Keep per-trial cost O(1): maintain running stats, don't re-scan `BpodSystem.Data`.
   `lum.nextTrialSpec` searches the rest of the queue for a swap (a vectorised test over at most
-  `MaxTrials` indices, microseconds); bias correction takes precedence over the run limit, and the
+  `MaxTrials` indices, microseconds; `MaxTrials` is 3000 by default from 0.9.11 so bias correction
+  does not run out of trials of the side it pushes towards, and nothing per trial grew with it:
+  preallocate by `MaxTrials`, never loop over it in the trial loop); bias correction takes precedence over the run limit, and the
   run limit, like shaping, counts the trial still running (`history.preparedSide`, 0.9.8).
 - Don't store large per-trial copies: a session-level set plus per-trial indices.
-- Reprogram PulsePal and HiFi in the inter-trial window, never mid-stimulus. Sounds are loaded once
-  (`lum.loadSounds`, only those the session can play).
+- Reprogram PulsePal and HiFi only between trials (in the running trial's ITI or later), never
+  mid-stimulus. Sounds are loaded once (`lum.loadSounds`, only those the session can play).
 - `SaveBpodSessionData` rewrites the whole file: keep the struct small, save on an interval, never
   inside the stimulus-critical window.
 
@@ -801,7 +827,10 @@ says. `docs/code-style.md` has the full convention; this is what every change mu
   `_plots.png` (D16), and after a desktop session `_memory.csv`.
 - **Settings file:** `...\LuminoseFM\Session Settings\<name>.mat`, per subject, chosen in the launch
   manager. It holds the *last* session's settings: written on Start and again at teardown (D16).
-  `lum.mergeSettings` converts old files (renames, reshapes, retirements).
+  `lum.mergeSettings` converts old files (renames, reshapes, retirements, old defaults).
+  `Session.SettingsVersion` (0.9.11) is the release that last wrote the file, always set from the
+  defaults on merging; a file without it predates 0.9.11. Use it to tell an old default from an
+  operator's choice in a future migration.
 - **Store session-level things once** in `Data.Session` (settings, stimulus set, rig config, barcode,
   metadata); per-trial records hold only events, timestamps, outcome and indices into them
   (`PatternIndex` into `Session.StimulusSet`). Strip `States` from the stimulus set before storing
@@ -820,7 +849,9 @@ says. `docs/code-style.md` has the full convention; this is what every change mu
   in `Session.TestPulses.StoppedReason` / `Session.Ephys.StoppedReason`.
 - **The hold and the light.** `Data.Session.LightMayOutlastHold` and `Data.Session.TriggerStates`
   (0.9.5, D21) say whether a completed hold could end before the light and where the next trial was
-  prepared (from 0.9.8: true, and the ITI, in every session with light). Every trial has the state
+  prepared (from 0.9.8: true, and the ITI, in every session with light; from 0.9.11
+  `WaitForCentrePoke` in every session, with `Data.Timing.devices` the seconds a trial's ITI spent
+  on the next one's LED current or PulsePal program and upload, 0 on almost every trial). Every trial has the state
   `WaitForLightEnd` before the `ITI`. The hold without shaping is `TrialSettings{k}.HoldLength`
   (1 whole stimulus, 2 fixed) and `.FixedHold` from 0.9.8 (`Settings.Task.HoldLength`/`FixedHold`
   from 0.9.5 to 0.9.7).
@@ -838,7 +869,12 @@ says. `docs/code-style.md` has the full convention; this is what every change mu
   Flex shim so `RunsBeforeTrials` stays right.
 - **Video (D14):** `...\LuminoseFM\Session Videos\<view>_<data file name>.avi` + `.csv` per camera,
   `<data file name>_events.csv` and `_session.json`, written by SpinCam; `Data.Session.Cameras` is
-  `lum.dev.Cameras.sessionRecord`. `_events.csv` ends `SessionSaved`, `RecordingStop`.
+  `lum.dev.Cameras.sessionRecord`. `_events.csv` ends `SessionSaved`, `RecordingStop`. A frame
+  log's `HardwareTimestamp_us` stepped forward by exactly 128 s now and then up to SpinCam engine
+  1.2.0 (the Chameleon3's clock wrap counted twice; LUMS0014 2026-09-26 both views, 2026-09-28
+  topview twice). Engine 1.3.0 takes them out as it records (`Session.Cameras.EngineVersion`;
+  `Summary.Cameras(k).TimestampCorrections` counts them, kept by `lum.dev.RealCameras`, and the
+  session log names any); `spincam.io.readFrameLog` repairs older logs (`docs/python-analysis.md`).
 - **Summary plots and log (D22):** a behaviour session ends with `lum.report.write`: 12 images in
   `...\Session Plots\` (`NN_<Plot>_PP_<subject>_<YYYYMMDD_HHMMSS>.png`: `01_Outcomes` …
   `09_HoldAttempts` … `12_SessionTiming`, names and numbers unchanged since 0.9.8) and
@@ -983,6 +1019,15 @@ Each has already cost time and is guarded in code; don't undo them.
   slot. Confirm on the rig.
 - Transitions on a global timer ending live in `sma.GlobalTimerEndMatrix(state, timer)`, and on
   conditions in `sma.ConditionMatrix(state, condition)`, not in `InputMatrix`.
+- **`BpodTrialManager`'s dead time warning** compares a trial's start with the previous one's end
+  on the state machine's clock: past 0.5 ms (r2+), the next state machine reached the device after
+  the trial ended, and nothing ran in between (no events, every output low). Its `getCurrentEvents`
+  sets its trigger flag only on a *transition* into a trigger state, and learns the trigger states
+  only when first called, so a transition processed before that call is missed and it waits for the
+  trial's end (trial 1 with a short `TrialStart`: 153 ms late on the rig, 2026-09-28). So
+  `lum.SessionRunner` does not call it: it polls `BpodSystem.Status.CurrentStateName` (written on
+  every transition) and `Status.InStateMatrix` (0 at the trial's end), in `awaitPrepareWindow` and
+  `awaitState`.
 - **A condition on a BNC input reads the inverted level** on firmware 23 (2026-09-24): a condition
   `BNC1` = 1 is true with 0 V on BNC input 1, while `BNC1High`/`BNC1Low` events follow the voltage.
   Port lines are not inverted. Nothing here uses a BNC condition; test one on the rig before relying
@@ -1093,10 +1138,13 @@ Each has already cost time and is guarded in code; don't undo them.
   `S.Camera.Enabled` records simulated video; turn it off in tests that are not about video.
 - Running `runLuminoseTests` twice in one MATLAB process breaks `emulatorSessionTest`: one `-batch`
   process per run.
-- `animalSessionTest/testNoSessionWarnedOrFailed` failed once in a full run (2026-09-26) on a warning
-  from DoricLED's own code as the simulated LED closed (`doric.LightSource/disconnect`: "The specified
-  key is not present in this container"); it passed on the rerun. DoricLED's, not ours: note it, do
-  not change DoricLED from here.
+- `animalSessionTest/testNoSessionWarnedOrFailed` fails now and then on a warning from DoricLED's
+  own code as the simulated LED closes (`doric.LightSource/disconnect`: "The specified key is not
+  present in this container"; 2026-09-26 once, 2026-09-28 in three of seven runs, a different session
+  each time), and passes on a rerun. It is a race in DoricLED's teardown (its polling timer and a
+  blocking request share the `Pending`/`Results` maps): DoricLED's, not ours; note it, do not change
+  DoricLED from here. `windowsTest/testTheTrialTimelineStaysInsideItsAxes` failed once the same day
+  (a label's `Extent` read before the invisible figure's layout) and passed on the rerun.
 - The Chameleon3 quantizes `AcquisitionFrameRate`, and writing a read-back value lands one step higher
   (100.058 → 100.12). `CameraSetup` takes a frame rate back from SpinCam's viewer only when it differs
   by more than 0.2 Hz, rounded to 0.1 Hz.
@@ -1144,7 +1192,8 @@ convention above. `docs/repository.md` lists what each file covers.
   (`qwinsta` shows `Disc`, `LogonUI` runs): the windows still draw, so read `_plots.png` instead.
   The last checks (2026-09-27, 0.9.9): an emulated 24-trial session watched on screen, and a
   24-trial session on the rig (`docs/rig-checks.md`, *Done*); the online figure, tabbed runtime
-  window, `_plots.png`, summary plots and log all drawn as in the headless renders.
+  window, `_plots.png`, summary plots and log all drawn as in the headless renders. On 2026-09-28
+  (0.9.11) a headless 30-trial rig session with an LED-window change (`docs/rig-checks.md`).
 - For anything that depends on pokes: `stateMachineTest` plays whole trials with `startMouse`
   (scripted `'V'` override bytes from a timer, a few hundred ms apart, never `ManualOverride`);
   `animalSessionTest` plays four whole sessions with `startSessionMouse` (one behaviour per trial, the

@@ -42,6 +42,7 @@ led.setUp([100 100], [700 700]);                  % Nothing sent
 verifyEqual(testCase, led.CurrentmA, [NaN NaN]);
 verifyEqual(testCase, led.applyPending(1), [NaN NaN]);
 verifyError(testCase, @() led.request(1, 50), 'lum:dev:DoricLED:manual');
+verifyFalse(testCase, led.hasPending(), 'Nothing is ever waiting to be sent');
 end
 
 function testThePackageIsFoundInItsFolderOrOnThePath(testCase)
@@ -69,16 +70,21 @@ verifyEqual(testCase, [led.LightSource.Channels.MaxCurrentmA], [500 400], 'Limit
 verifyTrue(testCase, led.IsSetUp);
 end
 
-function testARequestIsSentOnlyAtTheNextPrepareWindow(testCase)
+function testARequestWaitsUntilApplyPendingSendsIt(testCase)
+% The session asks hasPending as it prepares the next trial, and sends the request with
+% applyPending once the running trial has ended.
 led = testCase.TestData.led;
 led.ensureReady(10);
 led.setUp([100 100], [700 700]);
 transport = led.LightSource.Transport;
 transport.clearCalls();
+verifyFalse(testCase, led.hasPending());
 led.request(2, 150);
 verifyEmpty(testCase, transport.callsOf('CURRENT'), 'Nothing sent while a trial may run');
 verifyEqual(testCase, led.Pending, [NaN 150]);
+verifyTrue(testCase, led.hasPending());
 currents = led.applyPending(7);
+verifyFalse(testCase, led.hasPending());
 verifyEqual(testCase, currents, [100 150]);
 drainReplies(led);
 calls = transport.callsOf('CURRENT');

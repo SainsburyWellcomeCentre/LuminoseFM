@@ -399,9 +399,10 @@ session = Data.Session;
 if isfield(session, 'Cameras') && isfield(session.Cameras, 'Summary') && ~isempty(session.Cameras.Summary) ...
         && isfield(session.Cameras.Summary, 'Cameras')
     for camera = session.Cameras.Summary.Cameras(:)'
-        out{end+1} = sprintf('- Video %s (%s): %d frames written of %d logged; %d missed, %d dropped by the writer%s', ...
+        out{end+1} = sprintf('- Video %s (%s): %d frames written of %d logged; %d missed, %d dropped by the writer%s%s', ...
                              camera.Name, camera.Serial, camera.FramesWritten, camera.FramesLogged, ...
-                             camera.FramesMissed, camera.WriterDrops, errorText(camera)); %#ok<AGROW>
+                             camera.FramesMissed, camera.WriterDrops, stepText(camera), ...
+                             errorText(camera)); %#ok<AGROW>
     end
 elseif isfield(session, 'Cameras') && isfield(session.Cameras, 'Recorded') && ~session.Cameras.Recorded
     out{end+1} = '- Video: not recorded';
@@ -419,6 +420,15 @@ if isfield(Data, 'SyncMode') && isfield(Data.Session.Settings, 'Sync')
 end
 if isfield(Data, 'Analog') && isfield(Data.Analog, 'Timestamps')
     out{end+1} = sprintf('- Flow meter (Flex analog): %d samples', numel(Data.Analog.Timestamps));
+end
+end
+
+
+function text = stepText(camera)
+% '; N 128 s camera-clock steps taken out' when SpinCam corrected any (engine 1.3.0), else ''.
+text = '';
+if isfield(camera, 'TimestampCorrections') && camera.TimestampCorrections > 0
+    text = sprintf('; %d 128 s camera-clock steps taken out', camera.TimestampCorrections);
 end
 end
 

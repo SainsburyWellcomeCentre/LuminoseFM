@@ -178,20 +178,6 @@ S.GUI.HoldLength = 7;
 verifyEqual(testCase, lum.HoldShaping.holdLength(S), 'Whole stimulus', 'An unknown choice reads as the default');
 end
 
-function testTheNextTrialIsPreparedInTheITIWhenTheLightMayOutlastTheHold(testCase)
-% The prepare window changes LED currents and may program PulsePal, so it must open
-% after the light: in the ITI, which every ending trial reaches through WaitForLightEnd.
-S = fixedHold(lum.defaultSettings, 0.3);
-verifyEqual(testCase, lum.triggerStates(S), {'ITI'});
-S.Task.OnHoldBreak = 'End trial';
-verifyEqual(testCase, lum.triggerStates(S), {'ITI'});
-verifyEqual(testCase, lum.triggerStates(shaped('Grow hold')), {'ITI'});
-verifyEqual(testCase, lum.triggerStates(lum.defaultSettings), {'ITI'}, 'Every session with light');
-noLight = lum.defaultSettings;
-noLight.Session.UseOpto = false;
-verifyFalse(testCase, isequal(lum.triggerStates(noLight), {'ITI'}));
-end
-
 function testAFixedHoldIsDescribed(testCase)
 S = fixedHold(lum.defaultSettings, 0.3);
 S.Stimulus.Duration = 1;
@@ -212,19 +198,6 @@ verifySubstring(testCase, lum.HoldShaping.describeBreak(S), 'restarts');
 S.Task.OnHoldBreak = 'End trial';
 verifyFalse(testCase, lum.HoldShaping.restartsOnBreak(S));
 verifySubstring(testCase, lum.HoldShaping.describeBreak(S), 'ends the trial');
-end
-
-function testEarlyWithdrawalOpensThePrepareWindowOnlyWhenItEndsTheTrial(testCase)
-% A restarted hold can deliver light straight after EarlyWithdrawal, so preparing the
-% next trial there would put USB traffic inside the stimulus. (A session with light
-% prepares in the ITI alone; this is one without.)
-S = lum.defaultSettings;
-S.Session.UseOpto = false;
-verifyFalse(testCase, ismember('EarlyWithdrawal', lum.triggerStates(S)));
-verifyTrue(testCase, all(ismember({'LeftReward', 'RightReward', 'IncorrectChoice', ...
-    'NoResponse', 'NoInitiation', 'WithdrewBeforeReward'}, lum.triggerStates(S))));
-S.Task.OnHoldBreak = 'End trial';
-verifyTrue(testCase, ismember('EarlyWithdrawal', lum.triggerStates(S)));
 end
 
 function testDescribeSaysWhatShapingDoes(testCase)

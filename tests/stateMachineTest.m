@@ -793,14 +793,26 @@ verifyEqual(testCase, stateTimer(sma, 'WaitForLightEnd'), 0, 'Nothing lies betwe
 verifyEqual(testCase, stateTimer(sma, 'EarlyWithdrawal'), S.Sound.NoiseDuration, 'AbsTol', 1e-9);
 end
 
-function testRetryResponseIsNotATriggerState(testCase)
-% The trial goes on after it, to a reward or NoResponse, which open the prepare window
-% (in a session without light; with light the ITI alone does).
-S = lum.defaultSettings;
-S.Session.UseOpto = false;
-verifyFalse(testCase, ismember('RetryResponse', lum.triggerStates(S)));
-verifyFalse(testCase, ismember('CentreReward', lum.triggerStates(S)));
-verifyTrue(testCase, ismember('IncorrectChoice', lum.triggerStates(S)));
+function testThePrepareWindowOpensAsEveryTrialLeavesTrialStart(testCase)
+% BpodTrialManager sees a trigger state only on a transition into it, and every trial,
+% in every sync mode and stage, goes from TrialStart to WaitForCentrePoke and nowhere else:
+% so the next trial is prepared and uploaded from the start of each one, with or without
+% light, and starts the moment it ends.
+verifyEqual(testCase, lum.triggerStates(), {'WaitForCentrePoke'});
+for mode = [lum.SyncMode.FixedWidth, lum.SyncMode.JitteredWidth, lum.SyncMode.TaskEvents]
+    for stage = 1:3
+        for useOpto = [true false]
+            S = lum.defaultSettings;
+            S.Sync.Mode = double(mode);
+            S.Task.TrainingStage = stage;
+            S.Session.UseOpto = useOpto;
+            sma = lum.buildTrialSM(makeTestContext('Settings', S));
+            verifyEqual(testCase, sma.StateNames{1}, 'TrialStart');
+            verifyEqual(testCase, tupTargetOf(sma, 'TrialStart'), 'WaitForCentrePoke', ...
+                        sprintf('Sync mode %d, stage %d', double(mode), stage));
+        end
+    end
+end
 end
 
 %% Centre reward -------------------------------------------------------------------
@@ -914,12 +926,11 @@ verifyEqual(testCase, sma.OutputMatrix(stateIndex(sma, 'NoInitiation'), column),
 end
 
 function testTaskEventSyncStaysLowForTwoFramesWithoutAnInitiation(testCase)
-% With a 0 s ITI the line dropped in NoInitiation rises again as soon as the next trial
-% reaches the state machine, a few ms later at the least; with video NoInitiation holds it
-% low for two frames, so the cameras see both edges. Without video, or in a pulsed mode,
-% the state passes straight on.
+% With a 0 s ITI the line dropped in NoInitiation rises again as the next trial starts, one
+% state machine cycle later; with video NoInitiation holds it low for two frames, so the
+% cameras see both edges. Without video, or in a pulsed mode, the state passes straight on.
 S = lum.defaultSettings;
-verifyEqual(testCase, S.GUI.ITI, 0, 'The next trial starts as soon as it is sent');
+S.GUI.ITI = 0;
 S.Sync.Mode = lum.SyncMode.TaskEvents;
 S.Camera.Enabled = true;
 S.Camera.FrameRate = 100;

@@ -3,10 +3,12 @@ classdef DoricWindow < handle
     %
     % Shows the current each LED channel runs at, as irradiance too when its light path is
     % calibrated, and, in behaviour and sleep sessions, lets the operator change it. A
-    % change is asked of the session's lum.dev.DoricLED (request) and sent in the next
-    % prepare window, or between sleep blocks, so light already gated is never changed
-    % part way through; until then the channel reads "waiting for the next trial". In an
-    % ePhys calibration session the schedule sets the current, so the window only shows it.
+    % change is asked of the session's lum.dev.DoricLED (request) and sent between two
+    % trials, in the running one's ITI, or between sleep blocks, so light already
+    % gated is never changed part way through; the trial already prepared when it is asked
+    % for keeps the old current. Until then the channel reads "waiting to be sent between
+    % trials". In an ePhys calibration session the schedule sets the current, so the window
+    % only shows it.
     %
     % It never sends anything itself and costs the trial loop nothing: it redraws when
     % the LED says something changed. Closing it only hides it; close() deletes it. It is
@@ -61,7 +63,7 @@ classdef DoricWindow < handle
             for k = 1:2
                 running = lum.led.describe(obj.cals{k}, obj.led.CurrentmA(k));
                 if ~isnan(obj.led.Pending(k))
-                    running = sprintf('%s  |  %s waiting for the next trial', running, ...
+                    running = sprintf('%s  |  %s waiting to be sent between trials', running, ...
                                       lum.led.describe(obj.cals{k}, obj.led.Pending(k)));
                 end
                 c.Running(k).Text = running;
@@ -132,13 +134,14 @@ classdef DoricWindow < handle
                 end
                 obj.fields{k} = lum.gui.IntensityField(grid, start, @() [], ...
                     'Irradiance', lum.led.irradiance(obj.cals{k}, start), 'LimitmA', limit, ...
-                    'Tooltip', ['The new intensity, sent before the next trial (or sleep block): mW/mm2 '...
+                    'Tooltip', ['The new intensity, sent between trials (the trial already prepared '...
+                                'keeps the old one) or before the next sleep block: mW/mm2 '...
                                 'when this channel''s cable is calibrated on it, mA when not.']);
                 obj.fields{k}.setCalibration(obj.cals{k});
                 channel = k;
                 obj.Controls.Apply(k) = uibutton(grid, 'Text', 'Apply', ...
                     'ButtonPushedFcn', @(~, ~) obj.apply(channel), ...
-                    'Tooltip', 'Send this intensity before the next trial or sleep block.');
+                    'Tooltip', 'Send this intensity between trials, or before the next sleep block.');
                 obj.fields{k}.setEnable(obj.editable);
                 obj.Controls.Apply(k).Enable = lum.gui.Form.onOff(obj.editable);
             end

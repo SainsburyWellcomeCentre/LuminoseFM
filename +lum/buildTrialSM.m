@@ -91,8 +91,7 @@ function [sma, plan] = buildTrialSM(context)
 % (lum.punishmentFor). Punished, it goes to IncorrectChoice, which lasts the timeout
 % (and at least the noise, which the ITI would otherwise cut off) and ends the trial
 % unrewarded. Not punished, it goes to RetryResponse and straight back to
-% WaitForResponse, whose timer starts again: the correct port still pays. RetryResponse
-% is not a trigger state (lum.triggerStates), because the trial goes on after it.
+% WaitForResponse, whose timer starts again: the correct port still pays.
 %
 % The response window opens on the animal leaving the centre port, never while its
 % nose is still in it. WaitForCentreExit is what enforces that: without it the side
@@ -521,9 +520,9 @@ sma = AddState(sma, 'Name', 'NoResponse', ...
 % The hold window ran out without a completed hold: the trial lapses, and the cue
 % goes off. The scorer tells a trial whose stimulus never started from one whose holds
 % all broke. With task-event sync the line drops here and rises again at the next trial's
-% start, and with a 0 s ITI only the time taken to prepare and send that trial lies
-% between the two (a few ms at the least), so with video the state lasts two frames and
-% the cameras always see the line low.
+% start, and with a 0 s ITI only one state machine cycle lies between the two (the next
+% trial was uploaded during this one), so with video the state lasts two frames and the
+% cameras always see the line low.
 sma = AddState(sma, 'Name', 'NoInitiation', ...
     'Timer', noInitiationTimer, ...
     'StateChangeConditions', {'Tup', trialEnd}, ...
@@ -544,13 +543,12 @@ sma = AddState(sma, 'Name', 'WaitForLightEnd', ...
     'StateChangeConditions', lightWait, ...
     'OutputActions', {});
 
-% The ITI is where the trial manager builds and uploads the next trial in a session with
-% light (lum.triggerStates). At 0 s, the default, the trial ends here and the next one
-% starts as soon as it reaches the state machine: the state machine starts a description
-% sent with 'RunASAP' at once when no trial is running (firmware v23, 'C' command). The
-% time between trials is then MATLAB's preparation and upload: 4-411 ms, median 0.18 s, in
-% LUMS0014's sessions of 2026-09-26 and -27 (Data.Timing.prepare + send). An ITI longer
-% than that sets the time between trials, to a state machine cycle.
+% The next trial starts in the state machine cycle after this state ends: the trial manager
+% uploaded it with 'RunASAP' while this one ran (lum.triggerStates). A trial that needs an
+% LED current or a PulsePal program first is uploaded here instead, after those commands
+% (the light is over by now); the default ITI, 0.25 s, covers them, so that trial starts on
+% time too, and a shorter ITI delays it by what it does not cover (lum.minimumITI,
+% Data.Timing.devices).
 sma = AddState(sma, 'Name', 'ITI', ...
     'Timer', S.GUI.ITI, ...
     'StateChangeConditions', {'Tup', '>exit'}, ...

@@ -8,8 +8,9 @@ function tests = emulatorSessionTest
 % still work when wired together.
 %
 % The session runs with no pokes, so every trial ends in NoInitiation: this test is about
-% the session around the trials (every per-trial series, the LED current, a house light
-% switch part way through, the plots image, the startup times, the summary plots and log).
+% the session around the trials (every per-trial series, the LED current and a change of it
+% from the LED window, a house light switch part way through, the plots image, the startup
+% times, the summary plots and log).
 % The choice, reward, punishment and hold-shaping paths are played as an animal in
 % animalSessionTest (startSessionMouse), and built and scored in stateMachineTest and
 % scoreTrialTest.
@@ -69,8 +70,8 @@ end
 
 function testEachTrialRecordsTheLEDCurrentItRanAt(testCase)
 % The emulator's LED is the DoricLED package's simulated driver, set up at the currents
-% the session's intensity gives (lum.led.intensity); with no change asked for, every trial
-% ran at them. Without the package the LED is set by hand and the currents are unknown (NaN).
+% the session's intensity gives (lum.led.intensity); B, never changed, ran at them on every
+% trial. Without the package the LED is set by hand and the currents are unknown (NaN).
 sessionData = testCase.TestData.sessionData;
 record = sessionData.Session.DoricLED;
 verifyEqual(testCase, record.Intensity.Type, 'Behaviour');
@@ -81,10 +82,32 @@ if record.Controlled
     verifyTrue(testCase, any(contains(sessionData.Session.DeviceLog.DoricLED, 'external TTL mode')));
 else
     expected = [NaN NaN];
+    verifyEqual(testCase, unique(sessionData.LEDCurrentA), expected(1));
 end
-verifyEqual(testCase, unique(sessionData.LEDCurrentA), expected(1));
+verifyEqual(testCase, sessionData.LEDCurrentA(1), expected(1));
 verifyEqual(testCase, unique(sessionData.LEDCurrentB), expected(2));
 verifyEqual(testCase, [record.LightPaths.nFibers], [9 10], 'Blue on A, green on B');
+end
+
+function testALEDWindowChangeWaitsForTheRunningTrialToEnd(testCase)
+% The next trial is uploaded while the running one may still be lit, so a current asked for
+% from the LED window is sent once the running trial has ended, and the trial after it is
+% uploaded only then (Data.Timing.devices): the only trial that starts late. Every other
+% trial needed nothing from a device and was uploaded during the one before.
+sessionData = testCase.TestData.sessionData;
+record = sessionData.Session.DoricLED;
+assumeTrue(testCase, record.Controlled, 'Without DoricLED the LED window cannot change the LED');
+verifyTrue(testCase, testCase.TestData.requested, 'Apply was pressed during a trial');
+first = find(sessionData.LEDCurrentA ~= sessionData.LEDCurrentA(1), 1);
+verifyNotEmpty(testCase, first, 'A later trial ran at the new current');
+verifyEqual(testCase, unique(sessionData.LEDCurrentA(first:end)), sessionData.LEDCurrentA(end));
+changes = record.Device.Changes;
+sent = changes(changes(:, 2) == 1 & changes(:, 4) > 0, :);
+verifyEqual(testCase, sent(:, [3 4]), [sessionData.LEDCurrentA(first) first], ...
+            'One change on A, sent for the trial that first ran at it');
+waited = sessionData.Timing.devices > 0;
+verifyEqual(testCase, find(waited), first - 1, ...
+            'Only the trial before it waited, after its end, for the LED');
 end
 
 function testTheStimulusSetIsStoredOnceAndIndexed(testCase)
@@ -123,7 +146,7 @@ end
 
 function testTimingIsRecordedForEveryTrial(testCase)
 sessionData = testCase.TestData.sessionData;
-for field = {'prepare', 'send', 'plot', 'save', 'memoryGB'}
+for field = {'prepare', 'send', 'devices', 'plot', 'save', 'memoryGB'}
     verifyLength(testCase, sessionData.Timing.(field{1}), sessionData.nTrials);
 end
 if ispc
@@ -211,6 +234,7 @@ function testTheEmulatorGetsTheRunnerAndWindowItCanRun(testCase)
 session = testCase.TestData.sessionData.Session;
 verifyEqual(testCase, session.RunnerMode, 'blocking');
 verifyEqual(testCase, session.RuntimeWindow, 'Compact');
+verifyEqual(testCase, session.TriggerStates, {'WaitForCentrePoke'});
 end
 
 function testStateNamesMatchTheTrialFlowContract(testCase)
@@ -267,12 +291,15 @@ BpodSystem.Path.CurrentDataFile = fullfile(testCase.TestData.dataFolder, ...
 
 setappdata(0, 'LuminoseFM_Headless', true);
 
-% Off during the third trial or later, so trials run both ways.
+% Off during the third trial or later, so trials run both ways; channel A's current changed
+% from the LED window during the fourth trial or later.
 clicker = startHouseLightClicker(@() isfield(BpodSystem.Data, 'nTrials') && BpodSystem.Data.nTrials >= 2);
-cleanup = onCleanup(@() delete(clicker));
+requester = startLEDRequest(@() isfield(BpodSystem.Data, 'nTrials') && BpodSystem.Data.nTrials >= 3);
+cleanup = onCleanup(@() delete([clicker requester]));
 LuminoseFM;
-stop(clicker);
+stop([clicker requester]);
 testCase.TestData.clicked = clicker.UserData.Clicked;
+testCase.TestData.requested = requester.UserData.Requested;
 delete(cleanup);
 
 % RunProtocol('Stop') took the protocol folder off the path on its way out, which is

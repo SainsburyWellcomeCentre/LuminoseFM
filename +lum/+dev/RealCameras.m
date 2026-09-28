@@ -96,7 +96,8 @@ classdef RealCameras < lum.dev.Cameras
             stopped = obj.manager.stopRecording();
             cameras = stopped.Cameras;
             keep = {'Serial', 'Name', 'VideoFiles', 'CsvFile', 'FramesLogged', 'FramesWritten', ...
-                    'FramesMissed', 'WriterDrops', 'FramesIncomplete', 'QueuePeak', 'Error'};
+                    'FramesMissed', 'WriterDrops', 'FramesIncomplete', 'TimestampCorrections', ...
+                    'QueuePeak', 'Error'};  % TimestampCorrections from SpinCam engine 1.3.0
             cameras = rmfield(cameras, setdiff(fieldnames(cameras), keep));
             summary = struct('Duration_s', stopped.Duration_s, 'Cameras', cameras);
             for k = 1:numel(cameras)

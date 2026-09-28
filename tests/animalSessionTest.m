@@ -203,7 +203,7 @@ function testExperimentHoldsAreFixedAndTheLightPlaysToItsEnd(testCase)
 data = testCase.TestData.experiment;
 verifyEqual(testCase, data.HoldDuration, 0.2 * ones(1, data.nTrials), 'AbsTol', 1e-9);
 verifyTrue(testCase, data.Session.LightMayOutlastHold);
-verifyEqual(testCase, data.Session.TriggerStates, {'ITI'});
+verifyEqual(testCase, data.Session.TriggerStates, {'WaitForCentrePoke'});
 verifyCompletedHoldsLastTheirHold(testCase, data);
 verifyLightFollowsPattern(testCase, data);
 set = data.Session.StimulusSet;

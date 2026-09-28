@@ -175,6 +175,10 @@ if lum.HoldShaping.isFixed(S) && lum.HoldShaping.growsHold(S)
     notes{end+1} = sprintf(['The fixed hold (%g s) is not used while automatic shaping '...
                             'grows the hold.'], S.GUI.FixedHold);
 end
+[~, itiNote] = lum.minimumITI(S);
+if ~isempty(itiNote)
+    notes{end+1} = itiNote;  % Allowed: the operator may want trials back to back
+end
 if ~ismember(S.Task.HoldShaping, lum.HoldShaping.modes())
     fail('badHoldShaping', 'Hold shaping must be one of: %s.', ...
          strjoin(lum.HoldShaping.modes(), ', '));

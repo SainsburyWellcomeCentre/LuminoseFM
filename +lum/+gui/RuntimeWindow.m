@@ -21,7 +21,7 @@ classdef RuntimeWindow < handle
     %
     % Usage:
     %   runtime = lum.gui.RuntimeWindow(S, 'Mode', 'Tabbed', 'Subject', 'M123');
-    %   S = runtime.sync(S);            % once per trial, in the prepare window
+    %   S = runtime.sync(S);            % once per trial, as the next is prepared
     %   runtime.showStatus('Trial 12 running; next: B only');
     %   runtime.close();
     %
@@ -29,6 +29,9 @@ classdef RuntimeWindow < handle
     % last sync wins; otherwise a value the protocol changed in S is written back to
     % the window. Closing the window does not stop the session; sync then leaves S as
     % it is.
+    %
+    % An ITI typed below lum.minimumITI in a session with light is kept, and a warning
+    % dialog (Tag 'LuminoseShortITI') says what it does to the time between trials.
     %
     % See also lum.gui.runtimeFields, lum.defaultSettings, BpodParameterGUI
 
@@ -38,6 +41,7 @@ classdef RuntimeWindow < handle
     end
 
     properties (Access = private)
+        useOpto      % Whether the session has light, for the ITI's warning
         fields       % Struct array from lum.gui.runtimeFields
         controls     % One uicontrol per field
         lastValues   % Value of each field at the last sync
@@ -64,6 +68,7 @@ classdef RuntimeWindow < handle
                 return
             end
 
+            obj.useOpto = S.Session.UseOpto;
             obj.fields = lum.gui.runtimeFields(S);
             obj.buildTabbed(char(p.Results.Subject), p.Results.Visible, S.Stimulus.Duration);
             if ~isempty(BpodSystem) && isobject(BpodSystem)
@@ -264,7 +269,24 @@ classdef RuntimeWindow < handle
             if isnan(value)
                 value = obj.lastValues{i};
             end
-            set(source, 'String', num2str(clampTo(value, obj.fields(i).Limits), 8));
+            value = clampTo(value, obj.fields(i).Limits);
+            set(source, 'String', num2str(value, 8));
+            if strcmp(obj.fields(i).Name, 'ITI')
+                obj.warnIfShortITI(value);
+            end
+        end
+    end
+
+    methods (Access = private)
+        function warnIfShortITI(obj, iti)
+            % A floating, non-modal warning while the session runs on; one at a time.
+            settings = struct('Session', struct('UseOpto', obj.useOpto), 'GUI', struct('ITI', iti));
+            [~, note] = lum.minimumITI(settings);
+            delete(findall(groot, 'Type', 'figure', 'Tag', 'LuminoseShortITI'));
+            if ~isempty(note)
+                dialog = warndlg(note, 'Inter-trial interval', 'non-modal');
+                dialog.Tag = 'LuminoseShortITI';
+            end
         end
     end
 end

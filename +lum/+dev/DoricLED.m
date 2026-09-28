@@ -21,14 +21,17 @@ classdef DoricLED < lum.dev.Device
     % as it launches and the setup dialogs use it (the Doric LED tab, calibration) while
     % the operator sets the session up. The session then waits for it (ensureReady), sets
     % both channels up (setUp) and changes currents between trials: a runtime request
-    % (request, from the LED window) is sent by applyPending in the next prepare window,
-    % and an ePhys step's current by setCurrents between blocks.
+    % (request, from the LED window) is sent by applyPending in the running trial's ITI, after
+    % its light and before the next is uploaded (hasPending says one is waiting), and an ePhys
+    % step's current by setCurrents between blocks.
     %
     % Usage:
     %   led = lum.dev.openDoricLED(emulated, S);   % connecting starts at once
     %   led.ensureReady();                         % session start: wait, or error
     %   led.setUp(lum.led.intensity(S, cals).CurrentmA, S.Doric.MaxCurrentmA);
-    %   mA = led.applyPending(trialNumber);        % prepare window, every trial
+    %   if led.hasPending()                        % prepare window, every trial
+    %       mA = led.applyPending(trialNumber);    % in the running trial's ITI
+    %   end
     %   record = led.record();                     % teardown, before close
     %   led.close();                               % light off, driver released
     %
@@ -229,11 +232,19 @@ classdef DoricLED < lum.dev.Device
             obj.notifyChanged();
         end
 
+        function tf = hasPending(obj)
+            % hasPending() is true when the LED window asked for a current not yet sent:
+            % the next trial is then uploaded only after the running one ends, when
+            % applyPending can send it with no light in flight.
+            tf = obj.isControlled() && any(~isnan(obj.Pending));
+        end
+
         function currents = applyPending(obj, tag)
             % applyPending(tag) sends any current the LED window asked for, without waiting
             % for the driver, and returns the currents on A and B from now on (NaN in
-            % Manual mode). Call it in a prepare window or between blocks, never with light
-            % in flight. tag (a trial or block number) goes into the record of changes.
+            % Manual mode). Call it between trials or blocks, never with light in flight:
+            % a behaviour session calls it in the running trial's ITI. tag (a trial
+            % or block number) goes into the record of changes.
             if nargin < 2
                 tag = NaN;
             end

@@ -144,6 +144,21 @@ pulsePal.configure(w);
 verifyGreaterThan(testCase, numel(pulsePal.log()), nAfterFirst);
 end
 
+function testTheLightNeedsPulsePalProgrammedOnlyWhenItsCarrierChanges(testCase)
+% The next trial is built while the running one may still be lit, so the loop asks first
+% whether it needs PulsePal programmed: that trial alone is uploaded after the running one
+% ends (lum.stim.Component.needsConfigure).
+context = makeTestContext();
+light = context.stimulus{cellfun(@(c) isa(c, 'lum.stim.OptoPattern'), context.stimulus)};
+verifyTrue(testCase, light.needsConfigure(context), 'The first trial programs the carrier');
+light.configure(context);
+verifyFalse(testCase, light.needsConfigure(context), 'Nothing to send while it is unchanged');
+context.S.Stimulus.Duration = context.S.Stimulus.Duration + 0.5;
+verifyTrue(testCase, light.needsConfigure(context), 'A longer window needs a longer train');
+context.spec.OptoOn = false;
+verifyFalse(testCase, light.needsConfigure(context), 'A trial without light needs nothing');
+end
+
 function testTimesAreQuantisedToThePulsePalCycle(testCase)
 % ProgramPulsePalParam errors outright on a time that is not a multiple of 100 us.
 pulsePal = lum.dev.NullPulsePal('test');

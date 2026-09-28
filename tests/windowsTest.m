@@ -57,6 +57,35 @@ verifyEqual(testCase, get(findobj(window.Figure, 'Tag', 'ITI'), 'String'), '4');
 delete(cleanup);
 end
 
+function testAnITIBelowTheMinimumIsKeptWithAWarning(testCase)
+% Typed into the runtime window in a session with light: kept, and a floating warning says
+% what it does to the time between trials (lum.minimumITI); none for an ITI at the minimum.
+S = testCase.TestData.S;
+S.Session.UseOpto = true;
+window = lum.gui.RuntimeWindow(S, 'Mode', 'Tabbed', 'Visible', 'off');
+cleanup = onCleanup(@() window.close());
+closeWarnings = onCleanup(@() delete(findall(groot, 'Type', 'figure', 'Tag', 'LuminoseShortITI')));
+field = findobj(window.Figure, 'Tag', 'ITI');
+set(field, 'String', '0');
+field.Callback(field, []);
+warned = findall(groot, 'Type', 'figure', 'Tag', 'LuminoseShortITI');
+verifyNumElements(testCase, warned, 1);
+shown = get(findall(warned, 'Type', 'text'), 'String');
+if ~iscell(shown)
+    shown = {shown};
+end
+shown = strjoin(cellfun(@(x) char(join(string(x), ' ')), shown, 'UniformOutput', false), ' ');
+verifySubstring(testCase, shown, 'start late');
+S = window.sync(S);
+verifyEqual(testCase, S.GUI.ITI, 0, 'Kept');
+set(field, 'String', '0.25');
+field.Callback(field, []);
+verifyEmpty(testCase, findall(groot, 'Type', 'figure', 'Tag', 'LuminoseShortITI'), ...
+            'Nothing to warn of at the minimum');
+delete(closeWarnings);
+delete(cleanup);
+end
+
 function testTypedValuesAreHeldToTheirLimits(testCase)
 S = testCase.TestData.S;
 window = lum.gui.RuntimeWindow(S, 'Mode', 'Tabbed', 'Visible', 'off');
@@ -1198,7 +1227,7 @@ field(end).Value = 150;   % Channel B's (the last made)
 field(end).ValueChangedFcn(field(end), []);
 w.apply(2);
 verifyEqual(testCase, led.Pending, [NaN 150]);
-verifySubstring(testCase, w.Controls.Running(2).Text, 'waiting for the next trial');
+verifySubstring(testCase, w.Controls.Running(2).Text, 'waiting to be sent between trials');
 led.applyPending(1);
 verifyFalse(testCase, contains(w.Controls.Running(2).Text, 'waiting'));
 verifySubstring(testCase, w.Controls.Running(2).Text, '150 mA');

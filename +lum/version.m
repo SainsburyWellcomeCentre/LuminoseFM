@@ -1,5 +1,8 @@
-function text = version()
+function text = version(part)
 % lum.version returns a version string for the LuminoseFM protocol.
+%
+% lum.version() is the release and commit; lum.version('release') the release alone, without
+% asking git (S.Session.SettingsVersion, written into every settings file).
 %
 % Recorded in every session file (Data.Session.ProtocolVersion), so a data set can be
 % traced back to the code that produced it: the release, then the short git commit,
@@ -16,8 +19,11 @@ function text = version()
 %
 % See also LuminoseFM
 
-release = '0.9.10';
+release = '0.9.11';
 text = release;
+if nargin > 0 && strcmp(part, 'release')
+    return
+end
 
 commit = '';
 try

@@ -155,9 +155,9 @@ classdef HoldShaping
             % light pattern does, which any session with light allows: its hold grows,
             % or the operator can set a fixed hold shorter than the stimulus window
             % between trials (S.GUI.HoldLength, S.GUI.FixedHold). Such a session reserves
-            % the light clock (lum.timerBudget), waits for the light in WaitForLightEnd
-            % and prepares the next trial in the ITI (lum.triggerStates). Decided from
-            % pre-session settings only, since the budget is fixed before the session.
+            % the light clock (lum.timerBudget) and waits for the light in
+            % WaitForLightEnd. Decided from pre-session settings only, since the budget is
+            % fixed before the session.
             % Up to 0.9.7 a session holding for the whole stimulus did neither; its
             % trials are the same, since the light clock is added to a trial only when
             % its light ends after its hold (lum.buildTrialSM).

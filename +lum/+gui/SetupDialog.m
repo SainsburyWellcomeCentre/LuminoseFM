@@ -138,6 +138,10 @@ for name = {'HoldLength', 'FixedHold'}
     linkTwins([runtimeHandles(controls.TaskHold, name), runtimeHandles(controls.Runtime, name)], ...
               @refresh);
 end
+% An ITI typed below the shortest that keeps every trial on time says so at once.
+if isfield(controls.Runtime, 'ITI')
+    controls.Runtime.ITI.ValueChangedFcn = @(~, ~) onITIEdit();
+end
 
 controls.Help = uilabel(outer, 'Text', '', 'WordWrap', 'on', 'FontSize', 11, ...
                         'FontColor', t.Ink, 'BackgroundColor', t.AccentSoft, ...
@@ -354,6 +358,21 @@ end
             controls.Runtime.OptoOn.Value = logical(candidate.GUI.OptoOn);
         end
         refresh();
+    end
+
+    function onITIEdit()
+        % The ITI typed: validate as for any edit, then warn in a dialog when it is below
+        % lum.minimumITI (the status line carries the same note).
+        refresh();
+        try
+            candidate = collectSettings();
+        catch
+            return
+        end
+        [~, note] = lum.minimumITI(candidate);
+        if ~isempty(note)
+            uialert(fig, note, 'Inter-trial interval', 'Icon', 'warning');
+        end
     end
 
     function refresh()
@@ -741,6 +760,10 @@ controls = lum.gui.ExperimentForm.merge(controls, ...
 form = formPanel(left, 'Session length', 2, t, 170);
 label(form, 'Maximum trials', t);
 controls.MaxTrials = numberField(form, S.Session.MaxTrials, [1 100000], onEdit, true);
+controls.MaxTrials.Tooltip = ['The session stops by itself after this many trials. The trial '...
+    'order is built and balanced for this many, and bias correction brings trials of the '...
+    'side the animal avoids forward from the rest of it, so keep it well above the trials a '...
+    'session runs (3000 by default); a larger number costs nothing per trial.'];
 label(form, 'Save every N trials', t);
 controls.SaveEveryNTrials = numberField(form, S.Session.SaveEveryNTrials, [1 100], onEdit, true);
 

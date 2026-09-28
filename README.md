@@ -135,7 +135,7 @@ names it in the panel's title, since it cannot change once the session has start
 With a latency, the animal holds the latency first and the hold counts from stimulus onset, so
 from the poke it holds latency + hold. An Experiment session cannot use automatic shaping, so a
 fixed hold is how an experiment asks for a hold shorter than the stimulus. A change in the runtime
-window applies from the next trial prepared. Each trial's hold is recorded in `Data.HoldDuration`,
+window applies from the next trial prepared (§5, *Runtime window*). Each trial's hold is recorded in `Data.HoldDuration`,
 and the settings it came from in `Data.TrialSettings{k}.HoldLength` and `.FixedHold`.
 
 For a 1 s stimulus window:
@@ -220,12 +220,22 @@ forgiven.
 
 Every trial that ends — after the drinking grace, a punishment, no response, no poke, or an early
 withdrawal that ends the trial — goes through `WaitForLightEnd` and then the inter-trial interval
-(`ITI`, 0 s by default), and the next trial starts as soon as MATLAB has prepared and sent it: up
-to about 0.4 s on the rig in a session with light, often at once without light. Because of that
-gap, Bpod's trial manager prints a *WARNING: TrialManager reported an inter-trial dead time of
->500 microseconds* box in the command window after most trials of a session with light: it is
-expected with a 0 s ITI and does not mean a trial was lost or late (checked on the rig,
-2026-09-27). `WaitForLightEnd`
+(`ITI`, **0.25 s** by default), and the next trial starts as the ITI ends (to 0.1 ms): MATLAB
+prepared it and sent it to the state machine while this trial ran, so the time between trials is
+the same on every trial. An LED current you set in the LED window waits for the ITI instead,
+because it would change light already playing: it is sent in the ITI, then the next trial; 0.25 s
+is the shortest ITI that always has room for both, so that trial starts on time too (the stimulus
+window is fixed once the session starts).
+
+You may set a shorter ITI, 0 s included (runtime window, *Trial* tab, *Timing*): it is kept, but a
+warning pops up saying what it costs. With it, a trial after an LED current change starts late by what the ITI did not cover (tens of ms), with nothing running in between, and Bpod's
+trial manager prints one *WARNING: TrialManager reported an inter-trial dead time of >500
+microseconds* box in the command window after a line saying which trial waits. That box at any
+other time means a trial started late: note it and tell whoever maintains the protocol. Without
+light nothing waits, and any ITI is kept exactly. (Up to 0.9.10 the ITI was 0 s and the box came
+after every trial of a session with light: each trial started 0.01–0.35 s after the last, with
+nothing recorded in between. A settings file still at that 0 s takes 0.25 s when it is next
+loaded.) `WaitForLightEnd`
 waits for a light that is still playing after a short hold, and otherwise lasts no time: a broken
 hold has already stopped the light. For example, with a fixed 0.3 s hold and a 1 s light, times from
 the poke:
@@ -429,7 +439,12 @@ equal ratios are equally hard at any total, equal differences are not.
   limit. A run on the side it is pushing towards may go past `MaxSameSide`; a run on the other
   side is still broken at the limit. So correction holds its target for as long as the order has
   trials paying that side. Against an animal that always goes left, and a 1000-trial order, that
-  was about 600 trials at strength 0.5. After that, the rest of the order pays the other side.
+  was about 600 trials at strength 0.5; after that, the rest of the order pays the other side.
+  The order is `MaxTrials` long (*Maximum trials*, Experiment tab), **3000 by default** from 0.9.11,
+  so correction has trials to draw on for about 1800 trials against such an animal, far more than
+  a session runs; raising it costs nothing measurable per trial. Groups are balanced over the whole
+  order, not over the part a session runs: a biased animal gets more of the side it avoids (on
+  2026-09-28, 217 B-only trials and 116 A-only in 333).
 - **What a session refuses.** Every stretch of light on a channel costs one Bpod global timer.
   The rig has 16 and the emulator 5; the hold window always takes one and the light clock one
   (§3, *The light plays to its end*), leaving 14 for light on the rig and 3 in the emulator, and
@@ -503,7 +518,9 @@ HiFi module, or the PC's speakers when there is none (the emulator). The cue ton
 
 ### Runtime window
 
-The parameters that are safe to change with an animal in the box, synced once per trial. On the
+The parameters that are safe to change with an animal in the box, read once per trial as the next
+trial is prepared, which happens as each trial starts: a change reaches the next trial if made in
+its first moments, and otherwise the one after (the header's *next* line says what is prepared). On the
 rig it is a window of its own, in tabs (*Trial*: reward, centre reward and timing, including the
 hold without shaping; *Task*: punishment, bias correction, hold shaping; *Delivery*: light, sound
 and port light brightness), with labels and units, limits held as values are typed, and a header
@@ -556,9 +573,12 @@ Opens beside the plots in every session with light (untick *LED window in the se
 LED tab to leave it closed). It shows each channel's LED current, and its irradiance when the channel
 is calibrated. In behaviour and sleep sessions, type a new intensity (mW/mm² on a calibrated channel, mA
 otherwise) and press **Apply**: it is sent
-between trials (or sleep blocks), never while light is gated, the channel reads *waiting for the next
-trial* until then, and each trial records the current it ran at. The intensity you leave it at is
-kept for the next session. In an ePhys calibration session the schedule sets the current, and the
+between trials (or sleep blocks), never while light is gated, the channel reads *waiting to be sent
+between trials* until then, and each trial records the current it ran at. The trial already
+prepared when you press it keeps the old current; the current is sent in its ITI, and the one after
+starts on time (at an ITI below 0.25 s, a few tens of ms late with one dead time warning in the
+command window: §3, *The end of a trial*). The intensity you leave it at is kept for the next
+session. In an ePhys calibration session the schedule sets the current, and the
 window only shows it.
 
 ### Designers
@@ -877,8 +897,8 @@ Data keep the current sent, in mA, and each data file stores the calibrations it
 intensity asked for, so irradiance can always be worked out again.
 
 **Delay.** Setting an intensity adds nothing to a trial. The current is set once as the session
-starts; after that the driver is written to only when you press **Apply** in the LED window, in the
-next inter-trial window (or between sleep blocks, or before an ePhys step), one command per channel
+starts; after that the driver is written to only when you press **Apply** in the LED window, once
+in the running trial's ITI (or between sleep blocks, or before an ePhys step), one command per channel
 that takes under a millisecond of MATLAB's time and that the driver acknowledges in 5–9 ms, while no
 light is gated. Timing within the trial is Bpod's and PulsePal's alone.
 

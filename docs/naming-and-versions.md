@@ -69,6 +69,8 @@ right — D8 in [`architecture.md`](architecture.md).
 | irradiance | Power at the fiber tips over their total area, mW/mm2; what a session asks for on a calibrated light path (`S.Doric.IrradiancemWmm2`, `S.Sleep.TestPulses.IrradiancemWmm2`, `S.Ephys`), turned into the LED current that gives it (`lum.led.intensity`) |
 | LED calibration | Power meter readings at several LED currents for one cable on one channel, stored per bundle, cable and channel in `calibration/` (`lum.led`) |
 | LED window | The window that shows each channel's LED current during a session and changes it between trials (`lum.gui.DoricWindow`) |
+| prepare window | The part of a trial in which MATLAB builds and uploads the next one: from `WaitForCentrePoke` to the trial's end (`lum.triggerStates`, D3). Device commands the next trial needs wait for the trial's `ITI` |
+| inter-trial dead time | Time between one trial's end and the next one's start with no state machine running: nothing recorded, every output low. `BpodTrialManager` warns past 0.5 ms; from 0.9.11 only when an LED current or PulsePal program sent in an ITI shorter than 0.25 s did not fit (`Data.Timing.devices`, `lum.minimumITI`) |
 | ePhys calibration | The session type that sends light pulses stepping through intensities and paired-pulse intervals, for the recorded response (`S.Ephys`, D18) |
 | input-output curve | Single pulses at intensities from lowest to highest, one step per level (`S.Ephys.InputOutput`) |
 | paired-pulse ratio | Pairs of pulses at one intensity, one step per inter-pulse interval (`S.Ephys.PairedPulse`) |
@@ -81,6 +83,51 @@ Settings files are converted when loaded. Analysis code reading older **data** f
 names.
 
 Newest first. Each table puts the old behaviour or name on the left and the new on the right.
+
+### 0.9.10 → 0.9.11 — after LUMS0014's first session with light: the next trial uploaded as each trial starts, a 0.25 s ITI
+
+Found auditing `LUMS0014_LuminoseFM_20260928_123501` (Training, the first session with light:
+pure channel A or B, 0.5 s window, A 253 mA and B 496 mA, 8 mW/mm² each, 20 Hz 5 ms carrier; 333
+trials in 117 min, ended with the End button, 0.9.10). The file is complete and consistent:
+rescoring every trial from its raw events reproduces `Outcome`, `Choice`, `Correct` and `Rewarded`
+(126 `Correct`, 183 `Incorrect` all retried to the reward, 3 `NoResponse`, 21 `HoldNotCompleted`;
+283 rewarded; 305 retries on 183 trials); side valve states 20.7 and 19.6 ms and centre 16.0 ms on
+the 20 trials of the two *Centre reward again* runs (trials 141–150, 251–260); every completed
+hold's `CentreHold` lasted 0.5 s. Each of the 1004 `CentreHold` visits started the light timer one
+0.1 ms cycle later; each completed hold's light lasted 0.500 s, and each broken hold's ended with
+the withdrawal. The LED currents stayed as set; no trial has a state machine error code;
+`TrialStart` lasted `SyncPulseWidth` to 0.05 ms. Both cameras wrote every frame (704,976 and
+704,975, none missed or dropped); the barcode `0CAE7E8E` decodes from each camera's `TTL_State`, and
+334 trial pulses follow it (the 334th is the trial the End button cut short), the first 333 on
+`TrialStartTimestamp` within 5.3 ms after a straight-line fit. The flow meter shows the stimulus air
+at every completed hold (median 1.28 V before, 3.55 V peak). MATLAB's memory stayed at
+4.00–4.23 GB. The animal chose left on 76% of its choices, on 73% of A trials and 78% of B trials:
+no sign yet of telling A from B. Bias correction aimed P(left) at 0.28–0.58, which gave 116 A and
+217 B trials and runs of up to 12 right-paying trials (bias correction outranks the run limit of 3,
+as designed since 0.9.4).
+
+Two things were wrong. **Every trial started late, with nothing running in between.** In a session
+with light the next trial was prepared in the ITI (0.9.8), so that its LED current changes could not
+fall in the light; with the ITI at 0 s the trial had then already ended, and all 332 trials after
+the first started 9–351 ms (median 196 ms) after the one before ended: their preparation and upload
+plus about 15 ms. For that time no state machine ran, so a poke then is in no trial's events and
+every output was low, and `BpodTrialManager` printed its *inter-trial dead time* warning after every
+trial. **The topview camera's `HardwareTimestamp_us` stepped forward by exactly 128 s twice**, with
+its frame counters continuous (also both views in the 2026-09-26 session): SpinCam's or the camera's,
+reported, not changed here; `docs/python-analysis.md` removes the steps.
+
+| 0.9.10 | 0.9.11 |
+|---|---|
+| The next trial prepared at an outcome state without light, and in the ITI with light: after the trial had ended at the 0 s ITI | Prepared and uploaded as each trial starts, on `WaitForCentrePoke` (`lum.triggerStates()`, no argument), while it runs; the state machine starts it 0.1 ms after this one ends. Rig check 2026-09-28: 28 of 29 gaps 0.1 ms, the other the one below; no missed-deadline codes, every light timer exact |
+| An LED current from the LED window and PulsePal's carrier sent in the prepare window | Sent in the running trial's `ITI`, when its light is over (`lum.SessionRunner.awaitState`), and only the trial that needs them is uploaded after that (`lum.dev.DoricLED.hasPending`, `lum.stim.Component.needsConfigure`). `Data.Timing.devices` holds that time, 0 on every other trial. With an ITI below 0.25 s that trial starts late, with one dead time warning and a console line naming it (rig check 2026-09-28, at 0 s: 22.9 ms) |
+| The ITI 0 s by default (0.9.8) | **0.25 s** (`lum.minimumITI`): the shortest ITI that always holds the device commands and the upload (upload median 45 ms, at most 213 ms in 810 rig trials), so every trial starts one ITI after the last one's light (rig check 2026-09-28: 40 and 15 trials with LED changes, every gap 0.1 ms, the change and upload 88–124 ms). PulsePal's carrier follows the stimulus window, fixed for the session, so only trial 1 needs it, before anything runs. A shorter ITI, 0 s included, is kept with a warning: `uialert` in the setup dialog, `warndlg` (Tag `LuminoseShortITI`) in the tabbed runtime window, a validation note, and `lum:LuminoseFM:shortITI` when changed mid-session. Without light the minimum is 0 |
+| `lum.SessionRunner.awaitPrepareWindow` called `BpodTrialManager.getCurrentEvents` | Polls `BpodSystem.Status.CurrentStateName` until the trial leaves its first state: `getCurrentEvents` learns its trigger states only when first called, so it missed trial 1's transition when `TrialStart` was short and waited for trial 1 to end (rig check 2026-09-28 at a 0 s ITI: trial 2 started 153 ms late; after the fix, two sessions with every gap 0.1 ms but the LED change's) |
+| `S.Session.MaxTrials` 1000 by default | **3000**: the trial order bias correction draws from, so a biased animal's session never uses up the side it avoids (at 1000, an always-left animal did after about 600 trials). A file from before 0.9.11 still at 1000 takes 3000; any other number is kept. Measured at 3000 against 1000: nothing per trial grew (policy 23–38 µs, online redraw 13–28 ms, save 36–39 ms, memory flat), the file grows with the stored stimulus set only in the per-trial families (mixture: 92 → 139 KB) |
+| A settings file did not say which release wrote it | `Session.SettingsVersion`, the release that last wrote it (`lum.version('release')`), set from the defaults on every merge. A file without it (before 0.9.11) still at 0.9.8's 0 s ITI takes 0.25 s; 0 s typed from 0.9.11 on is kept |
+| A runtime setting or LED change made during trial *k* reached trial *k*+1 | It reaches trial *k*+1 when made before trial *k*+1 was prepared (the first moments of trial *k*), otherwise *k*+2; the trial already prepared keeps the old LED current |
+| LED window: *waiting for the next trial* | *waiting to be sent between trials* |
+| `Data.Session.TriggerStates` `{'ITI'}` in a session with light | `{'WaitForCentrePoke'}` in every session |
+| The camera's 128 s timestamp steps in the frame logs | Fixed in SpinCam (its repository, at the operator's request): engine and package 1.3.0 take any step of whole 128 s periods that the host clock does not show out of `HardwareTimestamp_us` as they record (`TimestampGuard`), count them (`Summary.Cameras(k).TimestampCorrections`, kept in `Session.Cameras` and named in the session log), and `spincam.io.readFrameLog` repairs older logs (LUMS0014 2026-09-28 topview: 2 steps, span then 7074.8 s as the sideview's). `docs/python-analysis.md` for Python |
 
 ### 0.9.9 → 0.9.10 — help text and comments to one standard, checked
 

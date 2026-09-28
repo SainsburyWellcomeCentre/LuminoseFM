@@ -163,18 +163,45 @@ and keeps the *observable* behaviour identical. The mode is recorded in
 
 **Consequences.**
 
-- On the rig the prepare window opens partway through the trial, at one of the trigger
-  states `lum.triggerStates(S)` lists (`LeftReward`, `RightReward`, `IncorrectChoice`,
-  `NoResponse`, `NoInitiation`, `WithdrewBeforeReward`, and `EarlyWithdrawal` only when a
-  broken hold ends the trial — with restarts, light can follow it, D10; never `RetryResponse` or
-  `CentreReward`, after which the trial goes on, D19), and the next state
-  machine is uploaded during the trial. When a completed hold may end before the light
-  (`lum.HoldShaping.lightMayOutlastHold`, D21) the light can still be on in any of those states,
-  so the `ITI`, reached through `WaitForLightEnd` once the light is over, is the only trigger
-  state; the next trial is then prepared in the ITI. From 0.9.8 that is every session with
-  light. Anything computed from history — bias correction, hold shaping — therefore
-  follows trial *n-1* when preparing trial *n+1*; hold shaping and the run limit take the trial
-  still running (*n*) from `history.prepared*` (`lum.HoldShaping.notePrepared`).
+- On the rig the prepare window opens as each trial starts, on `WaitForCentrePoke`
+  (`lum.triggerStates`), the state every trial enters from `TrialStart`: `lum.SessionRunner` polls
+  `BpodSystem.Status.CurrentStateName` until the trial leaves its first state. It does not use
+  `BpodTrialManager.getCurrentEvents`, which learns its trigger states only when first called and
+  so missed trial 1's transition when `TrialStart` was short, waiting for that trial to end (rig
+  check 2026-09-28, 0 s ITI: trial 2 started 153 ms late). The
+  loop has then recorded, plotted and saved trial *n-1*, and trial *n+1* is built and uploaded
+  with `RunASAP` while trial *n* runs, so the state machine starts it in the cycle after trial *n*'s
+  ITI ends (0.1 ms; `BpodTrialManager` warns past 0.5 ms). Anything computed from history — bias
+  correction, hold shaping — therefore follows trial *n-1* when preparing trial *n+1*; hold
+  shaping and the run limit take the trial still running (*n*) from `history.prepared*`
+  (`lum.HoldShaping.notePrepared`). A runtime setting changed during trial *n* after the window
+  opened reaches trial *n+2*.
+- The window may overlap trial *n*'s light. Building a state machine and uploading it over USB
+  do not touch the light: the firmware runs the state machine from a hardware timer and reads the
+  upload between cycles (rig check 2026-09-28: no missed-deadline error codes, every light timer
+  exactly its segment). A device command would: an LED current (D17) or a PulsePal program (D1).
+  So preparing sends nothing to a device, and the loop asks whether the next trial needs any
+  (`lum.dev.DoricLED.hasPending`, `lum.stim.Component.needsConfigure`); when it does — after an
+  LED-window change, rare; PulsePal's carrier follows the stimulus window, fixed for the session,
+  so only trial 1 needs it, before anything runs — the loop waits for trial *n*'s `ITI`
+  (`lum.SessionRunner.awaitState`, which watches `BpodSystem.Status.CurrentStateName`), when its
+  light is over, sends the commands and then uploads the trial (`Data.Timing.devices`).
+- **The ITI (0.9.11)** is therefore the time from one trial's light to the next trial, and holds
+  on every trial when it covers those commands and the upload: 0.25 s by default
+  (`lum.minimumITI`; uploads took 45 ms median and at most 213 ms in 810 rig trials, an LED
+  current about 1 ms; rig check 2026-09-28: 88–124 ms for both, every gap 0.1 ms). A shorter ITI
+  is allowed
+  with a warning; a trial after a device change then starts late by what the ITI did not cover,
+  with the dead time warning. Without light nothing waits, and any ITI holds.
+- **History.** Up to 0.9.4 the window opened at the outcome states (`LeftReward`, `RightReward`,
+  `IncorrectChoice`, `NoResponse`, `NoInitiation`, `WithdrewBeforeReward`, and `EarlyWithdrawal`
+  only when a broken hold ended the trial). From 0.9.5, when the light could outlast the hold (D21),
+  and from 0.9.8 in every session with light, it opened in the `ITI`, after `WaitForLightEnd`, so
+  that its LED current changes could not fall in the light. With the ITI at 0 s (0.9.8) the trial
+  had then already ended: every trial started after its upload, 0.01–0.35 s late (LUMS0014,
+  2026-09-28: 332 of 332 trials, median 196 ms), with nothing running in the gap and the dead time
+  warning after each. 0.9.11 moved the window to the trial's start, the device commands into the
+  ITI, and the default ITI to 0.25 s.
 - In the emulator the same calls run the trial to completion first.
 - `lum.dev.open` is the only place that reads `BpodSystem.EmulatorMode`.
 
@@ -191,9 +218,9 @@ never from a global timer:
 - *Task events* — no pulse: the line goes high in `TrialStart`, is held high through
   `WaitForCentrePoke` for as long as the animal is asked to poke, and goes low on the poke
   (`PreStimulusHold`, or `CentreHold` without a latency) and in `NoInitiation`. `TrialStart`
-  keeps a zero timer. With video, `NoInitiation` lasts two frame periods (0.9.8): with the 0 s
-  ITI, the next trial can raise the line a few ms after a lapsed trial dropped it, too soon for a
-  frame to see.
+  keeps a zero timer. With video, `NoInitiation` lasts two frame periods (0.9.8): with a 0 s ITI
+  (the default from 0.9.8 to 0.9.10, and still allowed) the next trial can raise the line 0.1 ms
+  after a lapsed trial dropped it, too soon for a frame to see.
 
 **Why.** A train of identical pulses only supports alignment by counting edges, which breaks
 if a device starts late or drops samples. Pulses of near-unique width are self-identifying:
@@ -255,13 +282,19 @@ library — and compiled by `lum.pattern.stimulusSet`:
 - `lum.nextTrialSpec` takes the next pattern from a queue initialised to the order. The run
   limit and bias correction **swap** the next entry with a later one that pays the needed side
   (anywhere in the rest of the order since 0.9.4; within the next 50 before), so every group is
-  still delivered exactly as often as it was balanced.
+  still delivered exactly as often as it was balanced over the whole order. The order is
+  `S.Session.MaxTrials` long, 3000 by default from 0.9.11 (1000 before), so that correction does
+  not use up the trials of the side it pushes towards in a session an animal runs; a biased
+  animal's session is unbalanced in the part it runs, by design. Measured on 2026-09-28 at 3000
+  against 1000: the policy 23–38 µs a trial, the history 378 KB, the heaviest stimulus set (a
+  mixture with a pattern per trial) 1.2 MB in memory, 86 KB in the file and 87 ms to compile once,
+  the online figure's full redraw 13–28 ms whatever the arrays' length; no per-trial cost grew.
 
 **Why.** A pre-generated set makes the preview the session: the operator scrolls through the
 very trials that will run (`lum.gui.PatternBrowser`), sees each group's timer cost, and the
 data file stores the set once. Balanced, shuffled groups are how the generatePattern designs
 are meant to be used, and they make the psychometric panel's points comparable. Storing
-segments rather than joint states keeps a continuous session of a thousand patterns small
+segments rather than joint states keeps a continuous session of thousands of patterns small
 enough to rewrite at each save. A private stream keeps the global rng — which side draws and
 sync widths use — independent of when the set was built.
 
@@ -487,7 +520,8 @@ transitions rather than states keeps the trial-flow contract.
   `EarlyWithdrawal` was visited and `WaitForCentreExit` was not. `HoldAttempts` (visits to
   `CentreHold`) is recorded per trial.
 - The early-withdrawal punishment runs at each break, before the animal may poke again.
-- `EarlyWithdrawal` is not a trigger state in restart mode (D3).
+- `EarlyWithdrawal` was not a trigger state in restart mode (up to 0.9.10; D3 now prepares as each
+  trial starts).
 - `WaitForCentrePoke` plays the cue again, and a cue tone would cut a punishment noise off, so
   with a cue tone `EarlyWithdrawal` lasts at least the noise (D12).
 - `lum.validateSettings` refuses a hold window no longer than the latency and the first hold.
@@ -711,7 +745,7 @@ PulsePal, D1).
 
 **Consequences.**
 
-- The camera window's timer runs in MATLAB and may delay a prepare window by a few ms; it is
+- The camera window's timer runs in MATLAB and may delay the next trial's preparation by a few ms; it is
   optional, closable, and never touches the recording. Its frame copies and drawing do cost CPU:
   with SpinVideo's single-threaded `avi-mjpeg`, which is only 4 % faster than 100 Hz full frame,
   that was enough for the writer queue to grow 1–2 frames/s (writer drops after ~15 min). With
@@ -895,9 +929,11 @@ unchanged. What MATLAB adds is the current:
   (`setUp`: limits, external TTL at the currents `lum.led.intensity` gives, started). Every way out of the protocol
   releases it, and teardown closes it first, so both channels are off before PulsePal is released.
 - **Changed only between light.** The LED window (`lum.gui.DoricWindow`) asks for a current
-  (`request`); `applyPending` sends it in the next prepare window (behaviour, after the running
-  trial's stimulus: every trigger state follows it, D3) or between sleep blocks, with the
-  package's non-blocking fast path, and returns the current the next trial runs at. An ePhys
+  (`request`); `applyPending` sends it between trials (behaviour: the loop asks `hasPending` as it
+  prepares the next trial, holds that trial's upload back and sends the current in the running
+  trial's ITI, D3) or between sleep blocks, with the package's non-blocking fast path, and
+  returns the current the next trial runs at. The trial already prepared when the operator asks
+  keeps the old current. An ePhys
   calibration step's current is sent between blocks and waited for (`setCurrents`, D18).
 - **Refused, not degraded, on the rig.** A session with light whose LED is controlled does not start
   if the driver does not connect or refuses its settings; unticking the control runs it with the
@@ -932,9 +968,9 @@ unchanged. What MATLAB adds is the current:
 1. *Timing stays in hardware.* A TTL-gated LED lights exactly while PulsePal's output is high; MATLAB
    and USB latency never enter the light's timing, and the emulator reproduces the pattern as
    before (D1). Nothing is sent per trial: the current is set once at session start, and again only
-   when the LED window asks, in the next prepare window, as one non-blocking command per channel
+   when the LED window asks, between trials, as one non-blocking command per channel
    (about 0.8 ms MATLAB-side; the driver acknowledges in 5–9 ms, DoricLED's `docs/rig-checks.md`),
-   while the running trial's light is over.
+   in the running trial's ITI, when its light is over.
 2. *No cost to Bpod.* No state, output, timer or event is added; the per-trial record gains two
    scalars and the session record one small struct (`Session.DoricLED`, the package's own record
    without its log, which goes to `DeviceLog.DoricLED`).
@@ -1043,7 +1079,7 @@ automatic shaping (now on in habituation too) the first holds are short (0.2 s b
 0.9.7, 0.1 s before). Counting the centre reward
 in trials rather than in rewards given keeps `nextTrialSpec` pure: on the rig trial *n+1* is prepared
 before trial *n* is scored (D3), so a count of rewards given would overshoot by one. The retry needs its
-own state because `IncorrectChoice` opens the prepare window (`lum.triggerStates`): the trial must pass
+own state because `IncorrectChoice` opened the prepare window up to 0.9.4 (D3): the trial had to pass
 through exactly one trigger state, and after a retry it still reaches a reward, `NoResponse` or
 `WithdrewBeforeReward`. The response window starts again on the retry rather than running on, because
 holding it across the retry would take a global timer from the light's budget, which the emulator's
@@ -1165,9 +1201,10 @@ growing hold or a fixed one shorter than the window). Such a session:
   **condition 5** (the clock not running: ended, cancelled, or never started). A trial whose light
   ends within its hold (the growing hold has reached it, or no light this trial) defines no light
   clock, and `WaitForLightEnd` passes straight on (`Tup`);
-- prepares the next trial in the **ITI**, its only trigger state (`lum.triggerStates`, D3), because
-  the prepare window changes LED currents and may program PulsePal, and the light can still be on
-  in every earlier trigger state.
+- prepared the next trial in the **ITI** from 0.9.5 to 0.9.10, because the prepare window changed
+  LED currents and could program PulsePal, and the light could still be on in every earlier
+  trigger state. From 0.9.11 the next trial is prepared as each trial starts, and those device
+  commands wait for the trial's ITI (D3).
 
 **Why.** Cutting the light off at a shaped hold's end (up to 0.9.4) gave a short hold only the
 start of the pattern, so what the animal saw depended on the hold as well as on the pattern, and a
@@ -1189,8 +1226,7 @@ One timer running from onset can, hence the light clock.
 - One global timer in every session with light (0.9.8; before, only while the hold could be
   shorter than the light): the rig's 16 leave 14 for light (13 with grace), the emulator's 5 leave
   3 (2 with grace). A trial whose hold covers its light leaves the clock unused, so a whole-stimulus
-  session's trials are the same as before; what changes is one segment fewer for light and the ITI
-  as the prepare window. Refusing a fixed hold below the window mid-session in a session that had
+  session's trials are the same as before; what changes is one segment fewer for light. Refusing a fixed hold below the window mid-session in a session that had
   not reserved the clock was the alternative; it would have made the runtime setting work only
   sometimes. Every family's defaults fit each of
   these (`generateTest`); in the emulator the mixture takes fewer cycles and, with 2 timers, the
@@ -1199,12 +1235,11 @@ One timer running from onset can, hence the light clock.
   edited stimulus over the budget is refused, naming its group. Condition 5 is the emulator's last.
 - The light clock is numbered after the light, the timed components' and the cue's timers and the
   hold clock, before the hold window; its index varies with the trial's number of segments.
-- The next trial is prepared in the ITI. The ITI is 0 s by default from 0.9.8, so the next trial
-  starts once it is prepared and uploaded (4–411 ms, median 0.18 s, in LUMS0014's sessions of
-  2026-09-26 and -27): the trial manager sends it with `RunASAP`, and firmware v23 starts such a
-  description at once when no trial is running (the `'C'` command), as it starts it at the end of
-  the running trial when it arrives earlier. An ITI longer than the preparation makes the gap the
-  ITI.
+- The ITI was 0 s by default from 0.9.8 and is 0.25 s from 0.9.11 (`lum.minimumITI`, D3). The trial
+  manager uploads the next trial with `RunASAP` while this one runs, and firmware v23 starts it in
+  the cycle after this one ends; a description that arrives when no trial is running starts at once
+  (the `'C'` command). While the next trial was prepared in the ITI at 0 s (0.9.8–0.9.10) every
+  trial started after its upload, 0.01–0.35 s late.
 - `WaitForLightEnd` is a new state in every trial (the trial-flow contract, *Trial engine* below); `Data.Session`
   records `LightMayOutlastHold` and `TriggerStates`.
 - `lum.validateSettings` refuses an unknown `HoldLength` and a fixed hold of 0 s or less (whichever
@@ -1409,9 +1444,9 @@ global timer, so the line and the way it is driven can be told apart on a scope.
 `LuminoseFM.m` is a thin session script: merge settings, start the LED connecting (D17), ask the
 session type (D11; sleep and ePhys calibration hand over to `lum.sleep.run`), seed, set up (dialog), validate, open devices, load sounds, build
 components, open the runtime window, plots and analog viewer, send the barcode, then the D3 loop.
-All per-trial work — runtime sync, any LED current asked for, trial spec, PulsePal programming, plot
-update, saving — happens
-inside the prepare window, and its cost is written to `Data.Timing`. Each step before the first trial
+All per-trial work — runtime sync, trial spec, the next state machine and its upload, plot update,
+saving — happens while a trial runs, and its cost is written to `Data.Timing`; an LED current asked
+for or a PulsePal program waits for the running trial's ITI (D3, `Timing.devices`). Each step before the first trial
 is timed (`lum.StartupTimes`, dialogs counted as the operator's time, `lum.dev.open` device by device),
 printed as the first trial starts and written to `Data.Session.Startup`. Teardown closes the camera
 and LED windows, saves the plots as an image, writes the final file, writes the settings back and

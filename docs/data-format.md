@@ -92,7 +92,8 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
 
 - `Type` — `'Behaviour'`
 - `Settings` — the settings struct as trial 1 was prepared (from 0.9.4; before, its runtime tier
-  `GUI` was trial 2's). Each trial's own runtime tier is `TrialSettings{k}`
+  `GUI` was trial 2's). Each trial's own runtime tier is `TrialSettings{k}`.
+  `Settings.Session.SettingsVersion` (0.9.11) is the release that wrote them
 - `LiquidCalibration` — the liquid calibration the valve times came from (0.9.4): one element per
   valve 1–3 with `Valve`, `Table` (ms, µL, as measured) and `Coeffs` (the fit Bpod's `GetValveTimes`
   uses, µL to ms). A side reward's open time is also `diff(RawEvents.Trial{k}.States.LeftReward)`
@@ -102,7 +103,9 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
 - `Rig` — the channel map
 - `DevicesAvailable` — which devices the session had (e.g. `FlexSync`)
 - the runner and runtime window used (`RunnerMode`, `RuntimeWindow`), and `TriggerStates` (0.9.5),
-  the states that opened the window in which the next trial was prepared
+  the states that opened the window in which the next trial was prepared: `{'WaitForCentrePoke'}`
+  from 0.9.11, as each trial starts (the ITI in sessions with light from 0.9.8 to 0.9.10; see
+  *Reading older files*)
 - `LightMayOutlastHold` (0.9.5) — true when a completed hold could end before the light. From 0.9.8
   every session with light (`Settings.Session.UseOpto`), since the hold without shaping is a
   runtime setting (`TrialSettings{k}.HoldLength`, `.FixedHold`); from 0.9.5 to 0.9.7, light on and a
@@ -117,7 +120,9 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
   (`S.Camera`), `Plan` (folder, base name, start time, format, events and session files, and per
   camera `Serial`, `Name`, `VideoFile`, `CsvFile`) and, written at teardown, `Summary` (`Duration_s`
   and per camera `FramesLogged`, `FramesWritten`, `FramesMissed`, `WriterDrops`,
-  `FramesIncomplete`, `QueuePeak`, `VideoFiles`, `Error`)
+  `FramesIncomplete`, `QueuePeak`, `VideoFiles`, `Error`, and from SpinCam engine 1.3.0
+  `TimestampCorrections`: the spurious 128 s steps taken out of that camera's
+  `HardwareTimestamp_us`)
 - the protocol version and the device log (`DeviceLog.PulsePal`, `DeviceLog.HiFi`,
   `DeviceLog.FlexIO`, `DeviceLog.Cameras`, `DeviceLog.DoricLED`)
 - `StoppedReason` — empty for a session that ran to its end or was stopped from the console, and
@@ -274,7 +279,12 @@ p = lum.pattern.patternAt(SessionData.Session.StimulusSet, SessionData.PatternIn
 ### `SessionData.Timing`
 
 How long each trial's prepare, send, plot and save steps took, in seconds (`prepare`, `send`,
-`plot`, `save`), so lag regressions show up in the data rather than only in the room; and
+`plot`, `save`), so lag regressions show up in the data rather than only in the room; `devices`
+(0.9.11), the seconds from trial *k*'s `ITI` spent sending what trial *k*+1 needed from a device
+(an LED current asked for from the LED window) and then uploading it, 0 on a trial whose successor was uploaded while it ran. Trial *k*+1
+starts one 0.1 ms cycle after trial *k* ends (`TrialStartTimestamp(k+1) - TrialEndTimestamp(k)`)
+when the ITI covered that time (`TrialSettings{k}.ITI`, 0.25 s by default, `lum.minimumITI`), and
+late by the rest when it did not; and
 `memoryGB` (0.9.6), the memory MATLAB was using, in GB, on every trial with a save
 (`Settings.Session.SaveEveryNTrials`) and on the last trial as the session ended, NaN on the others
 and off Windows.
@@ -459,6 +469,12 @@ the null device shims swallowed is recorded in `Data.Session.DeviceLog`. See
 ---
 
 ## Reading older files
+
+- **Sessions from 0.9.8 to 0.9.10 with light** prepared the next trial in the ITI (`TriggerStates`
+  `{'ITI'}`), after the trial had ended at the default 0 s ITI (0.25 s from 0.9.11): every trial started
+  `Timing.prepare(k) + Timing.send(k)` plus about 15 ms after the one before ended (LUMS0014
+  2026-09-28: median 196 ms, 9–351 ms), with no state machine running in the gap, so nothing the
+  animal did then is in `RawEvents` and every output was low. Their `Timing` has no `devices`.
 
 - **Sessions before 0.9.8** hold the hold without shaping in `Settings.Task.HoldLength` (`'Whole
   stimulus'` or `'Fixed'`) and `Settings.Task.FixedHold`, fixed for the session; from 0.9.8 they are

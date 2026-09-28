@@ -20,8 +20,9 @@ classdef SessionRunner < handle
     %       runner.advance();                 % start watching the next trial
     %   end
     %
-    % With a trial manager, the prepare window opens partway through the trial and
-    % the next state machine really is uploaded while the current one runs. In
+    % With a trial manager, the prepare window opens as the trial starts
+    % (lum.triggerStates) and the next state machine really is uploaded while the
+    % current one runs. In
     % emulator mode the same calls run the trial to completion first, so the
     % session is sequential - slower between trials, but identical in what it
     % produces. Mode says which is in use, and is recorded in the data file so a
@@ -32,7 +33,7 @@ classdef SessionRunner < handle
 
     properties (SetAccess = private)
         Mode           % 'trialmanager' or 'blocking'
-        TriggerStates  % States whose onset opens the prepare window
+        TriggerStates  % States whose onset opens the prepare window (entered from the first)
         Failed = false % True once a call to the state machine has failed
     end
 
@@ -49,7 +50,7 @@ classdef SessionRunner < handle
             % emulated comes from lum.dev.open, which is the one place that reads
             % BpodSystem.EmulatorMode. triggerStates names the states that mark the
             % point in a trial where MATLAB may start preparing the next one
-            % (lum.triggerStates); every trial passes through exactly one of them.
+            % (lum.triggerStates); every trial passes through one of them.
             obj.TriggerStates = triggerStates;
             if emulated
                 obj.Mode = 'blocking';
@@ -72,16 +73,44 @@ classdef SessionRunner < handle
         function awaitPrepareWindow(obj)
             % awaitPrepareWindow() blocks until it is safe to prepare the next trial.
             %
-            % With a trial manager this returns as soon as the running trial reaches
-            % one of the trigger states, leaving the rest of the trial for MATLAB to
-            % work in. In blocking mode there is no such window, so the trial is run
-            % to completion here and its data held for awaitTrialData.
+            % With a trial manager this returns as soon as the running trial has left its
+            % first state for one of the trigger states (lum.triggerStates: every one is
+            % entered from the first state), leaving the rest of the trial for MATLAB to
+            % work in. It watches BpodSystem.Status.CurrentStateName rather than calling
+            % BpodTrialManager.getCurrentEvents, which learns its trigger states only when
+            % first called: a transition it had processed before then - trial 1's, when
+            % TrialStart is short - went unnoticed, and it waited for the trial to end (rig
+            % check 2026-09-28: trial 2 started 153 ms late at a 0 s ITI). In blocking mode
+            % there is no such window, so the trial is run to completion here and its data
+            % held for awaitTrialData.
+            global BpodSystem %#ok<GVMIS> % Bpod's own session object
             if strcmp(obj.Mode, 'trialmanager')
-                obj.trialManager.getCurrentEvents(obj.TriggerStates);
+                first = BpodSystem.StateMatrix.StateNames{1};
+                while BpodSystem.Status.BeingUsed == 1 && BpodSystem.Status.InStateMatrix == 1 ...
+                        && strcmp(BpodSystem.Status.CurrentStateName, first)
+                    pause(0.001);
+                end
             else
                 SendStateMachine(obj.pendingSma);
                 obj.pendingSma = [];
                 obj.pendingRaw = RunStateMachine;
+            end
+        end
+
+        function awaitState(obj, name)
+            % awaitState(name) blocks until the running trial has entered the state, or ended.
+            %
+            % With a trial manager: until BpodSystem.Status.CurrentStateName is the state
+            % (BpodTrialManager writes it on every transition), or the trial has ended
+            % (Status.InStateMatrix 0), or the session was stopped. In blocking mode the trial
+            % has already run to completion, so it returns at once.
+            global BpodSystem %#ok<GVMIS> % Bpod's own session object
+            if ~strcmp(obj.Mode, 'trialmanager')
+                return
+            end
+            while BpodSystem.Status.BeingUsed == 1 && BpodSystem.Status.InStateMatrix == 1 ...
+                    && ~strcmp(BpodSystem.Status.CurrentStateName, name)
+                pause(0.001);
             end
         end
 

@@ -8,8 +8,10 @@ classdef Component < handle
     % modalities; only OutputActions and global timers differ.
     %
     % A component contributes in these ways, asked in this order:
-    %   configure        Device programming, run in the prepare window before the trial
-    %                    is built
+    %   needsConfigure   Whether configure would send anything to a device
+    %   configure        Device programming, run between trials: before the trial is
+    %                    built when nothing is running, otherwise after the running
+    %                    trial's light, in its ITI (needsConfigure says when that is needed)
     %   nTimersNeeded    How many global timers it needs this trial
     %   addGlobalTimers  Global timer definitions, given the indices it was granted
     %   outputActions    OutputActions for the state that delivers it
@@ -47,9 +49,16 @@ classdef Component < handle
             n = 0;
         end
 
+        function tf = needsConfigure(obj, context) %#ok<INUSD>
+            % needsConfigure() is true when configure() would send anything to a device.
+            % The next trial is built while the running one may still be lit, so a
+            % trial that needs programming is uploaded only after the running one ends.
+            tf = false;
+        end
+
         function configure(obj, context) %#ok<INUSD>
             % configure() does any device programming this component needs.
-            % Called in the inter-trial window, never during the stimulus.
+            % Called between trials, never during the stimulus.
         end
 
         function sma = addGlobalTimers(obj, sma, context, timerIndices) %#ok<INUSD>

@@ -83,7 +83,7 @@ commit is missing on the rig) and branch on it: section 7 lists what changed.
 | Clock | What runs it | Where it appears | Notes |
 |---|---|---|---|
 | **Bpod session clock** (s) | The state machine, 100 µs cycle | `TrialStartTimestamp`, `TrialEndTimestamp`, `RawEvents` (relative to trial start), `Analog.Timestamps`, `SyncPulses.Onset`, `LightSegments.Onset`, `Session.HouseLight.Edges.Time` | Reset when the session starts. **Use it as the session's reference clock.** |
-| **Camera hardware clock** (µs) | Each camera | frame log `HardwareTimestamp_us` | One per camera; the best frame intervals |
+| **Camera hardware clock** (µs) | Each camera | frame log `HardwareTimestamp_us` | One per camera; the best frame intervals. Up to SpinCam engine 1.2.0 (`Session.Cameras.EngineVersion`) it sometimes steps forward by exactly 128 s between two frames, the frame counters continuous (LUMS0014 2026-09-26 both views, 2026-09-28 topview twice): remove the steps before using it (§4). Engine 1.3.0 removes them as it records (`Summary.Cameras(k).TimestampCorrections` counts them); `spincam.io.readFrameLog` repairs older logs in MATLAB |
 | **Camera host clock** (s) | SpinCam, on the PC | frame log `HostTime_s`, `_events.csv`, `SessionData.CameraTime` | Shared by both cameras; frame arrival, a few ms after exposure. Anchored to wall time by `_session.json` `HostClockAnchor` |
 | **Wall clock** | Windows | `Session.StartTime`/`EndTime`, `HostTimestamp_datetime` | For people, not for alignment |
 | **Neuropixels clock** | IMEC or NI card on the acquisition PC | the probe's sync channel | Aligned through the sync line |
@@ -145,6 +145,10 @@ def decode_barcode(rise, fall, p):
 # Frames of one camera, on the Bpod clock
 log = pd.read_csv(csv_path)                     # SpinCam frame log
 t = log["HardwareTimestamp_us"].to_numpy() / 1e6
+# Up to SpinCam engine 1.2.0 the camera clock sometimes steps forward by exactly 128 s with no
+# frame missing: take them out (a no-op on logs from engine 1.3.0, which already did).
+steps = np.abs(np.diff(t) - 128) < 0.5
+t = t - 128 * np.concatenate([[0], np.cumsum(steps)])
 rise, fall = edges(t, log["TTL_State"].to_numpy() == 1)
 value, first = decode_barcode(rise, fall, params)
 assert value == session["Barcode"]["Value"]
@@ -314,6 +318,7 @@ full list.
 
 | Before | What to do |
 |---|---|
+| 0.9.11 | No `Timing.devices`. From 0.9.8, a session with light has a 0.01–0.35 s gap between every trial's end and the next one's start (`TrialStartTimestamp(k+1) - TrialEndTimestamp(k)`) with no state machine running: pokes then are not in `RawEvents`. The ITI was 0 s by default (0.25 s from 0.9.11). Video from SpinCam engine 1.2.0 or earlier may have 128 s steps in `HardwareTimestamp_us` (§3) |
 | 0.9.8 | `Settings.Task.HoldLength` / `FixedHold` are `Settings.GUI.HoldLength` (index: 1 whole stimulus, 2 fixed) / `GUI.FixedHold` from 0.9.8, and per trial in `TrialSettings`. A session with light always reserves the light clock from 0.9.8. Same-side runs could reach `MaxSameSide` + 1. The version string has no commit on the rig |
 | 0.9.7 | Sleep and ePhys sessions stopped mid-block have no `StoppedBlock` |
 | 0.9.6 | **Rescore**: a side poke after the response window was scored as a choice. Rescore from `RawEvents` (port `lum.scoreTrial`; LUMS0014's first session: 3 trials change). Default-named videos have `topview`/`sideview` swapped: use the camera serial |
@@ -348,6 +353,9 @@ record in the HDF5 file (`/checks`, one row per check with its value and pass/fa
 - `CameraTime` against the `TrialEnd` rows of `_events.csv` (they agree to a few ms: `CameraTime` is
   read as the mark is made)
 - the analog stream covers the session (samples ≈ duration × rate)
+- from 0.9.11, each trial starts 0.1 ms after the one before ends, except after a trial with
+  `Timing.devices` above its ITI's remaining time (an ITI below 0.25 s); the camera hardware clock
+  has no step (engine 1.3.0), or none left once the 128 s ones are removed
 - `StoppedReason` is empty, and the session's settings are as the log says
 
 ## 9. Numbers from one session, for testing a reader

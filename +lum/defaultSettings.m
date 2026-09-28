@@ -64,7 +64,11 @@ S.Meta.Drug = struct('Enabled', false, 'Name', '', 'Delivery', 'Intraperitoneal 
 
 %% Pre-session tier: session composition
 S.Session.Type = 'Behaviour';       % 'Behaviour', 'Sleep' or 'EphysCalibration' (lum.experimentChoices)
-S.Session.MaxTrials = 1000;
+S.Session.SettingsVersion = lum.version('release');  % The release that last wrote these settings
+% The session's trial order is built for MaxTrials trials, balanced over all of them, and bias
+% correction brings trials forward from the rest of it (lum.nextTrialSpec): 3000 leaves it
+% trials to draw on in any session an animal runs. Costs nothing measurable per trial.
+S.Session.MaxTrials = 3000;
 S.Session.SaveEveryNTrials = 5;     % SaveBpodSessionData rewrites the whole file each call
 S.Session.UseOpto = true;           % Connect to PulsePal and deliver patterned light
 S.Session.UseSound = true;          % Connect to the HiFi module
@@ -401,9 +405,10 @@ S = numericParam(S, 'PostStimulusHold', 0,    'Post-stimulus hold (s)',   [0 60]
      'Hold without shaping is Whole stimulus; not used with a fixed or growing hold.']);
 S = numericParam(S, 'ResponseWindow',   10,   'Response window (s)',      [0.1 3600], ...
     'From leaving the centre port: the time the animal has to poke a side port.');
-S = numericParam(S, 'ITI',              0,    'Inter-trial interval (s)', [0 3600], ...
-    ['Seconds between the end of one trial and the start of the next. At 0 the next trial '...
-     'starts as soon as it is prepared and sent, which takes up to about 0.4 s on the rig.']);
+S = numericParam(S, 'ITI', lum.minimumITI(), 'Inter-trial interval (s)', [0 3600], ...
+    ['Seconds from the end of a trial''s light to the start of the next trial, the same on '...
+     'every trial. 0.25 s is the shortest that holds with light: an LED current set in the LED '...
+     'window is sent in the ITI, and a shorter one delays the next trial (lum.minimumITI).']);
 
 % Punishment is two independent choices: which mistakes are punished, and what the
 % punishment is. The codes are written into every trial record.

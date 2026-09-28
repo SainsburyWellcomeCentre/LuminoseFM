@@ -25,7 +25,8 @@ function LuminoseFM
 % This file is deliberately thin. It sequences a session and owns nothing else:
 %   setup      settings, preflight, the LED connecting, session type, stimulus set,
 %              devices, video, sounds, windows, barcode
-%   trial loop generate, build, send any LED current asked for, upload, run, mark the
+%   trial loop build and upload the next trial as this one starts (an LED current or
+%              PulsePal program it needs waits for this one's ITI), run, mark the
 %              camera clock, score, record, plot, save
 %   teardown   save the plots as an image, merge the analog stream, write the final
 %              file, keep the settings as they ended for the next session, stop the
@@ -271,14 +272,15 @@ try
     valveCache = struct('amount', NaN, 'times', [0 0], 'centreAmount', NaN, 'centreTime', NaN);
     queue = stimulusSet.TrialPattern;
 
-    % Trigger states open the window in which MATLAB may prepare the next trial. Every
-    % trial passes through exactly one of these, and each leaves at least the ITI for the
-    % work to finish in. When the light may outlast the hold, the ITI itself (D21).
-    runner = lum.SessionRunner(devices.emulated, lum.triggerStates(S));
+    % The window in which MATLAB prepares the next trial opens as each trial starts
+    % (lum.triggerStates), so the next is uploaded long before this one ends and starts
+    % the moment it does (D3). One that needs a device command first is uploaded in the ITI.
+    runner = lum.SessionRunner(devices.emulated, lum.triggerStates());
     fprintf('LuminoseFM: running in %s mode, %s runtime window.\n', runner.Mode, lower(windowMode));
 
-    [S, spec, sma, valveCache, queue, ledCurrent, history] = prepareTrial(S, rig, devices, history, ...
+    [S, spec, sma, valveCache, queue, context, history] = prepareTrial(S, rig, devices, history, ...
         stimulusSet, queue, sounds, cueComponents, stimulusComponents, 1, valveCache, runtime);
+    ledCurrent = changeDevices(context, 1);  % Nothing is running yet
     % What the first trials will deliver is known now, so it is shown before trial 1 starts
     % rather than after it ends.
     plots.showNext(spec, queue);
@@ -320,21 +322,44 @@ try
         if BpodSystem.Status.BeingUsed == 0; break; end
 
         prepareTimer = tic;
+        waitsForDevices = false;
         if currentTrial < maxTrials
-            [S, nextSpec, sma, valveCache, queue, nextLEDCurrent, history] = prepareTrial(S, rig, ...
+            [S, nextSpec, sma, valveCache, queue, nextContext, history] = prepareTrial(S, rig, ...
                 devices, history, stimulusSet, queue, sounds, cueComponents, stimulusComponents, ...
                 currentTrial + 1, valveCache, runtime);
             nextGUI = S.GUI;
+            % This trial may still be lit, so an LED current or PulsePal program the next
+            % one needs waits for this one's ITI, and the next is uploaded after that.
+            waitsForDevices = needsDevices(nextContext);
+            nextLEDCurrent = devices.doricLED.CurrentmA;
         else
             nextSpec = [];
         end
         prepareSeconds = toc(prepareTimer);
 
         sendTimer = tic;
-        if currentTrial < maxTrials
+        if currentTrial < maxTrials && ~waitsForDevices
             runner.queue(sma);
         end
         sendSeconds = toc(sendTimer);
+
+        devicesSeconds = 0;
+        if waitsForDevices
+            % In the ITI the light is over: the commands go out, then the upload, and the next
+            % trial starts on time if the ITI covers them (lum.minimumITI, Data.Timing.devices).
+            runner.awaitState('ITI');
+            if BpodSystem.Status.BeingUsed == 1
+                devicesTimer = tic;
+                if trialGUI.ITI < lum.minimumITI(S)
+                    fprintf(['LuminoseFM: trial %d waits for its LED current or PulsePal program '...
+                             'after a %g s ITI; Bpod warns of the dead time once.\n'], ...
+                            currentTrial + 1, trialGUI.ITI);
+                end
+                nextLEDCurrent = changeDevices(nextContext, currentTrial + 1);
+                runner.queue(sma);
+                devicesSeconds = toc(devicesTimer);
+            end
+        end
 
         rawEvents = runner.awaitTrialData();
         arrivedAt = devices.houseLight.sessionTime();  % For the trial's house light level
@@ -383,6 +408,7 @@ try
         % trial's timing. The save's own cost lands in the next file.
         data.Timing.prepare(currentTrial) = prepareSeconds;
         data.Timing.send(currentTrial) = sendSeconds;
+        data.Timing.devices(currentTrial) = devicesSeconds;
         data.Timing.plot(currentTrial) = plotSeconds;
 
         saveTimer = tic;
@@ -490,7 +516,9 @@ finishVideo(devices, nCompleted, saved);
 runtime.close();
 plots.close();  % Only hidden by the console's End button, so it could be saved above
 closeDevices(devices);
-clear runner runtime devices plots cueComponents stimulusComponents cameraWindow ledWindow  % No lum.* object may outlive Stop
+% No lum.* object may outlive Stop: the trial contexts hold the devices too.
+clear runner runtime devices plots cueComponents stimulusComponents cameraWindow ledWindow ...
+      context nextContext
 
 % The summary plots and the log, from the saved data, once the rig is released: they take a
 % few seconds and change nothing in the data file (lum.report.write).
@@ -540,11 +568,20 @@ if ~isempty(stoppedReason)
 end
 
 
-function [S, spec, sma, valveCache, queue, ledCurrent, history] = prepareTrial(S, rig, devices, ...
+function [S, spec, sma, valveCache, queue, context, history] = prepareTrial(S, rig, devices, ...
     history, stimulusSet, queue, sounds, cueComponents, stimulusComponents, trialNumber, ...
     valveCache, runtime)
-% Everything needed to run one trial, done inside the previous trial's window.
+% Everything needed to run one trial but the device commands, done while the previous trial
+% runs, perhaps during its light: context carries what changeDevices needs in its ITI.
+itiBefore = S.GUI.ITI;
 S = runtime.sync(S);
+if S.GUI.ITI ~= itiBefore
+    % Typed in the runtime window: the tabbed one has said so already, the compact one not.
+    [~, itiNote] = lum.minimumITI(S);
+    if ~isempty(itiNote)
+        warning('lum:LuminoseFM:shortITI', '%s', itiNote);
+    end
+end
 
 % The centre reward the operator asked for again: its run starts, goes on or ends here,
 % and a run that has just ended unticks its box in the runtime window straight away.
@@ -552,10 +589,6 @@ S = runtime.sync(S);
 if unticked
     S = runtime.sync(S);
 end
-
-% An LED current asked for from the LED window goes to the driver now, after the running
-% trial's stimulus, and is what the trial prepared here runs at (NaN when set by hand).
-ledCurrent = devices.doricLED.applyPending(trialNumber);
 
 [spec, queue] = lum.nextTrialSpec(S, stimulusSet, queue, history, trialNumber);
 history = lum.HoldShaping.notePrepared(history, spec);  % Shaping grows the next from this one
@@ -612,15 +645,30 @@ context = struct('S', S, 'rig', rig, 'devices', devices, 'spec', spec, ...
                  'stimulus', {stimulusComponents}, 'valveTimes', valveCache.times, ...
                  'centreValveTime', valveCache.centreTime);
 
-% Device programming belongs here, in the inter-trial window, never mid-stimulus.
-for i = 1:numel(stimulusComponents)
-    stimulusComponents{i}.configure(context);
-end
-for i = 1:numel(cueComponents)
-    cueComponents{i}.configure(context);
+sma = lum.buildTrialSM(context);
+
+
+function tf = needsDevices(context)
+% Whether the trial prepared in context needs a command sent to a device before it runs: an
+% LED current asked for from the LED window, or a component to program (PulsePal's carrier
+% before trial 1, the stimulus window being fixed for the session). Rare; such a trial is
+% uploaded in this one's ITI.
+tf = context.devices.doricLED.hasPending();
+components = [context.stimulus, context.cue];
+for i = 1:numel(components)
+    tf = tf || components{i}.needsConfigure(context);
 end
 
-sma = lum.buildTrialSM(context);
+
+function ledCurrent = changeDevices(context, trialNumber)
+% Send what the trial prepared in context needs from the devices, with no light playing:
+% any LED current asked for from the LED window, and each component's programming. Returns
+% the LED currents on A and B the trial runs at (NaN when the LED is set by hand).
+ledCurrent = context.devices.doricLED.applyPending(trialNumber);
+components = [context.stimulus, context.cue];
+for i = 1:numel(components)
+    components{i}.configure(context);
+end
 
 
 function subject = currentSubject()
@@ -648,8 +696,8 @@ data = struct();
 for name = trialSeriesNames()
     data.(name{1}) = blank;
 end
-data.Timing = struct('prepare', blank, 'send', blank, 'plot', blank, 'save', blank, ...
-                     'memoryGB', blank);
+data.Timing = struct('prepare', blank, 'send', blank, 'devices', blank, 'plot', blank, ...
+                     'save', blank, 'memoryGB', blank);
 data.RuntimeSettings = cell(1, maxTrials);
 
 
