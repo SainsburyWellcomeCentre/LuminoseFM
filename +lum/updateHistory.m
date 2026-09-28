@@ -11,7 +11,7 @@ function history = updateHistory(history, trialNumber, spec, result)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.newHistory, lum.scoreTrial
+% See also lum.newHistory, lum.scoreTrial
 
 if trialNumber > history.capacity
     error('lum:updateHistory:overCapacity', ...

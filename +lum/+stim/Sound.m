@@ -11,10 +11,10 @@ classdef Sound < lum.stim.Component
     %
     % Any other name ('Cue', 'Noise') is played as it is. A delayed onset is silence
     % at the start of the loaded waveform, so a sound never costs a global timer.
-    % When there is no module — emulator mode, sound switched off, or a sound that
-    % was not loaded because its component is off — the state runs silently.
+    % When there is no module - emulator mode, sound switched off, or a sound that
+    % was not loaded because its component is off - the state runs silently.
     %
-    % See also: lum.stim.Component, lum.loadSounds, lum.dev.HiFi
+    % See also lum.stim.Component, lum.loadSounds, lum.dev.HiFi
 
     properties (Constant)
         PerGroupName = 'Stimulus'  % Resolved per trial to 'Group<k>'

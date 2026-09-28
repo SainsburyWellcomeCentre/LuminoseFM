@@ -16,7 +16,7 @@ function choices = stepChoices(testPulses)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.sleep.testPulsePlan, lum.gui.TestPulseDesigner
+% See also lum.sleep.testPulsePlan, lum.gui.TestPulseDesigner
 
 choices = struct();
 choices.Channels = {'A and B', 'A', 'B', 'Alternate A and B'};

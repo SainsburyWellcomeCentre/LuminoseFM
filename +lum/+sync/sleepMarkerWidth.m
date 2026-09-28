@@ -7,7 +7,7 @@ function width = sleepMarkerWidth(params)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.sync.barcode, lum.sync.decodeBarcode
+% See also lum.sync.barcode, lum.sync.decodeBarcode
 
 if isfield(params, 'SleepMarkerWidth') && ~isempty(params.SleepMarkerWidth)
     width = params.SleepMarkerWidth;

@@ -3,17 +3,17 @@ classdef Flex < lum.dev.Device
     %
     % Two things on this rig use Flex I/O: the flow meter, streamed by Bpod itself
     % from Flex1 configured as an analog input, and the sync TTL on Flex2 as a
-    % digital output. Neither is emulated — Bpod('EMU') presents a Bpod r0.7-1.0
-    % with no Flex channels at all — so both are behind this shim.
+    % digital output. Neither is emulated - Bpod('EMU') presents a Bpod r0.7-1.0
+    % with no Flex channels at all - so both are behind this shim.
     %
     % The protocol never streams analog data itself; Bpod writes it to a
     % '..._ANLG.dat' file beside the session file. This class reports what is
     % configured, opens Bpod's analog viewer so the operator can watch the airflow,
     % sends the session barcode on the sync line, and merges the analog file into the
-    % session data once the session ends — with its timeline corrected for the
+    % session data once the session ends - with its timeline corrected for the
     % barcode (alignAnalog).
     %
-    % See also: lum.dev.open, lum.sync.barcode, AddFlexIOAnalogData, CheckRig
+    % See also lum.dev.open, lum.sync.barcode, AddFlexIOAnalogData, CheckRig
 
     properties (SetAccess = protected)
         AnalogChannels  % Indices of Flex channels configured as analog input
@@ -120,7 +120,7 @@ classdef Flex < lum.dev.Device
             %
             % Bpod starts streaming on the first RunStateMachine of a session and tags
             % each sample with the number of the state machine run it was taken in,
-            % but AddFlexIOAnalogData stamps the first sample with the first *trial's*
+            % but AddFlexIOAnalogData stamps the first sample with the first trial's
             % start time. A barcode sent as its own run before trial 1 therefore
             % shifts every analog timestamp late by the barcode's length (about 1.8 s),
             % and numbers every sample one trial too high. The airflow then appears to

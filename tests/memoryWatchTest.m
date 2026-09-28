@@ -1,6 +1,8 @@
 function tests = memoryWatchTest
-% memoryWatchTest checks lum.watchMemoryAfterSession: the sampler a desktop session starts
-% at its end to record MATLAB's memory and busiest threads while MATLAB sits idle.
+% memoryWatchTest checks lum.watchMemoryAfterSession, the sampler run after a session.
+%
+% A desktop session starts it at its end, to record MATLAB's memory and busiest threads
+% while MATLAB sits idle.
 tests = functiontests(localfunctions);
 end
 

@@ -17,7 +17,7 @@ function pulses = syncPulseTimes(sync, durationSeconds)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.sleep.pulseSchedule, lum.sleep.nextBlock, lum.sleep.run
+% See also lum.sleep.pulseSchedule, lum.sleep.nextBlock, lum.sleep.run
 
 cycle = 1e-4;
 endCycles = round(durationSeconds / cycle);

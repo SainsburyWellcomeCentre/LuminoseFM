@@ -5,9 +5,9 @@ classdef NullHiFi < lum.dev.HiFi
     % is rejected on a desk PC too; the transfer itself is only logged. Because
     % playAction() and stopAction() return empty output actions when the device is
     % unavailable, a state machine built for sound runs unchanged in emulator mode
-    % — it simply produces silence.
+    % - it simply produces silence.
     %
-    % See also: lum.dev.HiFi, lum.dev.RealHiFi, lum.dev.open, TestHiFiSound
+    % See also lum.dev.HiFi, lum.dev.RealHiFi, lum.dev.open, TestHiFiSound
 
     methods
         function obj = NullHiFi(moduleName, samplingRate, reason)

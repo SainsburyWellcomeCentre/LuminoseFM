@@ -22,7 +22,7 @@ function [mA, reached, note] = currentFor(cal, irradiance, limitmA)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.led.current, lum.led.irradiance, lum.led.intensity
+% See also lum.led.current, lum.led.irradiance, lum.led.intensity
 
 if isempty(cal)
     error('lum:led:currentFor:noCalibration', 'This light path has no calibration; give the current in mA.');

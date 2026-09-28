@@ -1,7 +1,8 @@
 function report = fromFile(dataFile, varargin)
 % lum.report.fromFile makes a saved behaviour session's plots and log from its data file.
 %
-%   report = lum.report.fromFile('D:\luminoseData\LUMS0014\LuminoseFM\Session Data\LUMS0014_LuminoseFM_20260927_130459.mat')
+%   folder = 'D:\luminoseData\LUMS0014\LuminoseFM\Session Data';
+%   report = lum.report.fromFile(fullfile(folder, 'LUMS0014_LuminoseFM_20260927_130459.mat'))
 %
 % For sessions recorded before the summary plots existed, or to draw a session again with
 % the current version: the same summary plots and log the session writes as it ends
@@ -22,7 +23,7 @@ function report = fromFile(dataFile, varargin)
 % Returns a struct: .Plots, .Log, .OnlinePlots (the image, or ''), .Rescored (trials whose
 % outcome changed), .Problems, .Seconds.
 %
-% See also: lum.report.write, lum.report.replayOnlinePlots, lum.scoreTrial
+% See also lum.report.write, lum.report.replayOnlinePlots, lum.scoreTrial
 
 p = inputParser;
 p.FunctionName = 'lum.report.fromFile';

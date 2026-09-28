@@ -12,7 +12,7 @@ function problems = check(pattern, timerBudget)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.pattern.canonicalise, lum.pattern.validate
+% See also lum.pattern.canonicalise, lum.pattern.validate
 
 problems = {};
 tolerance = 1e-9;
@@ -76,7 +76,7 @@ if any(offsets > pattern.Duration + tolerance)
 end
 
 % Segments on the same channel must not overlap. canonicalise() merges those, so
-% this only fires on a pattern that skipped it — worth catching, because two
+% this only fires on a pattern that skipped it - worth catching, because two
 % timers on one BNC line cut each other short.
 for channel = 1:pattern.nChannels
     onThisChannel = sortrows(segments(segments(:, 1) == channel, :), 2);

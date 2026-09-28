@@ -12,7 +12,7 @@ function drawTestPulseEpoch(ax, plan, step, t)
 %   step  Index of the step to show; one without light shows a note
 %   t     lum.gui.theme
 %
-% See also: lum.sleep.epochShape, lum.gui.drawTestPulseSchedule, lum.gui.TestPulseDesigner
+% See also lum.sleep.epochShape, lum.gui.drawTestPulseSchedule, lum.gui.TestPulseDesigner
 
 cla(ax);
 hold(ax, 'on');

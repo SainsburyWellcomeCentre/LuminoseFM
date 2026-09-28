@@ -13,7 +13,7 @@ function plots = replayOnlinePlots(Data, varargin)
 % Options:
 %   'Visible'  'off' (default) or 'on'
 %
-% See also: lum.report.fromFile, lum.OnlinePlots
+% See also lum.report.fromFile, lum.OnlinePlots
 
 p = inputParser;
 p.FunctionName = 'lum.report.replayOnlinePlots';

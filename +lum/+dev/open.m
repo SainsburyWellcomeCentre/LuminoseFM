@@ -1,7 +1,8 @@
 function devices = open(rig, S, varargin)
 % lum.dev.open constructs the session's hardware shims, once, at startup.
 %
-% This is the only place in the protocol that reads BpodSystem.EmulatorMode.
+% This is the only place in the protocol (LuminoseFM and +lum) that reads
+% BpodSystem.EmulatorMode; the rig utilities in hardware/ read it for themselves.
 % Everything downstream asks a device whether it is Available, or simply calls it
 % and lets the null shim log the call. That keeps emulator support structural
 % rather than a condition sprinkled through the trial-building code.
@@ -22,14 +23,14 @@ function devices = open(rig, S, varargin)
 %
 % Returns a struct with fields:
 %   .emulated  True when Bpod is running as an emulator
-%   .pulsePal  lum.dev.PulsePal subclass — optogenetic carrier waveform
-%   .hifi      lum.dev.HiFi subclass — sound
-%   .flex      lum.dev.Flex subclass — flow meter stream and sync TTL
-%   .cameras   lum.dev.Cameras subclass — video, through spincam (lum.dev.openCameras)
-%   .houseLight lum.dev.HouseLight subclass — the house light on PulsePal output 3,
+%   .pulsePal  lum.dev.PulsePal subclass - optogenetic carrier waveform
+%   .hifi      lum.dev.HiFi subclass - sound
+%   .flex      lum.dev.Flex subclass - flow meter stream and sync TTL
+%   .cameras   lum.dev.Cameras subclass - video, through spincam (lum.dev.openCameras)
+%   .houseLight lum.dev.HouseLight subclass - the house light on PulsePal output 3,
 %              starting at S.Session.HouseLight, switched at once; disabled in a session
 %              without light that has no PulsePal (lum.dev.openHouseLight)
-%   .doricLED  lum.dev.DoricLED — the LED driver, both channels in external TTL mode at
+%   .doricLED  lum.dev.DoricLED - the LED driver, both channels in external TTL mode at
 %              'LEDCurrentmA' (lum.dev.openDoricLED, D17); 'Manual' when it is set by
 %              hand
 %   .openSeconds  How long each device took to open, s (DoricLED, PulsePal, Cameras,
@@ -37,15 +38,17 @@ function devices = open(rig, S, varargin)
 %
 % The HiFi module, when it is asked for but unreachable, degrades to its null shim
 % with a warning rather than ending the session: a rig with a loose HiFi cable can
-% still run a silent session. PulsePal does too in a session without light, which then runs
-% without the house light (lum.dev.openHouseLight greys its switch out). A session that
-% delivers light does not: Bpod would gate channels A and B into a PulsePal it never
-% programmed, so it refuses to start without it (lum.dev.openPulsePal). Cameras refuse the same way when video is asked for and cannot
-% be recorded (lum.dev.openCameras). PulsePal is opened first, the cameras second and the
-% house light third, and a refusal closes what was opened before it, so it leaves nothing
-% open and the light off.
+% still run a silent session. PulsePal does too in a session without light, which then
+% runs without the house light (lum.dev.openHouseLight greys its switch out). A session
+% that delivers light does not: Bpod would gate channels A and B into a PulsePal it never
+% programmed, so it refuses to start without it (lum.dev.openPulsePal). Cameras refuse the
+% same way when video is asked for and cannot be recorded (lum.dev.openCameras).
 %
-% See also: RigConfig, CheckRig, lum.dev.Device, lum.dev.openPulsePal
+% The Doric LED is set up first, then PulsePal, the cameras and the house light are
+% opened, in that order. A refusal closes the devices opened before it, so it leaves
+% nothing open and the light off; the LED stays with the caller, which releases it.
+%
+% See also RigConfig, CheckRig, lum.dev.Device, lum.dev.openPulsePal
 
 global BpodSystem %#ok<GVMIS> % The one place emulator mode is read
 

@@ -6,12 +6,12 @@ function plan = testPulsePlan(testPulses, recordingMinutes)
 % gate with a carrier. A probe step gates constant light, so each gate is one probe
 % pulse; a plasticity-train step gates each burst, and PulsePal fills the burst with
 % the train's pulses. This function turns S.Sleep.TestPulses into every gate the
-% session will send, in session time, before the session starts — so the setup dialog
+% session will send, in session time, before the session starts - so the setup dialog
 % refuses what cannot run, the plots can draw the whole schedule, and the session only
 % has to cut the list into state machines (lum.sleep.nextBlock).
 %
 % Words:
-%   epoch     One probe — a single pulse, or a pair InterPulseInterval apart — or, in a
+%   epoch     One probe - a single pulse, or a pair InterPulseInterval apart - or, in a
 %             train step, one train. Epochs never share a state machine run with a
 %             boundary inside them.
 %   segment   One gate on one channel: [onset duration] on A or B. In a train step a
@@ -47,15 +47,15 @@ function plan = testPulsePlan(testPulses, recordingMinutes)
 %   .NextStepEpoch    For each epoch, the row of the next epoch of a different step
 %                     (nEpochs + 1 when none): where the carrier may change
 %   .MostSegmentsPerEpoch, .MostPulsesPerEpoch, .LongestEpoch (s)
-%   .ShortestDark     Seconds of darkness after the most crowded epoch (Inf for none)
+%   .ShortestDark     The shortest darkness after any epoch before the next, s (Inf for none)
 %   .CyclePeriod      1e-4
 %
 % Errors with 'lum:sleep:testPulsePlan:<reason>' and a message naming the step or train.
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.sleep.nextBlock, lum.sleep.validate, lum.sleep.epochShape,
-%           lum.gui.TestPulseDesigner, docs/architecture.md (D13)
+% See also lum.sleep.nextBlock, lum.sleep.validate, lum.sleep.epochShape,
+%          lum.gui.TestPulseDesigner, docs/architecture.md (D13)
 
 cycle = 1e-4;
 plan = emptyPlan(cycle);

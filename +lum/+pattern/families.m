@@ -17,7 +17,7 @@ function list = families()
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.pattern.generate, lum.pattern.familyDefaults, lum.gui.StimulusDesigner
+% See also lum.pattern.generate, lum.pattern.familyDefaults, lum.gui.StimulusDesigner
 
 list = struct( ...
     'Name', {'pure', 'mixture', 'count', 'order', 'motif', 'arbitrary'}, ...

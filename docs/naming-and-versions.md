@@ -82,6 +82,21 @@ names.
 
 Newest first. Each table puts the old behaviour or name on the left and the new on the right.
 
+### 0.9.9 → 0.9.10 — help text and comments to one standard, checked
+
+Every comment and help text read against the code it describes, and corrected where it had drifted;
+the convention written down (`docs/code-style.md`) and its mechanical parts tested. What a session
+does, and the data format, are unchanged.
+
+| 0.9.9 | 0.9.10 |
+|---|---|
+| Help text in several forms: `See also:` with a colon, two-line H1s, Markdown emphasis, em dashes and § (which a Windows console drops from `help`) | One form: an H1 that names the file in one sentence on one line; `See also` as MATLAB writes it, naming only what MATLAB can find; ASCII only; comment lines within 100 characters. `helpTextTest` checks it |
+| `lum.version`'s help repeated the release history (missing 0.9.4) | A pointer to this section and to *Reading older files*; the one fact only it held (sessions before 0.4.1 could run with PulsePal unprogrammed) moved to `data-format.md` |
+| Comments out of date: `lum.buildTrialSM`'s diagram sent an *End trial* early withdrawal to the ITI; `lum.HoldShaping` called the target "normally" the whole stimulus; the cue timed "from the poke" in several places; `lum.dev.open` opening PulsePal first; `lum.dev.DoricLED` checking currents against the LED's rating; `lum.sleep.testPulsePlan`'s `ShortestDark` "after the most crowded epoch"; the mixture's emulator cycles two | Each says what the code does: `WaitForLightEnd`; 0.6 s by default; from stimulus onset; the LED set up first; each current against its channel's limit; the shortest darkness after any epoch; one cycle |
+| `lum.validateSettings`: "The session type must be Behaviour or Sleep"; a cue that "stays on after the poke" | "Behaviour, Sleep or EphysCalibration"; a cue that "stays on into the stimulus" (identifiers unchanged) |
+| Docs: the memory sampler "after a desktop behaviour session"; the reaction-time axis "0.1 to 10 s at least" | After a desktop session of any type, as the code has run it since 0.9.7; 0.1 to 1 s at least (0.1 to 10 s while the panel is empty) |
+| — | README §15, *Help at the MATLAB prompt*; `docs/code-style.md`; `CLAUDE.md`, *Comments and help text* |
+
 ### 0.9.8 → 0.9.9 — the plots count a hold completed after retries, and one look for every plot
 
 Asked for after LUMS0014's third session, where 881 of 1177 hold attempts were early withdrawals
@@ -185,7 +200,7 @@ ended: reproduced on the rig the same day and traced to MATLAB's Workspace brows
 | automatic shaping's defaults: `HoldStart` 0.1 s, `HoldGrowth` 5%, `HoldTarget` 1 s | 0.2 s, 1%, 0.6 s. Settings files keep their own values (LUMS0014's: 0.9 s handed on, 2%, 1 s); change them on the setup dialog's Task tab (*Shaping*). A `HoldStart` above `HoldTarget` starts at the target, and the setup dialog notes it; the log line says when the handed-on start was capped at the target |
 | a sleep or ePhys session stopped from the console mid-block recorded nothing of that block, though its pulses and light up to the stop reached the recordings (1–4 extra sync pulses on the cameras in rig tests) | the block's plan is kept as `Session.StoppedBlock` (offsets, widths, channels, LED currents, the camera time of the stop) and marked `BlockStopped` in `_events.csv` |
 | after a desktop session MATLAB's Workspace browser worked through the session's changes to `BpodSystem` (listed in the base workspace since `Bpod()`), taking memory in proportion to the session: LUMS0014's sessions ended in "Out of memory." | the session's last step removes `BpodSystem` from the base workspace (the global stays; `EndBpod` and the next session are unaffected) |
-| — | a desktop behaviour session ends by starting `lum.watchMemoryAfterSession`, which samples MATLAB's memory and threads for 4 min into `<data file>_memory.csv` |
+| — | a desktop session (behaviour, sleep or ePhys calibration) ends by starting `lum.watchMemoryAfterSession`, which samples MATLAB's memory and threads for 4 min into `<data file>_memory.csv` |
 
 ### 0.9.5 → 0.9.6 — after LUMS0014's first session: choices inside the response window, crops per session type
 

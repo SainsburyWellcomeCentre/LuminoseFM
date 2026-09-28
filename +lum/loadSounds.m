@@ -9,9 +9,9 @@ function sounds = loadSounds(S, devices, stimulusSet)
 %   Noise       the white noise burst used as punishment (always)
 %   Cue         the cue tone, if the cue has a tone: a seamless loop, repeated for as
 %               long as the longest hold window allows, because the cue lasts until
-%               the animal pokes
+%               the stimulus starts
 %   CueTail     the cue tone's last part, if it stops part way through the stimulus:
-%               that long, ramped off, played at the poke in place of the loop
+%               that long, ramped off, played at stimulus onset in place of the loop
 %               (lum.stim.CueTone)
 %   Group<k>    one tone per stimulus group, if the stimulus has a tone
 %   LeftTone,   the tone of each side whose tone is enabled
@@ -19,8 +19,8 @@ function sounds = loadSounds(S, devices, stimulusSet)
 %
 % Group tones have to differ, or an auditory version of the task has nothing to
 % discriminate, so their frequencies are spread logarithmically across
-% S.Stimulus.ToneFrequencyRange — about equally discriminable rather than equally
-% spaced in Hz — and always match the number of groups the set has. A tone timed to
+% S.Stimulus.ToneFrequencyRange - about equally discriminable rather than equally
+% spaced in Hz - and always match the number of groups the set has. A tone timed to
 % start after stimulus onset is loaded with that much silence in front of it, which
 % is how a sound gets an onset without a global timer.
 %
@@ -37,7 +37,7 @@ function sounds = loadSounds(S, devices, stimulusSet)
 % Returns a containers.Map from sound name to the module slot holding it; empty when
 % the session uses no sound. lum.stim.Sound looks names up in it.
 %
-% See also: lum.dev.HiFi, lum.stim.Sound, TestHiFiSound
+% See also lum.dev.HiFi, lum.stim.Sound, TestHiFiSound
 
 sounds = containers.Map('KeyType', 'char', 'ValueType', 'double');
 if ~S.Session.UseSound

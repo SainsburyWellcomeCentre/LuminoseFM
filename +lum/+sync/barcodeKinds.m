@@ -6,6 +6,6 @@ function kinds = barcodeKinds()
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.sync.markerWidth, lum.sync.decodeBarcode
+% See also lum.sync.markerWidth, lum.sync.decodeBarcode
 
 kinds = {'Behaviour', 'Sleep', 'EphysCalibration'};

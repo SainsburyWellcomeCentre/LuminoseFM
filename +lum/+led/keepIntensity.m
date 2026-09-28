@@ -18,7 +18,7 @@ function S = keepIntensity(S, type, cals, startmA, endmA)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.led.intensity, lum.led.intensitySetting
+% See also lum.led.intensity, lum.led.intensitySetting
 
 irradiance = [NaN NaN];
 currents = [NaN NaN];

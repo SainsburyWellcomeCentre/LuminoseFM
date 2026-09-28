@@ -5,8 +5,8 @@ function tests = habituationSessionTest
 % hold, the withdrawal, and a side poke. It checks what the session script adds around the
 % state machine for the centre reward: valve 2's time looked up in the prepare window (or
 % the centre reward dropped, with a warning, when valve 2 has no calibration; which one this
-% machine has decides what is checked), and the
-% CentreReward, ResponseRetries and CentreHoldTime series in the data file.
+% machine has decides what is checked), and the CentreReward, ResponseRetries and
+% CentreHoldTime series in the data file.
 tests = functiontests(localfunctions);
 end
 

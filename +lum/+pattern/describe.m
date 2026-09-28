@@ -1,8 +1,8 @@
 function text = describe(pattern)
 % lum.pattern.describe returns a one-line summary of a light pattern.
 %
-% Used by the session log, the stimulus designer and the online plots, so that
-% what was delivered is legible without decoding a segment matrix. Channels are
+% Used by the command window as a session starts, the setup dialog and the stimulus
+% designer, so that what is delivered is legible without decoding a segment matrix. Channels are
 % named A and B, as they are everywhere the operator sees them.
 %
 % Example:
@@ -10,7 +10,7 @@ function text = describe(pattern)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.pattern.patternAt
+% See also lum.pattern.patternAt
 
 channelNames = 'AB';
 segments = pattern.Segments;

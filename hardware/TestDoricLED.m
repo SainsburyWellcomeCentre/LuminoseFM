@@ -1,7 +1,7 @@
 function report = TestDoricLED(varargin)
 % TestDoricLED lights channels A and B through the whole light path, as a session does.
 %
-% The light path (docs/hardware.md §2.2, D1, D17):
+% The light path (docs/hardware.md section 2.2, D1, D17):
 %
 %   Bpod BNC1 -> PulsePal IN1 -> OUT1 -> Doric LED channel 1 (TTL input) -> channel A
 %   Bpod BNC2 -> PulsePal IN2 -> OUT2 -> Doric LED channel 2 (TTL input) -> channel B
@@ -44,7 +44,7 @@ function report = TestDoricLED(varargin)
 % Requires Bpod to be running. Under Bpod('EMU') the driver is the package's simulated one
 % and PulsePal the null shim, so the check runs end to end without hardware (doricTest).
 %
-% See also: TestHouseLight, TestSyncLine, lum.dev.DoricLED, lum.dev.openDoricLED, RigConfig
+% See also TestHouseLight, TestSyncLine, lum.dev.DoricLED, lum.dev.openDoricLED, RigConfig
 
 global BpodSystem %#ok<GVMIS> % Imported to read the machine and run it
 

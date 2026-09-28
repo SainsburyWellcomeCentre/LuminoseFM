@@ -11,7 +11,7 @@ function mouse = startMouse(script)
 % stops and deletes the timer after RunStateMachine returns; mouse.UserData.Next - 1 is
 % how many rows were played.
 %
-% See also: startHouseLightClicker, stateMachineTest
+% See also startHouseLightClicker, stateMachineTest
 
 mouse = timer('ExecutionMode', 'fixedSpacing', 'Period', 0.02, 'BusyMode', 'drop', ...
               'UserData', struct('Next', 1, 'Started', []));

@@ -1,10 +1,11 @@
 classdef RealPulsePal < lum.dev.PulsePal
     % lum.dev.RealPulsePal is the PulsePal shim that talks to the device.
     %
-    % Constructed by lum.dev.openPulsePal when Bpod is not in emulator mode: in every
-    % session on the rig, because PulsePal drives the house light, and by TestHouseLight. The PulsePal MATLAB
-    % folder is not on the saved MATLAB path on this rig, so the constructor adds it for
-    % the current session only — it never calls savepath.
+    % Constructed by lum.dev.openPulsePal when Bpod is not in emulator mode, in every
+    % session on the rig, because PulsePal drives the house light; and by TestHouseLight
+    % and TestDoricLED. The PulsePal MATLAB folder is not on the saved MATLAB path on this
+    % rig, so the constructor adds it for the current session only; it never calls
+    % savepath.
     %
     % The connection itself is PulsePal's own code, which keeps it in the global
     % PulsePalSystem. Two of its habits matter here:
@@ -16,7 +17,7 @@ classdef RealPulsePal < lum.dev.PulsePal
     % So a connection already held is reused only if the device answers a handshake on
     % it; otherwise it is dropped, which releases the port, and PulsePal connects afresh.
     %
-    % See also: lum.dev.PulsePal, lum.dev.NullPulsePal, lum.dev.openPulsePal
+    % See also lum.dev.PulsePal, lum.dev.NullPulsePal, lum.dev.openPulsePal
 
     properties (Constant)
         % Firmware 20 has a bug in gated trigger mode with both trigger inputs in use

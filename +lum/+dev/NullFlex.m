@@ -6,7 +6,7 @@ classdef NullFlex < lum.dev.Flex
     % hasAnalog() and hasSync() are false, and every caller degrades to a state
     % machine without them rather than erroring.
     %
-    % See also: lum.dev.Flex, lum.dev.RealFlex, lum.dev.open
+    % See also lum.dev.Flex, lum.dev.RealFlex, lum.dev.open
 
     methods
         function obj = NullFlex(reason)

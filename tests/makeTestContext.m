@@ -4,7 +4,7 @@ function context = makeTestContext(varargin)
 % Everything the trial builder needs, with no hardware attached: the device shims are
 % the null implementations, so a state machine can be assembled and inspected on any
 % machine. Settings are taken as given, so a test changes them first and then asks for
-% a context — the components, the stimulus set and the trial spec all follow from them.
+% a context - the components, the stimulus set and the trial spec all follow from them.
 %
 % Options (name/value), all defaulted:
 %   'Settings'     Settings struct (default lum.defaultSettings)
@@ -14,7 +14,7 @@ function context = makeTestContext(varargin)
 %                  has no Flex I/O, so a test that needs the sync line has to borrow
 %                  a channel that exists, e.g. 'BNC2'.
 %
-% See also: lum.buildTrialSM, stateMachineTest
+% See also lum.buildTrialSM, stateMachineTest
 
 p = inputParser;
 addParameter(p, 'Settings', lum.defaultSettings);

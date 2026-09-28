@@ -30,7 +30,7 @@ classdef RuntimeWindow < handle
     % the window. Closing the window does not stop the session; sync then leaves S as
     % it is.
     %
-    % See also: lum.gui.runtimeFields, lum.defaultSettings, BpodParameterGUI
+    % See also lum.gui.runtimeFields, lum.defaultSettings, BpodParameterGUI
 
     properties (SetAccess = private)
         Mode     % 'Tabbed' or 'Compact'

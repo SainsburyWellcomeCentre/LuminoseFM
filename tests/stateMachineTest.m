@@ -861,7 +861,7 @@ end
 function testAPulsedSyncModeIsTrialStartsOwnTimerAndCostsNoGlobalTimer(testCase)
 % The pulse is the first state of the trial: high on entering TrialStart, low again
 % as WaitForCentrePoke comes up with the cue. No global timer is spent on it, and no
-% timer channel is linked to the line — that path is not the one the rig drives (D4).
+% timer channel is linked to the line - that path is not the one the rig drives (D4).
 global BpodSystem %#ok<GVMIS>
 column = find(strcmp(BpodSystem.StateMachineInfo.OutputChannelNames, 'BNC2'));
 S = lum.defaultSettings;

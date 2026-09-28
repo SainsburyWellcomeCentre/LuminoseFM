@@ -1,5 +1,5 @@
 function clicker = startHouseLightClicker(ready)
-% startHouseLightClicker clicks a session window's House light box once, while a state machine runs.
+% startHouseLightClicker clicks a live figure's House light box once, as a state machine runs.
 %
 %   clicker = startHouseLightClicker(ready)
 %
@@ -13,7 +13,7 @@ function clicker = startHouseLightClicker(ready)
 % Arguments:
 %   ready  Function returning true once the session is far enough in to click
 %
-% See also: emulatorSessionTest, sleepSessionTest, lum.gui.houseLightSwitch
+% See also emulatorSessionTest, sleepSessionTest, lum.gui.houseLightSwitch
 
 clicker = timer('ExecutionMode', 'fixedSpacing', 'Period', 0.05, 'BusyMode', 'drop', ...
                 'UserData', struct('Clicked', false, 'Level', NaN));

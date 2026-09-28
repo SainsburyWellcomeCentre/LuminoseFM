@@ -1,8 +1,8 @@
 function tests = trialSpecTest
 % trialSpecTest exercises trial generation: lum.nextTrialSpec and the history helpers.
 %
-% This is the task's policy — following the stimulus order, contingency, bias
-% correction, run limits, training stage, hold shaping — and it is pure, so it can be
+% This is the task's policy - following the stimulus order, contingency, bias
+% correction, run limits, training stage, hold shaping - and it is pure, so it can be
 % tested exhaustively without an animal.
 tests = functiontests(localfunctions);
 end

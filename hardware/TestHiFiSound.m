@@ -44,6 +44,8 @@ function TestHiFiSound(varargin)
 %   still be rehearsed offline. Pass 'Device','pc' to force that path deliberately.
 % - Loading a sound overwrites the target slot in the module's active sound set, so
 %   the utility refuses to run while a protocol is in progress unless 'Force' is set.
+%
+% See also lum.testSounds, lum.loadSounds, lum.dev.HiFi, CheckRig
 
 global BpodSystem %#ok<GVMIS> % Imported to find the module's USB port
 

@@ -7,7 +7,7 @@ classdef Form
     % barcode preview. One definition here, so the windows look alike and a change of
     % spacing is made once. Static methods only, for uifigure components.
     %
-    % See also: lum.gui.SetupDialog, lum.gui.SleepSetupDialog, lum.gui.ExperimentForm
+    % See also lum.gui.SetupDialog, lum.gui.SleepSetupDialog, lum.gui.ExperimentForm
 
     methods (Static)
         function grid = panel(parent, title, nRows, t, labelWidth)

@@ -15,12 +15,12 @@ function names = triggerStates(S)
 % (lum.HoldShaping.lightMayOutlastHold), the light can still be on in any of those
 % states, and the prepare window changes LED currents and may program PulsePal. The
 % ITI is then the only trigger state: every trial that ends reaches it through
-% WaitForLightEnd, after the light (D21). The next trial is prepared in the ITI, as it
-% already was after NoInitiation and NoResponse.
+% WaitForLightEnd, after the light (D21). For a trial that ends in NoInitiation or
+% NoResponse, which last next to no time, that changes nothing.
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.SessionRunner, lum.buildTrialSM, lum.HoldShaping
+% See also lum.SessionRunner, lum.buildTrialSM, lum.HoldShaping
 
 if lum.HoldShaping.lightMayOutlastHold(S)
     names = {'ITI'};

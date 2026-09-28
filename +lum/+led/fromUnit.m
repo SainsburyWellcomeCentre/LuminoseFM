@@ -9,7 +9,7 @@ function mA = fromUnit(cal, value)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.led.toUnit, lum.led.current
+% See also lum.led.toUnit, lum.led.current
 
 if isempty(cal)
     mA = round(double(value));

@@ -48,13 +48,13 @@ function result = stimulusSet(S, timerBudget, nChannels)
 %
 % Errors, naming the group or trial, when a pattern needs more global timers than
 % the budget, when the contingency does not have one P(left) per group, or when two
-% groups deliver identical light but pay different sides — a task the animal
+% groups deliver identical light but pay different sides - a task the animal
 % cannot solve, which runs perfectly and means nothing.
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.pattern.generate, lum.pattern.applyContingency, lum.pattern.patternAt,
-%           lum.timerBudget
+% See also lum.pattern.generate, lum.pattern.applyContingency, lum.pattern.patternAt,
+%          lum.timerBudget
 
 if nargin < 3 || isempty(nChannels)
     nChannels = 2;
@@ -83,8 +83,8 @@ if usesLight && any(nTimers > timerBudget)
     error('lum:pattern:stimulusSet:timerBudget', ...
           ['%s has %d separate stretches of light, and each costs a global timer, but '...
            'only %d are left for light on this state machine. Use fewer slots, letters, '...
-           'turns or mixture cycles, a fill of 1 so that neighbouring flashes on one channel join, or a '...
-           'coarser bin.'], where, nTimers(worst), timerBudget);
+           'turns or mixture cycles, a fill of 1 so that neighbouring flashes on one channel '...
+           'join, or a coarser bin.'], where, nTimers(worst), timerBudget);
 end
 if nChannels < 2 && any(G.States(:) >= 2)
     error('lum:pattern:stimulusSet:tooFewChannels', ...

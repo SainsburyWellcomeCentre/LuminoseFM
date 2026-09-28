@@ -10,7 +10,7 @@ function [value, unit] = toUnit(cal, currentmA)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.led.fromUnit, lum.led.describe, lum.led.irradiance
+% See also lum.led.fromUnit, lum.led.describe, lum.led.irradiance
 
 if isempty(cal)
     value = double(currentmA);

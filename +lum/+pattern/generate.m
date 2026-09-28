@@ -89,8 +89,8 @@ function G = generate(generator, duration, nTrials)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.pattern.stimulusSet, lum.pattern.fromStates, lum.pattern.families,
-%           lum.pattern.familyDefaults, lum.gui.StimulusDesigner
+% See also lum.pattern.stimulusSet, lum.pattern.fromStates, lum.pattern.families,
+%          lum.pattern.familyDefaults, lum.gui.StimulusDesigner
 
 g = lum.pattern.withGeneratorDefaults(generator);
 

@@ -17,7 +17,7 @@ classdef StartupTimes < handle
     %   fprintf('LuminoseFM: %s\n', startup.describe());
     %   BpodSystem.Data.Session.Startup = startup.record();
     %
-    % See also: LuminoseFM, lum.dev.open, lum.sleep.run
+    % See also LuminoseFM, lum.dev.open, lum.sleep.run
 
     properties (SetAccess = private)
         Names = {}        % Each step, in order
@@ -94,6 +94,7 @@ classdef StartupTimes < handle
 
     methods (Access = private)
         function text = partsText(obj, name)
+            % ' (Cameras 14.1, PulsePal 2.3)': a step's breakdown, parts of 0.05 s or more.
             text = '';
             field = matlab.lang.makeValidName(name);
             if ~isfield(obj.Parts, field)

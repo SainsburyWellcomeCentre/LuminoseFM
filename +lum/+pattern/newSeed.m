@@ -16,7 +16,7 @@ function seed = newSeed()
 %
 % Returns an integer in [1, 2^31 - 1].
 %
-% See also: lum.pattern.generate, lum.pattern.prepareSeed
+% See also lum.pattern.generate, lum.pattern.prepareSeed
 
 persistent stream
 if isempty(stream)

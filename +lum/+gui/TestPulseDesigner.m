@@ -2,8 +2,8 @@ function [S, accepted, app] = TestPulseDesigner(S, rig, varargin)
 % lum.gui.TestPulseDesigner designs a sleep session's test pulses and their schedule.
 %
 % Test pulses (D13) are light on channels A and B during a sleep recording: probe
-% pulses — a single pulse or a pair, every inter-epoch interval — to measure the
-% response, and plasticity trains — theta burst, high frequency or any other — to change
+% pulses - a single pulse or a pair, every inter-epoch interval - to measure the
+% response, and plasticity trains - theta burst, high frequency or any other - to change
 % it, arranged in a schedule of steps that runs from the start of the recording (for
 % example probes, a theta burst, probes again). This window puts every parameter in
 % front of the operator, compiles the schedule on each edit (lum.sleep.testPulsePlan,
@@ -30,7 +30,7 @@ function [S, accepted, app] = TestPulseDesigner(S, rig, varargin)
 %             .status(), .preset(name), .addStep(), .removeStep(), .moveStep(offset),
 %             .addTrain(), .removeTrain(), .selectStep(k) and .controls
 %
-% See also: lum.sleep.testPulsePlan, lum.gui.SleepSetupDialog, lum.sleep.describeTrain
+% See also lum.sleep.testPulsePlan, lum.gui.SleepSetupDialog, lum.sleep.describeTrain
 
 if nargin < 1 || isempty(S)
     S = lum.defaultSettings;

@@ -18,7 +18,7 @@ classdef DoricWindow < handle
     %                           'Calibrations', cals);
     %   w.close();
     %
-    % See also: lum.dev.DoricLED, lum.gui.IntensityField, lum.gui.DoricSetup
+    % See also lum.dev.DoricLED, lum.gui.IntensityField, lum.gui.DoricSetup
 
     properties (SetAccess = private)
         Figure

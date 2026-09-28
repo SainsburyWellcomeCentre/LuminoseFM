@@ -1,5 +1,5 @@
 function subject = launchSubject(launchedSubject, selectedSubject, dataFile)
-% lum.launchSubject is the subject the operator launched the session for in Bpod's launch manager.
+% lum.launchSubject is the subject a session was launched for in Bpod's launch manager.
 %
 %   subject = lum.launchSubject(BpodSystem.GUIData.SubjectName, ...
 %                               BpodSystem.Status.CurrentSubjectName, ...
@@ -8,7 +8,7 @@ function subject = launchSubject(launchedSubject, selectedSubject, dataFile)
 % Bpod keeps the subject in three places, and only one is always set. The launch
 % manager's Launch button writes GUIData.SubjectName every time. Status.CurrentSubjectName
 % is written only when the subject list's selection changes, so a subject left selected
-% as the launch manager opened comes through empty — which left the subject blank in
+% as the launch manager opened comes through empty - which left the subject blank in
 % sessions up to 0.6.1. The data file is always in <DataFolder>\<subject>\<protocol>\
 % Session Data\. They are tried in that order, the data file's folder only when its path
 % has that shape, and '' is returned when none gives a name.
@@ -20,7 +20,7 @@ function subject = launchSubject(launchedSubject, selectedSubject, dataFile)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: LuminoseFM, lum.gui.ExperimentForm
+% See also LuminoseFM, lum.gui.ExperimentForm
 
 subject = textOf(launchedSubject);
 if ~isempty(subject)

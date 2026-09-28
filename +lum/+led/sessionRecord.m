@@ -21,7 +21,7 @@ function record = sessionRecord(S, led, cals, run)
 %   .Device         lum.dev.DoricLED.record(): currents, limits, every change, and the
 %                   package's record of what the driver acknowledged
 %
-% See also: lum.dev.DoricLED, lum.led.lightPath, lum.led.calibrations
+% See also lum.dev.DoricLED, lum.led.lightPath, lum.led.calibrations
 
 if nargin < 4
     run = [];

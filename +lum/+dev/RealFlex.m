@@ -5,7 +5,7 @@ classdef RealFlex < lum.dev.Flex
     % configuration rather than the saved FlexConfig.mat, so a channel reconfigured
     % from the Bpod console since startup is reflected correctly.
     %
-    % See also: lum.dev.Flex, lum.dev.NullFlex, lum.dev.open
+    % See also lum.dev.Flex, lum.dev.NullFlex, lum.dev.open
 
     methods
         function obj = RealFlex(analogChannels, samplingRate, syncChannel)
@@ -58,7 +58,7 @@ classdef RealFlex < lum.dev.Flex
             % In volts, without a trial-aligned copy: that copy would duplicate a
             % whole session of 1 kHz samples in the same file, and analysis can slice
             % it from Samples and TrialNumber instead. Called with one option only:
-            % AddFlexIOAnalogData v1.9.0 reads its *first* option as the trial-aligned
+            % AddFlexIOAnalogData v1.9.0 reads its first option as the trial-aligned
             % flag when given two, so ('Volts', 0) switched the copy on.
             sessionData = AddFlexIOAnalogData(sessionData, 'Volts');
             if isfield(sessionData, 'Analog') && isfield(sessionData, 'TrialStartTimestamp')

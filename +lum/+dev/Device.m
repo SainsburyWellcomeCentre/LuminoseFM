@@ -1,15 +1,17 @@
 classdef Device < handle
     % lum.dev.Device is the common base for the protocol's hardware shims.
     %
-    % Every device that the protocol talks to has two implementations: a real
-    % one that opens a port, and a null one that logs what it would have done.
+    % Every device that the protocol talks to has at least two implementations: a
+    % real one that opens a port, and a null one that logs what it would have done.
     % Which one is constructed is decided once, at session startup, from
     % BpodSystem.EmulatorMode and from what the connected machine reports (see
-    % lum.dev.open). No other file in the protocol tests for emulator mode.
+    % lum.dev.open). No other file in +lum tests for emulator mode.
     %
     % Subclasses implement the device's own methods; this class only provides
     % the availability flag and the log that makes an emulated session
     % inspectable afterwards.
+    %
+    % See also lum.dev.open
 
     properties (SetAccess = protected)
         Name        % Human-readable device name, used in log lines

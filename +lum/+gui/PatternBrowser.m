@@ -16,7 +16,7 @@ classdef PatternBrowser < handle
     %   browser.goTo(12);           % trial 12
     %   fig.WindowKeyPressFcn = @(~, e) browser.onKey(e);  % arrow keys, optional
     %
-    % See also: lum.pattern.stimulusSet, lum.gui.StimulusDesigner, lum.gui.theme
+    % See also lum.pattern.stimulusSet, lum.gui.StimulusDesigner, lum.gui.theme
 
     properties (SetAccess = private)
         Trial = 1   % Trial being shown

@@ -5,7 +5,7 @@ function ensureEmulator()
 % the box. If a real state machine is already connected, this errors rather than
 % quietly testing against hardware.
 %
-% See also: runLuminoseTests
+% See also runLuminoseTests
 
 global BpodSystem %#ok<GVMIS>
 

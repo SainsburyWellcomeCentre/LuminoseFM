@@ -3,7 +3,7 @@ classdef OnlinePlots < handle
     %
     % One figure, all graphics handles created in the constructor and only ever
     % updated afterwards with set(h, 'YData', ...). Nothing in the trial loop calls
-    % figure, plot or cla, and there is exactly one drawnow limitrate per trial — the
+    % figure, plot or cla, and there is exactly one drawnow limitrate per trial - the
     % online display is the easiest place to accumulate per-trial cost, and this is
     % where the real-time requirement is most often lost.
     %
@@ -15,7 +15,7 @@ classdef OnlinePlots < handle
     % The header also holds the house light switch, which acts at once
     % (lum.gui.houseLightSwitch).
     %
-    % Panels (README §6), laid out in the order the operator reads them:
+    % Panels (README section 6), laid out in the order the operator reads them:
     %   Top row
     %     Now and next  The pattern of the running trial and the next three queued,
     %                   shown from the start of the session (showNext)
@@ -29,8 +29,8 @@ classdef OnlinePlots < handle
     %                   along the family's evidence (A share or A minus B, flash
     %                   difference, the deciding amount), a point per value or eight
     %                   bins when it runs continuously, or one point per group when the
-    %                   family has none —
-    %                   with the contingency the animal is trained on drawn behind it
+    %                   family has none; the contingency the animal is trained on is
+    %                   drawn behind it
     %     Evidence      Every choice at the latent evidence its trial's stimulus carried
     %                   on each channel, u_A against u_B (the fraction of the stimulus
     %                   window A and B were lit), coloured correct or incorrect and
@@ -78,8 +78,8 @@ classdef OnlinePlots < handle
     % Closing the figure only hides it: the session saves it as an image beside the data
     % file at teardown (lum.gui.savePlotsImage), and close() is what deletes it.
     %
-    % See also: lum.newHistory, lum.scoreTrial, lum.pattern.stimulusSet, lum.gui.theme,
-    %           lum.sleep.Plots
+    % See also lum.newHistory, lum.scoreTrial, lum.pattern.stimulusSet, lum.gui.theme,
+    %          lum.sleep.Plots
 
     properties (SetAccess = private)
         Figure          % The single figure this object owns
@@ -394,8 +394,8 @@ classdef OnlinePlots < handle
 
         function close(obj)
             % close() closes the figure for good, if it is still open. Closing it any
-            % other way — the operator, or the console's End button through
-            % RunProtocol('Stop') — only hides it, so the session can still save it as an
+            % other way - the operator, or the console's End button through
+            % RunProtocol('Stop') - only hides it, so the session can still save it as an
             % image at teardown (lum.gui.savePlotsImage) before calling this.
             if ~isempty(obj.Figure) && isvalid(obj.Figure)
                 delete(obj.Figure);
@@ -942,7 +942,6 @@ function tf = rasterByEvidence(stimulusSet)
 tf = stimulusSet.Continuous && hasEvidence(stimulusSet) ...
      && numel(unique(stimulusSet.Evidence)) > 12;
 end
-
 
 
 function chanceLine(ax, xSpan, t)

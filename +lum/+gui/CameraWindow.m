@@ -2,7 +2,7 @@ classdef CameraWindow < handle
     % lum.gui.CameraWindow shows the session's cameras while it runs.
     %
     % One tile per camera: the latest frame, its view and serial, and a line of health
-    % figures — frames per second, frames missed by the camera, frames written, writer
+    % figures - frames per second, frames missed by the camera, frames written, writer
     % drops, and the TTL input of the latest frame (a quick check that the sync line
     % reaches the camera).
     %
@@ -27,7 +27,7 @@ classdef CameraWindow < handle
     %   window = lum.gui.CameraWindow(devices.cameras, S.Camera, 'Subject', subject);
     %   window.close();    % in teardown, before RunProtocol('Stop')
     %
-    % See also: lum.dev.Cameras, lum.gui.CameraSetup
+    % See also lum.dev.Cameras, lum.gui.CameraSetup
 
     properties (SetAccess = private)
         Figure = []

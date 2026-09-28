@@ -2,7 +2,7 @@ function t = theme()
 % lum.gui.theme is the one palette and type scale every LuminoseFM window draws with.
 %
 % A light, quiet palette: a warm off-white ground, white panels, and colour kept for
-% what carries meaning — the two optical channels, outcomes, the hold and sides. Channel A
+% what carries meaning - the two optical channels, outcomes, the hold and sides. Channel A
 % and channel B have their own colours and nothing else uses them, so light is
 % recognisable at a glance in the setup dialog, the stimulus designer and the
 % online plots alike; the sides get colours distinct from both, so a left-rewarded
@@ -29,12 +29,12 @@ function t = theme()
 %                  .Note (points), used through lum.gui.styleAxes and lum.gui.panelLegend;
 %                  the summary plots' scale, for print
 %   .FontCompact   The same family a step smaller, for the live figures (lum.OnlinePlots,
-%                  lum.sleep.Plots), whose nine panels share one window
+%                  lum.sleep.Plots), which fit several panels in one window
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.gui.styleAxes, lum.gui.panelLegend, lum.gui.SetupDialog, lum.OnlinePlots,
-%           lum.report.summaryPlots
+% See also lum.gui.styleAxes, lum.gui.panelLegend, lum.gui.SetupDialog, lum.OnlinePlots,
+%          lum.report.summaryPlots
 
 t = struct();
 t.Background   = [0.961 0.957 0.945];

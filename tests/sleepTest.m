@@ -1,5 +1,5 @@
 function tests = sleepTest
-% sleepTest exercises the parts of a sleep session: lum.sleep.*
+% sleepTest exercises the parts of a sleep session (lum.sleep).
 %
 % The sync pulse schedule, the test-pulse plan, the block cutter and validation are
 % pure. The block state machine is assembled and run under Bpod('EMU') on channels A and

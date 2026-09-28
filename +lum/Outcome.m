@@ -6,7 +6,7 @@ classdef Outcome
     % anything a person sees. Values are part of the data format: append new ones,
     % never renumber the existing ones, or old session files change meaning.
     %
-    % See also: lum.scoreTrial, lum.OnlinePlots
+    % See also lum.scoreTrial, lum.OnlinePlots
 
     properties (Constant)
         NoInitiation      = 0   % The stimulus never started before the hold window ran

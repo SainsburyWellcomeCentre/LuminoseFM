@@ -15,7 +15,7 @@ function drawTestPulseSchedule(ax, plan, t)
 %   plan  From lum.sleep.testPulsePlan
 %   t     lum.gui.theme
 %
-% See also: lum.sleep.testPulsePlan, lum.gui.drawTestPulseEpoch, lum.sleep.Plots
+% See also lum.sleep.testPulsePlan, lum.gui.drawTestPulseEpoch, lum.sleep.Plots
 
 cla(ax);
 hold(ax, 'on');

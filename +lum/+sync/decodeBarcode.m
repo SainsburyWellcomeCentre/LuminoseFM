@@ -25,7 +25,7 @@ function [value, startIndex, kind] = decodeBarcode(risingTimes, fallingTimes, pa
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.sync.barcode, lum.sync.barcodeTime
+% See also lum.sync.barcode, lum.sync.barcodeTime
 
 value = NaN;
 startIndex = NaN;

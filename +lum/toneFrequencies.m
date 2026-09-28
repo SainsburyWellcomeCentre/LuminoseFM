@@ -8,7 +8,7 @@ function frequencies = toneFrequencies(range, n)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.loadSounds, lum.testSounds
+% See also lum.loadSounds, lum.testSounds
 
 if n == 1
     frequencies = sqrt(range(1) * range(2));

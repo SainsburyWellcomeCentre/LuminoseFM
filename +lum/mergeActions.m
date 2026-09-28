@@ -2,7 +2,7 @@ function actions = mergeActions(varargin)
 % lum.mergeActions concatenates OutputActions lists, letting later values win.
 %
 % Bpod writes every output channel from the entered state's own row, so a state that
-% wants one line on and another off has to say both — and the lists that say them,
+% wants one line on and another off has to say both - and the lists that say them,
 % assembled from different components, routinely name the same channel. AddState
 % rejects that outright ("Duplicate output actions detected in state: X. Only one
 % value for PWM2 is allowed"), so the lists cannot simply be concatenated.
@@ -21,9 +21,9 @@ function actions = mergeActions(varargin)
 % Example:
 %   lum.mergeActions({'PWM2', 0}, {'PWM2', 100})   % -> {'PWM2', 100}
 %
-% See also: lum.buildTrialSM, lum.stim.Component
+% See also lum.buildTrialSM, lum.stim.Component
 
-% Preallocated to the worst case — every pair distinct — and trimmed at the end.
+% Preallocated to the worst case - every pair distinct - and trimmed at the end.
 capacity = sum(cellfun(@numel, varargin)) / 2;
 channels = cell(1, ceil(capacity));
 values = cell(1, ceil(capacity));

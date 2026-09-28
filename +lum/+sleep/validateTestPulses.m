@@ -2,7 +2,8 @@ function [plan, notes] = validateTestPulses(S, rig)
 % lum.sleep.validateTestPulses checks that a sleep session's test pulses can be sent.
 %
 % The schedule compiler (lum.sleep.testPulsePlan) refuses what cannot be expressed as
-% light. Two more things depend on the session around it, and are checked here:
+% light. Two more things depend on the session around it, and are checked here, through
+% lum.sleep.checkTimeline (shared with ePhys calibration sessions):
 %
 %   - Every epoch must be followed by enough darkness to hold a whole sync pulse with
 %     1 ms to spare, so the timeline can always be cut between epochs with every line
@@ -22,7 +23,7 @@ function [plan, notes] = validateTestPulses(S, rig)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.sleep.testPulsePlan, lum.sleep.validate, lum.gui.TestPulseDesigner
+% See also lum.sleep.testPulsePlan, lum.sleep.validate, lum.gui.TestPulseDesigner
 
 notes = {};
 plan = lum.sleep.testPulsePlan(S.Sleep.TestPulses, S.Sleep.DurationMinutes);

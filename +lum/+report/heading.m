@@ -10,7 +10,7 @@ function headingText = heading(Data, T)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.report.summaryPlots
+% See also lum.report.summaryPlots
 
 S = T.S;
 stage = 'unknown stage';

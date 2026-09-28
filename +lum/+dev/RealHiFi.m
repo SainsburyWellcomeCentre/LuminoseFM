@@ -5,7 +5,7 @@ classdef RealHiFi < lum.dev.HiFi
     % state machine and paired with its USB serial port. The assertModule check
     % lives in lum.dev.open, not here: it errors in emulator mode.
     %
-    % See also: lum.dev.HiFi, lum.dev.NullHiFi, lum.dev.open
+    % See also lum.dev.HiFi, lum.dev.NullHiFi, lum.dev.open
 
     properties (Access = private)
         module  % BpodHiFi object

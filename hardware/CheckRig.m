@@ -16,7 +16,7 @@ function report = CheckRig(varargin)
 %   .nFailed  Number of failed checks
 %   .emulated True in emulator mode
 %
-% See also: RigConfig, lum.dev.open
+% See also RigConfig, lum.dev.open
 
 global BpodSystem %#ok<GVMIS> % Imported to inspect the connected machine
 

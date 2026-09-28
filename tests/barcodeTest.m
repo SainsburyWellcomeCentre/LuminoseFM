@@ -1,5 +1,5 @@
 function tests = barcodeTest
-% barcodeTest exercises the session barcode: lum.sync.*
+% barcodeTest exercises the session barcode (lum.sync): encoding, decoding, sending.
 %
 % The barcode is how a recording on another machine is matched to its behaviour
 % file, so it has to decode back to exactly what was encoded, from edges alone, even

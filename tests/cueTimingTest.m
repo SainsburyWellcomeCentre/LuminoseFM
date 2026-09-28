@@ -1,6 +1,5 @@
 function tests = cueTimingTest
-% cueTimingTest exercises what each part of the cue does once the stimulus starts:
-% lum.cueTiming.
+% cueTimingTest exercises lum.cueTiming: what each part of the cue does as the stimulus starts.
 %
 % Every cue component is on until the stimulus starts; what it does from stimulus onset
 % decides the state machine's outputs and the timer budget. Pure; no Bpod.

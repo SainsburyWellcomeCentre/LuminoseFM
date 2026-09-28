@@ -1,6 +1,8 @@
 function tests = settingsTest
-% settingsTest exercises settings handling: lum.mergeSettings, lum.validateSettings,
-% lum.timerBudget and the runtime tier's description.
+% settingsTest exercises settings handling: merging, validation and the timer budget.
+%
+% lum.mergeSettings, lum.validateSettings, lum.timerBudget and the runtime tier's
+% description.
 %
 % Settings files persist per subject and outlive the code that writes them, so the
 % merge is what stops a new or renamed parameter breaking every existing animal's
@@ -476,7 +478,7 @@ for i = 1:size(cases, 1)
                 ['lum:validateSettings:' cases{i, 2}], cases{i, 2});
 end
 verifyError(testCase, @() lum.validateSettings(negativeCueTime(lum.defaultSettings), rig), ...
-            'lum:cueTiming:badDuration', 'A negative time after the poke');
+            'lum:cueTiming:badDuration', 'A negative time into the stimulus');
 end
 
 function testAnExperimentMayAskForAHoldShorterThanTheLight(testCase)

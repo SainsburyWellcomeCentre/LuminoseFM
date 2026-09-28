@@ -13,7 +13,7 @@ classdef CueTone < lum.stim.Component
     % As the stimulus starts the loop is left playing (Whole), stopped (Off), or replaced
     % by the tail (Timed), so the tone never costs a global timer (lum.cueTiming).
     %
-    % See also: lum.stim.Component, lum.cueTiming, lum.loadSounds, lum.dev.HiFi
+    % See also lum.stim.Component, lum.cueTiming, lum.loadSounds, lum.dev.HiFi
 
     methods
         function obj = CueTone()
@@ -52,8 +52,8 @@ classdef CueTone < lum.stim.Component
         end
 
         function actions = sustainOnsetActions(~, ~)
-            % Nothing: whatever happened at stimulus onset — carry on, stop, or the
-            % tail — has already happened, and repeating it would restart the sound.
+            % Nothing: whatever happened at stimulus onset - carry on, stop, or the
+            % tail - has already happened, and repeating it would restart the sound.
             actions = {};
         end
     end

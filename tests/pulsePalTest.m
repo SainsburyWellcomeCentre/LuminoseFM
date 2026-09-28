@@ -1,8 +1,10 @@
 function tests = pulsePalTest
-% pulsePalTest exercises the carrier translation: lum.dev.PulsePal.
+% pulsePalTest exercises lum.dev.PulsePal: the carrier, the health check, held voltages.
 %
-% Run against the null shim, which shares all of its logic with the real one and
-% differs only in whether send() reaches a device. Nothing here opens a port.
+% Run against the null shim, which shares all of its logic with the real one and differs
+% only in whether the bytes reach a device, and StubPulsePal, which can stop answering or
+% refuse a parameter part way through. Also which sessions open PulsePal and refuse to start
+% without it (lum.dev.openPulsePal). Nothing here opens a port.
 tests = functiontests(localfunctions);
 end
 

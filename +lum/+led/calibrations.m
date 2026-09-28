@@ -6,7 +6,7 @@ function cals = calibrations(S, folder)
 % Each is the calibration of the cable on that channel (S.Light.Cables) measured on that
 % channel (lum.led.calibrationFile). A channel without one runs in mA.
 %
-% See also: lum.led.lightPath, lum.led.loadCalibration
+% See also lum.led.lightPath, lum.led.loadCalibration
 
 if nargin < 2
     folder = '';

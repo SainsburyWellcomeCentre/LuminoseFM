@@ -11,8 +11,11 @@ function logFile = watchMemoryAfterSession(dataFile, seconds)
 % main thread is busy, MATLAB code is allocating (a callback, a timer); if it grows while
 % the main thread is idle, a background thread is (the camera engine, .NET, graphics).
 % The file starts with the MATLAB timers still running, which are the usual suspects.
+% The cause was then found, MATLAB's Workspace browser working through BpodSystem (D16),
+% and removed in 0.9.7; the sampler stays to show whether it comes back.
 %
-% Windows only; a desktop session's teardown calls it last, before RunProtocol('Stop').
+% Windows only; the teardown of every desktop session (behaviour, sleep, ePhys calibration)
+% calls it last, before RunProtocol('Stop').
 % It never throws: a sampler that cannot start is a warning.
 %
 % Arguments:
@@ -21,7 +24,7 @@ function logFile = watchMemoryAfterSession(dataFile, seconds)
 %
 % Returns the log file's path, or '' when nothing was started.
 %
-% See also: LuminoseFM, lum.sleep.run
+% See also LuminoseFM, lum.sleep.run
 
 if nargin < 2
     seconds = 240;
@@ -66,6 +69,7 @@ for k = 1:numel(timers)
                                timers(k).Name, timers(k).Running, timers(k).Period, ...
                                timers(k).TasksExecuted); %#ok<AGROW>
     catch
+        % A timer deleted while it was being listed: nothing to say about it.
     end
 end
 if isempty(timers)
@@ -84,11 +88,13 @@ id = 0;
 try
     id = double(System.AppDomain.GetCurrentThreadId());
 catch
+    % No .NET: the sampler then reports no main thread.
 end
 end
 
 
 function writeLines(file, lines)
+% Write lines to a new file, Windows line endings, so PowerShell can append to it.
 handle = fopen(file, 'w');
 if handle < 0
     error('lum:watchMemoryAfterSession:cannotWrite', 'Cannot write %s.', file);

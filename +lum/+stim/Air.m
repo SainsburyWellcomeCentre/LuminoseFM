@@ -6,7 +6,7 @@ classdef Air < lum.stim.TimedOutput
     % its S.Cue.Components row (lum.cueTiming); as a stimulus, by the 'Air' row of
     % S.Stimulus.Components.
     %
-    % See also: lum.stim.TimedOutput, lum.stim.build
+    % See also lum.stim.TimedOutput, lum.stim.build
 
     methods
         function obj = Air(source)

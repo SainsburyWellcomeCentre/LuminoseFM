@@ -15,9 +15,9 @@ classdef HelpLine < handle
     % Works in uifigures (the setup dialogs) and classic figures (the tabbed runtime
     % window). Neither kind of edit field reports gaining focus, so a field is found by
     % where it is: the figure's WindowButtonMotionFcn compares the pointer with each
-    % described component's position, recomputed when the window's size or its selected
-    % tabs change, and every few seconds for layouts that change by themselves. Value-changed callbacks are chained, not replaced, so the
-    % field's own callback runs as before.
+    % described component's position, recomputed when the window's size or its selected tabs
+    % change, and every few seconds for layouts that change by themselves. Value-changed
+    % callbacks are chained, not replaced, so the field's own callback runs as before.
     %
     % Usage:
     %   help = lum.gui.HelpLine(fig, label, 'Point at a field to see what it does.');
@@ -25,7 +25,7 @@ classdef HelpLine < handle
     %   help.registerTooltips();          % every component with a Tooltip, once built
     %   help.show('Anything');            % set the text directly
     %
-    % See also: lum.gui.SetupDialog, lum.gui.SleepSetupDialog, lum.gui.RuntimeWindow
+    % See also lum.gui.SetupDialog, lum.gui.SleepSetupDialog, lum.gui.RuntimeWindow
 
     properties (SetAccess = private)
         Label        % The text component the descriptions are written into

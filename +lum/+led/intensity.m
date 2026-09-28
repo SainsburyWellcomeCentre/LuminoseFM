@@ -26,7 +26,7 @@ function run = intensity(S, cals, type)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.led.currentFor, lum.led.intensitySetting, lum.dev.open
+% See also lum.led.currentFor, lum.led.intensitySetting, lum.dev.open
 
 if nargin < 3 || isempty(type)
     type = S.Session.Type;

@@ -2,7 +2,8 @@ classdef PortLight < lum.stim.TimedOutput
     % lum.stim.PortLight lights a behaviour port's LED.
     %
     % Three uses, one class:
-    %   PortLight('Centre', 'Cue')       the centre light in the cue, on until the poke
+    %   PortLight('Centre', 'Cue')       the centre light in the cue, on until the stimulus
+    %                                    starts, then as its cue row says
     %   PortLight('Centre', 'Stimulus')  a centre light flash during the stimulus,
     %                                    timed by S.Stimulus.Components
     %   PortLight('Target', 'Stimulus')  the side port this trial rewards, timed by
@@ -14,7 +15,7 @@ classdef PortLight < lum.stim.TimedOutput
     % side's own timing. Brightness comes from the runtime window, so it can be tuned
     % with an animal in the box.
     %
-    % See also: lum.stim.TimedOutput, lum.stim.build, lum.buildTrialSM
+    % See also lum.stim.TimedOutput, lum.stim.build, lum.buildTrialSM
 
     properties (Constant)
         TargetRole = 'Target'  % Resolved per trial to the rewarded side port

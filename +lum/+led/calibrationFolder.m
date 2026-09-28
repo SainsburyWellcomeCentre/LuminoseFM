@@ -6,6 +6,6 @@ function folder = calibrationFolder()
 % calibration and never inherits this one. It is created when the first calibration is
 % saved.
 %
-% See also: lum.led.calibrationFile, lum.led.saveCalibration, lum.repoRoot
+% See also lum.led.calibrationFile, lum.led.saveCalibration, lum.repoRoot
 
 folder = fullfile(lum.repoRoot(), 'calibration');

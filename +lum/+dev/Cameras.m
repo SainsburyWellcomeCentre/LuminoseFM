@@ -24,16 +24,18 @@ classdef Cameras < lum.dev.Device
     % .EphysCalibration, by serial): a behaviour box and a home cage need different ones.
     % Once the session type is known, cropFor puts that type's last crops into
     % S.Camera.Cameras(k).Roi, which the Cameras tab edits and the session records with;
-    % keepCrop stores them back when the settings file is written. The frame log's HostTime_s column is in seconds on the same
-    % host clock as the events file and as Data.CameraTime, which pairs each trial's
-    % TrialEndTimestamp with that clock (lum.dev.Cameras.mark).
+    % keepCrop stores them back when the settings file is written.
+    %
+    % The frame log's HostTime_s column is in seconds on the same host clock as the events
+    % file and as Data.CameraTime, which pairs each trial's TrialEndTimestamp with that
+    % clock (lum.dev.Cameras.mark).
     %
     % Subclasses: lum.dev.RealCameras (a spincam.CameraManager, with real cameras or, in
     % the emulator, spincam's simulated ones) and lum.dev.NullCameras (recording off, or
     % no spincam in the emulator). Construct through lum.dev.open.
     %
-    % See also: lum.dev.openCameras, lum.dev.configureCameras, lum.gui.CameraWindow,
-    %           lum.gui.CameraSetup
+    % See also lum.dev.openCameras, lum.dev.configureCameras, lum.gui.CameraWindow,
+    %          lum.gui.CameraSetup
 
     properties (Constant)
         % Formats encoded on spincam's own threads. avi-mjpeg-mt (the default) encodes each
@@ -423,10 +425,12 @@ end
 
 
 function tf = isLogicalScalar(value)
+% True for one logical, or one number that is 0 or 1.
 tf = isscalar(value) && (islogical(value) || (isnumeric(value) && ismember(value, [0 1])));
 end
 
 
 function fail(id, varargin)
+% Raise a settings error with a lum:dev:Cameras identifier.
 error(['lum:dev:Cameras:' id], varargin{:});
 end

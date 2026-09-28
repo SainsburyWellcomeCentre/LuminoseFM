@@ -5,7 +5,7 @@ classdef StubCameraManager < handle
     % "attaches" the serial numbers it is given, so lum.dev.configureCameras and
     % lum.dev.RealCameras can be tested on any machine.
     %
-    % See also: lum.dev.configureCameras, lum.dev.RealCameras, cameraTest
+    % See also lum.dev.configureCameras, lum.dev.RealCameras, cameraTest
 
     properties
         DefaultFrameRate = 100

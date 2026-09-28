@@ -5,8 +5,8 @@ classdef SessionRunner < handle
     % uploaded while trial n is still running, which is the whole basis of the
     % real-time requirement. But BpodTrialManager's constructor errors outright in
     % emulator mode ("The Bpod emulator does not currently support running state
-    % machines with TrialManager", BpodTrialManager.m), and running end to end
-    % under Bpod('EMU') is equally non-negotiable.
+    % machines with TrialManager", BpodTrialManager.m), and the protocol must also
+    % run end to end under Bpod('EMU').
     %
     % This class reconciles the two. It exposes one four-call rhythm that the
     % session loop follows unchanged, and implements it either over
@@ -23,11 +23,12 @@ classdef SessionRunner < handle
     % With a trial manager, the prepare window opens partway through the trial and
     % the next state machine really is uploaded while the current one runs. In
     % emulator mode the same calls run the trial to completion first, so the
-    % session is sequential — slower between trials, but identical in what it
+    % session is sequential - slower between trials, but identical in what it
     % produces. Mode says which is in use, and is recorded in the data file so a
-    % session's timing can be interpreted correctly afterwards.
+    % session's timing can be interpreted correctly afterwards. The decision is D3 in
+    % docs/architecture.md.
     %
-    % See also: BpodTrialManager, lum.dev.open, docs/architecture.md (D3)
+    % See also BpodTrialManager, lum.dev.open, lum.triggerStates
 
     properties (SetAccess = private)
         Mode           % 'trialmanager' or 'blocking'
@@ -47,9 +48,8 @@ classdef SessionRunner < handle
             %
             % emulated comes from lum.dev.open, which is the one place that reads
             % BpodSystem.EmulatorMode. triggerStates names the states that mark the
-            % point in a trial where MATLAB may start preparing the next one; they
-            % should be states every trial passes through, late enough that the
-            % remaining states leave time for the work.
+            % point in a trial where MATLAB may start preparing the next one
+            % (lum.triggerStates); every trial passes through exactly one of them.
             obj.TriggerStates = triggerStates;
             if emulated
                 obj.Mode = 'blocking';
@@ -89,7 +89,7 @@ classdef SessionRunner < handle
             % queue(sma) uploads the next trial's state machine.
             %
             % With a trial manager the upload happens now, over USB, while the
-            % current trial is still running — the 'RunASAP' flag tells the device to
+            % current trial is still running - the 'RunASAP' flag tells the device to
             % start it the moment the current one exits.
             if strcmp(obj.Mode, 'trialmanager')
                 SendStateMachine(sma, 'RunASAP');

@@ -23,7 +23,7 @@ function [notes, S] = validateClock(S, rig, sync, kind, durationMinutes)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.sleep.validate, lum.ephys.validate, lum.sync.fitToCameras
+% See also lum.sleep.validate, lum.ephys.validate, lum.sync.fitToCameras
 
 if isempty(durationMinutes)
     [notes, S] = checkPulses(S, sync, kind);
@@ -33,6 +33,7 @@ end
 
 
 function [notes, S] = checkPulses(S, sync, kind)
+% The first call: the pulses as typed, then as fitted to the cameras.
 notes = {};
 switch sync.Mode
     case lum.SyncMode.FixedWidth
@@ -77,6 +78,7 @@ end
 
 
 function notes = checkSession(S, rig, sync, kind, durationMinutes)
+% The second call: what depends on the session's length and kind.
 notes = {};
 [~, shortestInterval] = extremes(sync);
 shortestInterval = max(shortestInterval, 1e-3);
@@ -113,6 +115,7 @@ end
 
 
 function sync = fittedSync(S, kind)
+% The session type's sync pulses, from S as fitted to the cameras.
 if strcmp(kind, 'EphysCalibration')
     sync = S.Ephys.Sync;
 else
@@ -121,6 +124,7 @@ end
 
 
 function [longestPulse, shortestInterval] = extremes(sync)
+% The longest pulse and the shortest interval the pulse rule can draw.
 if sync.Mode == lum.SyncMode.FixedWidth
     longestPulse = sync.FixedWidth;
 else

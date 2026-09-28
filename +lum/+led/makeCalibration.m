@@ -26,16 +26,16 @@ function cal = makeCalibration(path, currents, powers, powerUnit, varargin)
 % The calibration belongs to the cable (Bundle, Cable) on the channel it was measured on
 % (MeasuredOn, MeasuredLEDChannel): the same cable on the other channel needs its own.
 %
-% Returns a struct: MeasuredOn ('A' or 'B'), MeasuredLEDChannel, Bundle, Cable, nFibers, FiberDiameter (mm),
-% Area (mm2), CurrentmA and PowermW and IrradiancemWmm2 (column vectors, sorted by
-% current), PowerUnit and PowerTyped (as read), Date ('yyyy-MM-dd HH:mm:ss'), Notes and
-% ProtocolVersion.
+% Returns a struct: MeasuredOn ('A' or 'B'), MeasuredLEDChannel, Bundle, Cable, nFibers,
+% FiberDiameter (mm), Area (mm2), CurrentmA and PowermW and IrradiancemWmm2 (column
+% vectors, sorted by current), PowerUnit and PowerTyped (as read), Date
+% ('yyyy-MM-dd HH:mm:ss'), Notes and ProtocolVersion.
 %
 % Errors with 'lum:led:makeCalibration:<reason>'.
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.led.saveCalibration, lum.led.irradiance, lum.led.current
+% See also lum.led.saveCalibration, lum.led.irradiance, lum.led.current
 
 p = inputParser;
 addParameter(p, 'Date', datetime('now'));
@@ -91,4 +91,5 @@ cal = struct('MeasuredOn', path.Channel, 'MeasuredLEDChannel', path.LEDChannel, 
 
 
 function fail(id, varargin)
+% Raise an error with a lum:led:makeCalibration identifier.
 error(['lum:led:makeCalibration:' id], varargin{:});

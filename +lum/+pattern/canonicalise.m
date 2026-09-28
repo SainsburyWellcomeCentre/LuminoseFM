@@ -23,7 +23,7 @@ function pattern = canonicalise(pattern)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.pattern.check, lum.pattern.validate, lum.pattern.fromStates
+% See also lum.pattern.check, lum.pattern.validate, lum.pattern.fromStates
 
 tolerance = 1e-9;  % Segments closer than a nanosecond are the same instant
 

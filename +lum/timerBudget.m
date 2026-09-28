@@ -42,7 +42,7 @@ function [budget, reserved] = timerBudget(S, rig)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: RigConfig, lum.pattern.stimulusSet, lum.buildTrialSM
+% See also RigConfig, lum.pattern.stimulusSet, lum.buildTrialSM
 
 reserved = struct();
 reserved.HoldWindow = 1;

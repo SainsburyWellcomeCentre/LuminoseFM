@@ -19,7 +19,7 @@ function shape = epochShape(plan, step, epoch)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.sleep.testPulsePlan, lum.sleep.Plots, lum.gui.TestPulseDesigner
+% See also lum.sleep.testPulsePlan, lum.sleep.Plots, lum.gui.TestPulseDesigner
 
 if nargin < 3
     epoch = 1;

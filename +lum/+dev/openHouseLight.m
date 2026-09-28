@@ -5,7 +5,7 @@ function houseLight = openHouseLight(emulated, config, S, pulsePal)
 % refused to start without PulsePal (lum.dev.openPulsePal); one without light has not, so
 % for it PulsePal may be the null shim, and the house light is then
 % lum.dev.DisabledHouseLight: off, with its switch greyed out. The same happens when a
-% connected PulsePal does not take the light's starting level — in a session without light
+% connected PulsePal does not take the light's starting level - in a session without light
 % only; a session with light is refused, since that PulsePal is not fit to fill A and B
 % either. The emulator gets lum.dev.NullHouseLight.
 %
@@ -17,9 +17,10 @@ function houseLight = openHouseLight(emulated, config, S, pulsePal)
 %   pulsePal  The session's lum.dev.PulsePal, from lum.dev.openPulsePal
 %
 % Warns with 'lum:dev:openHouseLight:disabled' when a rig session runs without the house
-% light, and errors with 'lum:dev:HouseLight:notHeld' when a session with light cannot have it.
+% light, and errors with 'lum:dev:HouseLight:notHeld' when a session with light cannot
+% have it.
 %
-% See also: lum.dev.open, lum.dev.openPulsePal, lum.dev.HouseLight, lum.dev.DisabledHouseLight
+% See also lum.dev.open, lum.dev.openPulsePal, lum.dev.HouseLight, lum.dev.DisabledHouseLight
 
 if emulated
     houseLight = lum.dev.NullHouseLight(pulsePal, config, S.Session.HouseLight, 'emulator mode');

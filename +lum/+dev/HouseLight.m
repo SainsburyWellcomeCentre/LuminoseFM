@@ -1,12 +1,12 @@
 classdef HouseLight < lum.dev.Device
-    % lum.dev.HouseLight is the white light inside the box, switched the moment the operator asks.
+    % lum.dev.HouseLight is the white light in the box, switched the moment the operator asks.
     %
     % PulsePal drives it (rig.HouseLight): output 3 goes through a BNC splitter to the
     % light's LED driver, and a copy of the same line into Bpod's BNC input 1 (D15).
     %
     %   Holding it   the level is output 3's resting voltage (lum.dev.PulsePal.holdVoltage):
     %                5 V on, 0 V off. PulsePal writes it at once and keeps it through every
-    %                trial, block, barcode and the gaps between them — the state machine
+    %                trial, block, barcode and the gaps between them - the state machine
     %                has no part in it, so it costs no output and no global timer.
     %   Timing it    the loopback makes every switch an event of the running state machine,
     %                BNC1High (on) and BNC1Low (off), timestamped on Bpod's clock to 100 us.
@@ -25,8 +25,8 @@ classdef HouseLight < lum.dev.Device
     % is then lum.dev.DisabledHouseLight: off, not Switchable, and the windows' boxes are
     % greyed out (lum.dev.openHouseLight).
     %
-    % See also: lum.dev.RealHouseLight, lum.dev.NullHouseLight, lum.dev.DisabledHouseLight,
-    %           lum.dev.openHouseLight, lum.dev.PulsePal.holdVoltage, lum.gui.houseLightSwitch
+    % See also lum.dev.RealHouseLight, lum.dev.NullHouseLight, lum.dev.DisabledHouseLight,
+    %          lum.dev.openHouseLight, lum.dev.PulsePal.holdVoltage, lum.gui.houseLightSwitch
 
     properties (SetAccess = protected)
         Output          % PulsePal output that drives the light, rig.HouseLight.PulsePalChannel
@@ -109,8 +109,8 @@ classdef HouseLight < lum.dev.Device
         end
 
         function set(obj, on)
-            % set(on) switches the light now — or, while PulsePal is busy, the moment it
-            % is free — and records it. Nothing is recorded when the light is already there.
+            % set(on) switches the light now - or, while PulsePal is busy, the moment it
+            % is free - and records it. Nothing is recorded when the light is already there.
             if ~obj.Switchable
                 obj.note('switch %s ignored: the house light cannot be switched in this session', ...
                          onOff(logical(on)));
@@ -143,7 +143,7 @@ classdef HouseLight < lum.dev.Device
         function r = record(obj, sessionData)
             % record(sessionData) is Data.Session.HouseLight: the wiring, the level at the
             % start and end, every switch with its camera-clock time (NaN without video)
-            % and wall-clock time, and — given the session data — every edge the loopback
+            % and wall-clock time, and - given the session data - every edge the loopback
             % input put among the trial events, on Bpod's clock (edges()).
             n = obj.nSwitches;
             r = struct('Output', obj.Output, 'Voltage', obj.Voltage, 'Input', obj.Input, ...
@@ -196,7 +196,7 @@ classdef HouseLight < lum.dev.Device
             % anything with OnEvent and OffEvent (rig.HouseLight). The first edge of the
             % loopback input gives the level before it exactly: an off edge means it
             % started on. Without an edge the light did not change during the trial, and
-            % fallback — what the session knew of the level — is returned.
+            % fallback - what the session knew of the level - is returned.
             onTimes = eventTimes(events, config.OnEvent);
             offTimes = eventTimes(events, config.OffEvent);
             if isempty(onTimes) && isempty(offTimes)
@@ -268,6 +268,7 @@ classdef HouseLight < lum.dev.Device
         end
 
         function tell(obj, on)
+            % Call every listener with the level, so each window's box shows the light.
             for i = 1:numel(obj.listeners)
                 obj.listeners{i}(on);
             end
@@ -286,6 +287,7 @@ end
 
 
 function text = onOff(on)
+% 'on' or 'off', for the log.
 if on
     text = 'on';
 else

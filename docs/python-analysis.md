@@ -26,7 +26,7 @@ Per subject: `<data root>\<subject>\LuminoseFM\`, with `<name>` = `<subject>_Lum
 | `<name>.mat` | Session Data | MATLAB v7 (v5 container, zlib), one variable `SessionData` | 21 MB | Yes: everything below that is not video or raw analog |
 | `<name>_ANLG.dat` | Session Data | Raw Flex analog stream, `uint16` little-endian | 21 MB | No: the `.mat` holds it as `SessionData.Analog`; keep as the raw copy |
 | `<name>_plots.png` | Session Data | The online figure at the end | 0.1 MB | No |
-| `<name>_memory.csv` | Session Data | MATLAB's memory after a desktop behaviour session (diagnostic) | 5 kB | No |
+| `<name>_memory.csv` | Session Data | MATLAB's memory after a desktop session (diagnostic) | 5 kB | No |
 | `<view>_<name>.avi` | Session Videos | MJPEG AVI (OpenDML), `Mono8` pixels stored as YCbCr 4:2:0 | 22 GB (side), 7 GB (top) | For pose; never copied into HDF5 |
 | `<view>_<name>.csv` | Session Videos | One row per frame (SpinCam frame log) | 63 MB each | Yes: frame times and the sync line |
 | `<name>_events.csv` | Session Videos | Marks on the camera host clock | 18 kB | Yes: trial ends, house light, session saved |

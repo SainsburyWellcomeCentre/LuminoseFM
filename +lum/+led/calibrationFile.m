@@ -18,7 +18,7 @@ function file = calibrationFile(path, folder)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.led.lightPath, lum.led.loadCalibration, lum.led.saveCalibration
+% See also lum.led.lightPath, lum.led.loadCalibration, lum.led.saveCalibration
 
 if nargin < 2 || isempty(folder)
     folder = lum.led.calibrationFolder();

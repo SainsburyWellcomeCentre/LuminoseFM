@@ -1,18 +1,18 @@
 classdef NullHouseLight < lum.dev.HouseLight
-    % lum.dev.NullHouseLight is the emulator's house light: PulsePal's shim, and the loopback emulated.
+    % lum.dev.NullHouseLight is the emulator's house light, with its loopback emulated.
     %
     % The level goes to the session's PulsePal shim, whose log records it. There is no
     % wire from PulsePal into the emulated state machine, so a switch made while one runs
-    % is put into it as the loopback input's edge — the event the console's BNC input
-    % button sends — and the trial's events carry BNC1High / BNC1Low as on the rig.
+    % is put into it as the loopback input's edge - the event the console's BNC input
+    % button sends - and the trial's events carry BNC1High / BNC1Low as on the rig.
     %
-    % See also: lum.dev.HouseLight, lum.dev.RealHouseLight
+    % See also lum.dev.HouseLight, lum.dev.RealHouseLight
 
     methods
         function obj = NullHouseLight(pulsePal, config, on, reason)
             obj@lum.dev.HouseLight(pulsePal, config, on, false);
-            obj.announce('not driven (%s); switches are logged and put into the emulated state machine as %s', ...
-                         reason, config.Input);
+            obj.announce(['not driven (%s); switches are logged and put into the emulated state '...
+                          'machine as %s'], reason, config.Input);
         end
     end
 

@@ -1,12 +1,12 @@
 function [times, note] = valveTimes(amount, valves, liquidCal)
-% lum.valveTimes gives each valve's open time for a volume of water, from Bpod's liquid
-% calibration, and refuses a volume the calibration cannot give.
+% lum.valveTimes gives each valve's open time for a volume of water, from Bpod's calibration.
 %
-% Bpod's GetValveTimes turns microlitres into milliseconds with the calibration's fitted
-% polynomial and checks nothing else. The fit is a quadratic through a few measurements,
-% so outside them it goes wrong without a sign: 0 uL still opens the valve for the fit's
-% intercept (several ms), past the fit's peak a larger volume gets a shorter time, and
-% further on the time is negative and GetValveTimes errors. So here:
+% It refuses a volume the calibration cannot give. Bpod's GetValveTimes turns microlitres
+% into milliseconds with the calibration's fitted polynomial and checks nothing else. The
+% fit is a quadratic through a few measurements, so outside them it goes wrong without a
+% sign: 0 uL still opens the valve for the fit's intercept (several ms), past the fit's
+% peak a larger volume gets a shorter time, and further on the time is negative and
+% GetValveTimes errors. So here:
 %   0 uL          no water: every time is 0, and the calibration is not read
 %   rising fit    the time GetValveTimes gives, while the fit still rises there
 %   falling fit   an error (lum:valveTimes:outsideCalibration): a larger volume would
@@ -26,7 +26,7 @@ function [times, note] = valveTimes(amount, valves, liquidCal)
 % Returns the times in seconds, one per valve, and a note ('' when there is nothing to
 % say). Errors as GetValveTimes does when a valve has no calibration.
 %
-% See also: GetValveTimes, LuminoseFM, CheckRig
+% See also GetValveTimes, LuminoseFM, CheckRig
 
 global BpodSystem %#ok<GVMIS> % Where Bpod keeps the liquid calibration
 

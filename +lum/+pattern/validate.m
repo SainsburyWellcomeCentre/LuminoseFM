@@ -9,7 +9,7 @@ function pattern = validate(pattern, timerBudget)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.pattern.canonicalise, lum.pattern.check
+% See also lum.pattern.canonicalise, lum.pattern.check
 
 pattern = lum.pattern.canonicalise(pattern);
 problems = lum.pattern.check(pattern, timerBudget);

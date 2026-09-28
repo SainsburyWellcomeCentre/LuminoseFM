@@ -13,7 +13,7 @@ function plotCalibration(ax, cal, t)
 %        fine); [] draws empty axes
 %   t    lum.gui.theme
 %
-% See also: lum.led.makeCalibration, lum.gui.DoricCalibration
+% See also lum.led.makeCalibration, lum.gui.DoricCalibration
 
 cla(ax);
 colours = {t.ChannelA, t.ChannelB};

@@ -62,7 +62,7 @@ function [files, problems] = summaryPlots(Data, dataFile, varargin)
 %   problems  One message per plot that could not be drawn; the others are still written.
 %             Never throws for a single plot.
 %
-% See also: lum.report.write, lum.report.sessionTrials, lum.OnlinePlots, lum.holdMeasures
+% See also lum.report.write, lum.report.sessionTrials, lum.OnlinePlots, lum.holdMeasures
 
 p = inputParser;
 p.FunctionName = 'lum.report.summaryPlots';
@@ -741,6 +741,7 @@ end
 
 
 function titleText = outcomeTitle(T)
+% The outcome raster's title; habituation's says both side ports pay.
 if all(T.bothSidesPay)
     titleText = 'Outcomes (habituation: both side ports pay)';
 else
@@ -750,6 +751,7 @@ end
 
 
 function labels = scoreLabels(T)
+% The keys of a scored and an unscored choice, as the stage scores them.
 if all(T.bothSidesPay)
     labels = {'rewarded', 'not rewarded'};
 elseif any(T.bothSidesPay)
@@ -761,6 +763,7 @@ end
 
 
 function label = scoreAxisLabel(T)
+% What the score axis measures: trials rewarded in habituation, choices correct otherwise.
 if all(T.bothSidesPay)
     label = 'Fraction of trials rewarded';
 else
@@ -837,6 +840,7 @@ end
 
 
 function values = cumulativeMean(scored)
+% The running mean of the scored values from trial 1, NaN until the first.
 counted = ~isnan(scored);
 sums = cumsum(nanToZero(scored));
 values = sums ./ max(1, cumsum(counted));
@@ -887,6 +891,7 @@ end
 
 
 function values = nanToZero(values)
+% NaN counted as 0.
 values(isnan(values)) = 0;
 end
 
@@ -898,6 +903,7 @@ end
 
 
 function upper = niceCeiling(values, minimum)
+% An upper axis limit a little above the largest value, at least minimum.
 values = values(~isnan(values));
 if isempty(values)
     upper = minimum;

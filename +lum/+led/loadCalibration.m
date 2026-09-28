@@ -20,7 +20,7 @@ function cal = loadCalibration(path, folder, checkCoverage)
 %   checkCoverage  Optional, default true. false returns the saved readings however few,
 %                  and without a warning: the calibration window shows them to be added to
 %
-% See also: lum.led.saveCalibration, lum.led.calibrations, lum.led.irradiance
+% See also lum.led.saveCalibration, lum.led.calibrations, lum.led.irradiance
 
 if nargin < 2 || isempty(folder)
     folder = lum.led.calibrationFolder();

@@ -1,18 +1,21 @@
 classdef Component < handle
     % lum.stim.Component is the interface every cue and stimulus element implements.
     %
-    % The cue and the stimulus are each a *list* of components. That is what lets
+    % The cue and the stimulus are each a list of components. That is what lets
     % the operator combine light patterns, port lights, tones and air freely
     % without the state graph changing: the trial builder asks each component in
     % the list for its contributions and merges them. State names stay fixed across
     % modalities; only OutputActions and global timers differ.
     %
-    % A component contributes in five ways, asked in this order:
+    % A component contributes in these ways, asked in this order:
+    %   configure        Device programming, run in the prepare window before the trial
+    %                    is built
     %   nTimersNeeded    How many global timers it needs this trial
-    %   configure        Device programming, run in the inter-trial window
     %   addGlobalTimers  Global timer definitions, given the indices it was granted
     %   outputActions    OutputActions for the state that delivers it
+    %   onsetActions     A cue component's OutputActions as the stimulus starts
     %   stopActions      OutputActions that switch it off again
+    %   sustainActions, sustainOnsetActions  What a later state repeats to keep it on
     %
     % Timers a component was granted are triggered and cancelled by the trial
     % builder, in one bit mask with every other component's: two components each
@@ -28,7 +31,7 @@ classdef Component < handle
     %
     % Defaults are no-ops, so a component overrides only what it actually uses.
     %
-    % See also: lum.stim.build, lum.buildTrialSM
+    % See also lum.stim.build, lum.buildTrialSM
 
     properties (SetAccess = protected)
         Name  % Short name, used in logs and in the session's component list
@@ -71,11 +74,11 @@ classdef Component < handle
         end
 
         function actions = sustainActions(obj, context)
-            % sustainActions() is what a *later* state has to repeat to keep this
+            % sustainActions() is what a later state has to repeat to keep this
             % component doing what outputActions started.
             %
             % Bpod writes every output channel from each state's own row on entering
-            % it, so a level — a port light, the air valve, a TTL line — is dropped by
+            % it, so a level - a port light, the air valve, a TTL line - is dropped by
             % the next state unless that state writes it again. A sound is not a
             % level: the module plays on by itself, and repeating the play command
             % would restart it, so the components that play sound return nothing here.

@@ -17,8 +17,8 @@ function notes = validate(S, rig)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.gui.SleepSetupDialog, lum.sleep.run, lum.validateSettings,
-%           lum.sleep.validateTestPulses, lum.sleep.validateClock
+% See also lum.gui.SleepSetupDialog, lum.sleep.run, lum.validateSettings,
+%          lum.sleep.validateTestPulses, lum.sleep.validateClock
 
 [notes, S] = lum.sleep.validateClock(S, rig, S.Sleep.Sync, 'Sleep', []);
 

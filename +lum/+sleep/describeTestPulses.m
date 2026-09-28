@@ -3,7 +3,8 @@ function lines = describeTestPulses(testPulses, plan)
 %
 % One description for the sleep setup dialog, the console and the sleep plots:
 %
-%   Probe: paired 10 ms pulses, 50 ms apart (onset to onset), every 30 s; constant light, 5 V on A, 5 V on B
+%   Probe: paired 10 ms pulses, 50 ms apart (onset to onset), every 30 s; constant light,
+%          5 V on A, 5 V on B
 %   Schedule: 1 step(s), 120 min
 %   1. Probe alternating A and B, until the recording ends (120 min): 240 epoch(s)
 %
@@ -16,7 +17,7 @@ function lines = describeTestPulses(testPulses, plan)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.sleep.testPulsePlan, lum.sleep.describeTrain
+% See also lum.sleep.testPulsePlan, lum.sleep.describeTrain
 
 if ~testPulses.Enabled
     lines = {'No test pulses: the session sends sync pulses only.'};

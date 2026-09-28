@@ -1,8 +1,9 @@
 function tests = holdMeasuresTest
-% holdMeasuresTest covers what the plots, the log and the runtime window say about a trial's
-% centre hold (lum.holdMeasures, through lum.scoreTrial): whether it was completed, whether
-% at the first attempt, and how many attempts it took. Built from the fixed state names
-% alone, so no Bpod.
+% holdMeasuresTest covers lum.holdMeasures: whether a trial's centre hold was completed.
+%
+% What the plots, the log and the runtime window say about a trial's centre hold, through
+% lum.scoreTrial too: whether it was completed, whether at the first attempt, and how many
+% attempts it took. Built from the fixed state names alone, so no Bpod.
 tests = functiontests(localfunctions);
 end
 

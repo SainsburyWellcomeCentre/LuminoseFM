@@ -1,7 +1,9 @@
 function tests = reportTest
-% reportTest covers what a behaviour session writes for people to read as it ends: the
-% summary plots (lum.report.summaryPlots), the log (lum.report.sessionLog), the online figure
-% replayed from a saved file (lum.report.fromFile), and the runtime window's trial lines
+% reportTest covers the summary plots, log and trial lines a behaviour session writes.
+%
+% What a behaviour session writes for people to read as it ends: the summary plots
+% (lum.report.summaryPlots), the log (lum.report.sessionLog), the online figure replayed
+% from a saved file (lum.report.fromFile), and the runtime window's trial lines
 % (lum.trialStatus). No hardware: sessions are made up here, and files go to a temporary
 % folder laid out like a subject's.
 tests = functiontests(localfunctions);

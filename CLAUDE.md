@@ -9,7 +9,8 @@ sessions on the same rig. The version is `lum.version`; what each release change
 resolve the symlink, read `CLAUDE.md`.
 
 **Contents:** [Start here](#start-here) · [Hard rules](#hard-rules) · [Environment](#environment) ·
-[Code map](#code-map) · [Naming](#naming) · [Design rules](#design-rules) · [Data](#data) ·
+[Code map](#code-map) · [Naming](#naming) · [Design rules](#design-rules) ·
+[Comments and help text](#comments-and-help-text) · [Data](#data) ·
 [The emulator](#the-emulator) · [Hardware map](#hardware-map) · [Gotchas](#gotchas) ·
 [Tests and validation](#tests-and-validation) · [Docs](#docs) · [Git](#git)
 
@@ -35,6 +36,7 @@ before changing the stimulus path, the state graph, sleep blocks or the GUI. The
 | [`docs/rig-checks.md`](docs/rig-checks.md) | How to run a rig check, the checks waiting for the operator (*Pending*), and every result (*Done*) | a rig check runs, or a change needs one |
 | [`docs/validation-<date>.md`](docs/validation-2026-09-24.md) | A pre-deployment validation: inventory, results, fixes, open questions | a validation runs (a new file; old ones are records) |
 | [`docs/repository.md`](docs/repository.md) | The repository layout and what each test file covers | files or tests are added |
+| [`docs/code-style.md`](docs/code-style.md) | Getting help at the MATLAB prompt; how help text and comments are written; lint and the language server; what `helpTextTest` checks | the comment or help-text convention changes |
 | `CLAUDE.md` (this file) | What an agent needs: rules, paths, conventions, hardware map, naming, gotchas | a convention, API or architectural decision changes |
 
 **Where things stand** is in the docs, not here: the last release's changes in
@@ -44,8 +46,10 @@ can run headless with permission; P13 step 4's file checks passed on 2026-09-27)
 pending check the next time they say they are at the rig.
 
 **Working loop.** Read the relevant docs and code → change `+lum` (the protocol file stays thin) →
-add or update a test → run the suite in one `-batch` MATLAB (zero failures, zero lint) → update
-every affected doc in the same change → report what ran and what did not. Commit only when asked.
+add or update a test → bring the help text and comments of everything touched up to date
+([Comments and help text](#comments-and-help-text)) → run the suite in one `-batch` MATLAB (zero
+failures, zero lint, `helpTextTest` passing) → update every affected doc in the same change →
+report what ran and what did not. Commit only when asked.
 
 ---
 
@@ -154,7 +158,7 @@ can be tested with no hardware. `docs/repository.md` has the full tree.
 | `+lum/SyncMode.m` | How trials drive the sync TTL; codes are part of the data format |
 | `+lum/SessionRunner.m` | TrialManager on the rig, blocking in the emulator (D3) |
 | `+lum/StartupTimes.m` | How long the session took to start, step by step (`Data.Session.Startup`) |
-| `+lum/watchMemoryAfterSession.m` | A separate process sampling MATLAB's memory and threads for 4 min after a desktop behaviour session (`<data file>_memory.csv`) |
+| `+lum/watchMemoryAfterSession.m` | A separate process sampling MATLAB's memory and threads for 4 min after a desktop session of any type (`<data file>_memory.csv`) |
 | `+lum/OnlinePlots.m` | The behaviour session's live figure, nine panels: now and next, outcomes; performance, psychometric (along the family's evidence, or by group), evidence (u_A vs u_B with the contingency's boundary; *No light in this session* without light); by side, side bias, reaction time (log axis), centre hold (completed at any attempt, or not); header with water and the running hold. Habituation scores every trial by `Rewarded` (a trial without a choice is not rewarded); other stages score correct of the choices made. Hold attempts are not drawn here (no room): they are `09_HoldAttempts`. Every panel goes through `lum.gui.styleAxes` and every key through `lum.gui.panelLegend`: one row under the axis label, never over data |
 | `+lum/holdMeasures.m` | What every plot, the log and the runtime window say about a trial's hold, from its states: hold completed (`CentreReward` or `WaitForCentreExit`), held on the first attempt, hold attempts (early withdrawals + the completed hold). `lum.scoreTrial` returns `HoldCompleted`, `HeldFirstAttempt`; not stored |
 | `+lum/trialStatus.m` | The runtime window's header lines: how the last trial ended and what runs now |
@@ -262,7 +266,8 @@ Each rule below is guarded in code; the decision behind it (D*n*) is in `docs/ar
   Follow Bpod idiom over general MATLAB idiom: `global BpodSystem`, settings struct `S`,
   `S.GUI.*` / `S.GUIMeta.*` / `S.GUIPanels.*` / `S.GUITabs.*`, `SaveBpodSessionData`. Never name a
   variable after a builtin (`set`, `image`, `now`): the stimulus set variable is `stimulusSet`. Write
-  code that reads like the code around it.
+  code that reads like the code around it, and help text and comments as
+  [Comments and help text](#comments-and-help-text) says.
 - **Three session types, one protocol (D11, D18).** `LuminoseFM` opens `lum.gui.SessionTypeDialog`
   first; *Sleep* and *ePhys calibration* hand the whole session to `lum.sleep.run`, which must release
   every `lum.*` object, the LED included, before returning. Headless runs
@@ -298,14 +303,14 @@ Each rule below is guarded in code; the decision behind it (D*n*) is in `docs/ar
   (`settingsFile`; headless sessions write none) → stop the video with
   `finishRecording('SessionSaved', n)` and a second small save for its summary → close the runtime
   window and the plots → `closeDevices` (the LED first, the house light before PulsePal) →
-  (behaviour) `lum.report.write` → (behaviour, desktop) `lum.watchMemoryAfterSession` → `RunProtocol('Stop')`
+  (behaviour) `lum.report.write` → (desktop) `lum.watchMemoryAfterSession` → `RunProtocol('Stop')`
   → `unlinkFromBaseWorkspace`. Keep every step in both teardowns (`LuminoseFM` and `lum.sleep.run`)
-  except the report and the memory sampler, which are behaviour's alone; nothing from `+lum` may run after Stop.
+  except the report, which is behaviour's alone; nothing from `+lum` may run after Stop.
 - **`unlinkFromBaseWorkspace` is the last step of every session path** (0.9.7, local to
   `LuminoseFM.m`): `clear BpodSystem` in the base workspace; the global stays. With `BpodSystem`
   listed in the base workspace, R2025b's Workspace browser works through the session's changes to it
   once the prompt returns and ran MATLAB out of memory after rig behaviour sessions (D16). Never put
-  `BpodSystem` back in the base workspace from our code. A desktop behaviour session also ends by
+  `BpodSystem` back in the base workspace from our code. A desktop session of any type also ends by
   starting `lum.watchMemoryAfterSession`.
 - **Settings written at Start and at teardown (D16)**, runtime changes included. Before every
   settings write, `lum.dev.Cameras.keepCrop` stores the session type's crops back and `lum.led.keepIntensity`
@@ -751,6 +756,41 @@ This is the hard constraint of the project.
 
 ---
 
+## Comments and help text
+
+The comments are part of the code: MATLAB prints a file's help for `help` and `doc`, lists every
+file of a package by its first help line (`help lum.led`), and the next reader trusts what a comment
+says. `docs/code-style.md` has the full convention; this is what every change must keep.
+
+- **Every file starts with help text** straight after its `function` or `classdef` line. The **H1**
+  names the file as MATLAB calls it (`% lum.dev.PulsePal ...`, `% CheckRig ...`) and says what it
+  does in one sentence, ending with a full stop, at most 100 characters, followed by a blank `%`
+  line. Then, where they apply: what it is for and why (the decision Dn, the rig finding),
+  `Usage:`, `Arguments:`, `Options:`, `Returns:` (units on every entry), the error identifiers, the
+  *pure function* line, and last `% See also name, name` (no colon; MATLAB names only; every file
+  outside `tests/` has one).
+- **Public methods** carry their own help (`% configure() programs ...`); constructors and methods
+  that implement a documented base-class interface need none. **Local functions** get one line
+  saying what they return or do unless the name says it all; test functions are named for what they
+  check.
+- **Comments say why, not what**, in full sentences above the code they explain, with the glossary's
+  words ([Naming](#naming)). A comment that describes a rule enforced elsewhere names where
+  (`lum.triggerStates`).
+- **Keep them true, in the same change.** Changing behaviour means reading and correcting the help
+  of every function it touches and the comments around the edit; a wrong comment found anywhere is
+  fixed like a wrong doc. Release history goes in `docs/naming-and-versions.md`, never in help text.
+- **Typography**: 100 columns, comment paragraphs wrapped at about 92; ASCII only in comments and in
+  printed text (a Windows console drops the rest from `help`: write ` - ` for a dash, `uL`,
+  `mW/mm2`); no Markdown emphasis (help prints the asterisks); British spelling.
+- **`%#ok<ID>`** only where the message is wrong for this code, with the reason when it is not plain.
+  No `AGROW` in the trial loop.
+- `helpTextTest` checks the mechanical parts (help present, H1 form, See also form and names,
+  line length, ASCII, emphasis) and `lintTest` keeps zero Code Analyzer messages, the same
+  `checkcode` the MATLAB language server (VS Code) and the Editor show. Whether a comment is true,
+  needed and clear, no test checks: read it.
+
+---
+
 ## Data
 
 `docs/data-format.md` has every field; this is what code must respect.
@@ -758,7 +798,7 @@ This is the hard constraint of the project.
 - **Session file:** `D:\luminoseData\<subject>\LuminoseFM\Session Data\<subject>_LuminoseFM_<YYYYMMDD_HHMMSS>.mat`,
   one variable `SessionData` (= `BpodSystem.Data`), written by `SaveBpodSessionData` (a full
   overwrite each call). Beside it: `_ANLG.dat` (Bpod's raw Flex analog stream, merged at teardown),
-  `_plots.png` (D16), and after a desktop behaviour session `_memory.csv`.
+  `_plots.png` (D16), and after a desktop session `_memory.csv`.
 - **Settings file:** `...\LuminoseFM\Session Settings\<name>.mat`, per subject, chosen in the launch
   manager. It holds the *last* session's settings: written on Start and again at teardown (D16).
   `lum.mergeSettings` converts old files (renames, reshapes, retirements).
@@ -1082,7 +1122,9 @@ Each has already cost time and is guarded in code; don't undo them.
 
 The suite **refuses to run against a real state machine** and starts `Bpod('EMU')` itself for the
 tests that need one. `lintTest` keeps the repository at zero Code Analyzer messages: MATLAB has no
-compile step, so that is the closest thing to one. `docs/repository.md` lists what each file covers.
+compile step, so that is the closest thing to one (the MATLAB language server in VS Code runs the
+same `checkcode`, so zero here is zero there). `helpTextTest` holds help text and comments to the
+convention above. `docs/repository.md` lists what each file covers.
 
 - **Add a test with any behaviour change.** The pure functions (`+lum/*.m`, `+lum/+pattern/`,
   `+lum/+sync/`) are the cheap place to do it.

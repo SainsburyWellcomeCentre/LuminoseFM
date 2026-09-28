@@ -26,7 +26,7 @@ function path = lightPath(S, k)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.fiberBundles, lum.led.calibrationFile, lum.led.loadCalibration
+% See also lum.fiberBundles, lum.led.calibrationFile, lum.led.loadCalibration
 
 labels = {'A', 'B'};
 if ~(isscalar(k) && any(k == [1 2]))

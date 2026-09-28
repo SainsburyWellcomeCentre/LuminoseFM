@@ -2,9 +2,9 @@ function report = TestHouseLight(varargin)
 % TestHouseLight switches the house light through PulsePal and checks Bpod logs each switch.
 %
 % The house light is PulsePal output 3; a BNC splitter sends the same line to the light's
-% LED driver and to Bpod's BNC input 1 (D15, docs/hardware.md §2.3). This runs one state
-% machine that asks MATLAB, by soft code, to switch the light on and off a few times — the
-% same call the House light box makes during a session (lum.dev.HouseLight.set) — and then
+% LED driver and to Bpod's BNC input 1 (D15, docs/hardware.md section 2.3). This runs one state
+% machine that asks MATLAB, by soft code, to switch the light on and off a few times - the
+% same call the House light box makes during a session (lum.dev.HouseLight.set) - and then
 % looks for each switch among the state machine's events:
 %
 %   command   the state that sent the soft code, entered at a time on Bpod's clock
@@ -30,8 +30,8 @@ function report = TestHouseLight(varargin)
 %   Force  true to run even while a protocol is in progress (default false)
 %
 % Returns a struct: the wiring (rig.HouseLight), Emulated, InputEnabled, and Commands with
-% one row per switch — On, CommandTime, EdgeTime (NaN when no edge came) and Latency, in
-% seconds on the state machine's clock — with nFound, nMissing, MedianLatency, MaxLatency,
+% one row per switch - On, CommandTime, EdgeTime (NaN when no edge came) and Latency, in
+% seconds on the state machine's clock - with nFound, nMissing, MedianLatency, MaxLatency,
 % Passed and the PulsePal and HouseLight device logs.
 %
 % Requires Bpod to be running. Under Bpod('EMU') PulsePal is the null shim and the edges
@@ -39,7 +39,7 @@ function report = TestHouseLight(varargin)
 % runs end to end without hardware (houseLightTest does exactly that); latencies there mean
 % nothing.
 %
-% See also: RigConfig, CheckRig, lum.dev.HouseLight, lum.dev.PulsePal.holdVoltage, TestSyncLine
+% See also RigConfig, CheckRig, lum.dev.HouseLight, lum.dev.PulsePal.holdVoltage, TestSyncLine
 
 global BpodSystem %#ok<GVMIS> % Imported to read the machine and run it
 
@@ -106,7 +106,7 @@ printReport(report, config);
 
 
 function [pulsePal, houseLight] = openDevices(emulated, config)
-% PulsePal and the house light, as a session opens them — but refusing, not falling back.
+% PulsePal and the house light, as a session opens them - but refusing, not falling back.
 if emulated
     pulsePal = lum.dev.NullPulsePal('emulator mode');
     houseLight = lum.dev.NullHouseLight(pulsePal, config, false, 'emulator mode');
@@ -187,6 +187,7 @@ end
 
 
 function t = stateEntry(trial, name)
+% When a state was first entered in a trial, or NaN.
 t = NaN;
 if isfield(trial.States, name) && ~isnan(trial.States.(name)(1))
     t = trial.States.(name)(1);
@@ -206,6 +207,8 @@ pulsePal.close();
 
 
 function printReport(report, config)
+% The test in the command window: a summary, each switch with its edge and latency (or
+% none), then the verdict and what to check.
 fprintf('  %d of %d switch(es) reached %s', report.nFound, numel(report.Commands), config.Input);
 if report.nFound > 0
     fprintf(', latency median %.1f ms, max %.1f ms', 1000 * report.MedianLatency, 1000 * report.MaxLatency);

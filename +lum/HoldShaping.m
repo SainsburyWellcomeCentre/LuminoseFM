@@ -4,14 +4,16 @@ classdef HoldShaping
     % A naive animal cannot hold its nose in the centre port for a whole stimulus.
     % Automatic shaping (S.Task.AutoShaping) brings it there, following the animal's
     % performance. It is switched off by default, switched on by choosing the Habituation
-    % or Training stage and off by choosing Experiment (lum.stageDefaults), and an Experiment session
-    % never runs with it (lum.validateSettings). While it is on, S.Task.HoldShaping says
-    % how the hold is shaped, tuned during the session from the runtime window:
+    % or Training stage and off by choosing Experiment (lum.stageDefaults), and an
+    % Experiment session never runs with it (lum.validateSettings). While it is on,
+    % S.Task.HoldShaping says how the hold is shaped, tuned during the session from the
+    % runtime window:
     %
     %   Grow hold     (default) The hold starts at S.GUI.HoldStart and grows by
     %                 S.GUI.HoldGrowth percent after every trial on which the
-    %                 animal completed it, until it reaches S.GUI.HoldTarget —
-    %                 normally the stimulus window plus the post-stimulus hold.
+    %                 animal completed it, until it reaches S.GUI.HoldTarget (0.6 s
+    %                 by default, short of the 1 s stimulus window; it may be as long
+    %                 as the window plus the post-stimulus hold, or longer).
     %                 The light pattern plays to its end after a shorter hold (D21):
     %                 the animal may leave and choose while it plays. When the animal
     %                 withdraws early S.GUI.HoldStepBackAfter times without completing
@@ -79,7 +81,7 @@ classdef HoldShaping
     % Later, automatic shaping will also choose easier or harder trial types; that
     % belongs under the same switch.
     %
-    % See also: lum.nextTrialSpec, lum.buildTrialSM, lum.timerBudget, lum.stageDefaults
+    % See also lum.nextTrialSpec, lum.buildTrialSM, lum.timerBudget, lum.stageDefaults
 
     properties (Constant)
         NextSessionFraction = 0.9  % The next session's first hold, as a fraction of the last

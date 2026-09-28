@@ -1,8 +1,8 @@
 function history = newHistory(capacity)
 % lum.newHistory creates the preallocated trial history used by the session loop.
 %
-% Everything the protocol needs to know about the past — for bias correction, run
-% limits, hold shaping and the running performance figures — is kept here, updated
+% Everything the protocol needs to know about the past - for bias correction, run
+% limits, hold shaping and the running performance figures - is kept here, updated
 % in O(1) per trial. Nothing re-scans BpodSystem.Data, which would make the
 % inter-trial work grow with the session and eventually show up as lag.
 %
@@ -28,21 +28,22 @@ function history = newHistory(capacity)
 %                      window (visits to RetryResponse)
 %   .centreHoldTime    Seconds the animal stayed in the centre port on its last hold
 %
-% and two scalars kept as the session goes:
+% and scalars kept as the session goes:
 %   .withdrawalsAtHold  Early withdrawals since the hold last changed or was last
 %                  completed; automatic shaping steps the hold back when it reaches
 %                  S.GUI.HoldStepBackAfter (lum.HoldShaping)
 %   .centreRewardAgainFrom  First trial of the centre reward the operator asked for
 %                  again (S.GUI.CentreRewardAgain), 0 when none is running
 %                  (lum.centreRewardAgain)
-%   .preparedTrial, .preparedHold, .preparedGrace  The trial last prepared and its hold
-%                  and grace: the trial running while the next is prepared, which
-%                  automatic shaping grows from (lum.HoldShaping.notePrepared); 0, NaN,
-%                  NaN before the first
+%   .preparedTrial, .preparedHold, .preparedGrace, .preparedSide  The trial last
+%                  prepared, its hold, grace and correct side: the trial running while
+%                  the next is prepared, which automatic shaping grows from and the run
+%                  limit counts (lum.HoldShaping.notePrepared); 0, NaN, NaN, NaN before
+%                  the first
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.updateHistory, lum.nextTrialSpec, lum.Outcome
+% See also lum.updateHistory, lum.nextTrialSpec, lum.Outcome
 
 blank = NaN(1, capacity);
 history = struct('capacity', capacity, 'nTrials', 0, ...

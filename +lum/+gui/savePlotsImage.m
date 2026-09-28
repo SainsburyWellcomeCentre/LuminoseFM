@@ -1,5 +1,5 @@
 function [imageFile, problem] = savePlotsImage(fig, dataFile)
-% lum.gui.savePlotsImage saves the session's live figure as it looks at the end, beside the data.
+% lum.gui.savePlotsImage saves a session's live figure, as it ends, beside its data.
 %
 %   [imageFile, problem] = lum.gui.savePlotsImage(fig, dataFile)
 %
@@ -18,11 +18,11 @@ function [imageFile, problem] = savePlotsImage(fig, dataFile)
 %
 % Returns:
 %   imageFile  Full path of the image written, or '' when none was
-%   problem    '' on success, otherwise why nothing was written — a closed figure, or
+%   problem    '' on success, otherwise why nothing was written - a closed figure, or
 %              the exporter's error. Never throws: a figure that cannot be saved must
 %              not cost the session its teardown.
 %
-% See also: LuminoseFM, lum.sleep.run, lum.OnlinePlots, lum.sleep.Plots
+% See also LuminoseFM, lum.sleep.run, lum.OnlinePlots, lum.sleep.Plots
 
 imageFile = '';
 problem = '';

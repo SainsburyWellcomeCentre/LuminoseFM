@@ -1,5 +1,5 @@
 function LuminoseFM
-% LuminoseFM — freely-moving 2-AFC olfactory-bulb optogenetics task, and home-cage sleep.
+% LuminoseFM runs a 2-AFC optogenetics session, a sleep recording or an ePhys calibration.
 %
 % A two-alternative forced-choice task for OSN-ChR mice, in which the stimulus is a
 % two-channel spatiotemporal pattern of light delivered to the olfactory bulb
@@ -18,7 +18,7 @@ function LuminoseFM
 %              run by lum.sleep.run too, with its own dialog and barcode (D18)
 % The Doric LED driver starts connecting as the protocol launches, so the setup
 % dialogs can use it (their Doric LED tab); each session sets its channels up (D17).
-% Either runs end to end under Bpod('EMU') on a machine with no hardware, with working
+% Each kind runs end to end under Bpod('EMU') on a machine with no hardware, with working
 % GUI, plots and data saving; hardware calls fall back to shims that log what they
 % would have done. The data file records which kind it was, in Data.Session.Type.
 %
@@ -37,7 +37,9 @@ function LuminoseFM
 % the trial-generation policy, lum.pattern.stimulusSet for the stimuli, and
 % lum.SessionRunner for how the trial loop works with and without BpodTrialManager.
 %
-% See also: RigConfig, CheckRig, lum.dev.open, lum.sleep.run, tests/runLuminoseTests.m
+% The tests are in tests/: runLuminoseTests runs them all (docs/repository.md).
+%
+% See also RigConfig, CheckRig, lum.dev.open, lum.sleep.run, runLuminoseTests
 
 global BpodSystem %#ok<GVMIS> % Bpod's own session object
 
@@ -304,7 +306,7 @@ end
 % Bpod runs the protocol file with no try/catch of its own, so an error thrown from
 % here would leave the trial manager's polling timer running, the runtime window and
 % plots open, the analog file handle unflushed and the console believing the rig is
-% free — which is what the operator sees as a frozen protocol. Whatever went wrong,
+% free - which is what the operator sees as a frozen protocol. Whatever went wrong,
 % the trials that completed are saved and every device is released below.
 stoppedReason = '';
 try
@@ -410,7 +412,7 @@ end
 
 %% Teardown
 % Every step from here on has to finish before RunProtocol('Stop'), because Stop
-% removes the protocol folder from the MATLAB path — and with it the +lum package.
+% removes the protocol folder from the MATLAB path - and with it the +lum package.
 % Anything left holding a lum.* object would then fail in its own destructor. So the
 % session is torn down explicitly, in order, and only then handed back to Bpod.
 nCompleted = history.nTrials;
@@ -537,8 +539,6 @@ if ~isempty(stoppedReason)
             'The session ended early: %s', stoppedReason);
 end
 
-
-%% ---------------------------------------------------------------------------
 
 function [S, spec, sma, valveCache, queue, ledCurrent, history] = prepareTrial(S, rig, devices, ...
     history, stimulusSet, queue, sounds, cueComponents, stimulusComponents, trialNumber, ...
@@ -767,6 +767,7 @@ for valve = sort([rig.SidePorts rig.Ports.Centre])
     end
 end
 
+
 function logs = deviceLogs(devices)
 % What each device did, or would have done. Small, and the only record of an emulated
 % session's hardware intent.
@@ -803,7 +804,7 @@ end
 function on = houseLightAtStart(houseLight, trialNumber, arrivedAt)
 % The house light's level as a trial started: from the loopback input's first edge in the
 % trial when there is one, otherwise the level PulsePal held when the trial started on
-% MATLAB's clock — its data arrived arrivedAt, one trial's length after it started.
+% MATLAB's clock - its data arrived arrivedAt, one trial's length after it started.
 global BpodSystem %#ok<GVMIS>
 duration = BpodSystem.Data.TrialEndTimestamp(trialNumber) - BpodSystem.Data.TrialStartTimestamp(trialNumber);
 fallback = houseLight.levelAt(arrivedAt - duration);
@@ -909,10 +910,10 @@ function unlinkFromBaseWorkspace()
 % otherwise works through every change the session made to the BpodSystem object once the
 % prompt returns, on a background thread (datatools_view_core, mwwsb_startup_impl), with
 % memory in proportion to the session: 30 GB after 2 minutes, 141 GB after 5, and "Out
-% of memory." after LUMS0014's 93-minute sessions (found on the rig 2026-09-26; see the
-% "Out of memory" note in CLAUDE.md). With BpodSystem gone from the base workspace when the
-% prompt returns, the browser has nothing to redraw. A local function, because it runs
-% after RunProtocol('Stop') has removed +lum from the path.
+% of memory." after LUMS0014's 93-minute sessions (found on the rig 2026-09-26; D16 in
+% docs/architecture.md). With BpodSystem gone from the base workspace when the prompt
+% returns, the browser has nothing to redraw. A local function, because it runs after
+% RunProtocol('Stop') has removed +lum from the path.
 try
     if evalin('base', 'exist(''BpodSystem'', ''var'')') == 1
         evalin('base', 'clear BpodSystem');
@@ -928,7 +929,8 @@ end
 function closeDevices(devices)
 % Release every device, whatever happened to the session. Safe to call twice: the
 % shims' close methods are idempotent.
-names = {'doricLED', 'cameras', 'houseLight', 'pulsePal', 'hifi', 'flex'};  % The lights off before PulsePal goes
+% The LED and the house light go off before PulsePal, which drives the house light, is released.
+names = {'doricLED', 'cameras', 'houseLight', 'pulsePal', 'hifi', 'flex'};
 for i = 1:numel(names)
     try
         devices.(names{i}).close();

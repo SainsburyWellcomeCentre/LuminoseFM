@@ -5,7 +5,7 @@ function tests = sleepSessionTest
 % S.Session.Type 'Sleep', must run its barcode and blocks end to end on a machine with no
 % hardware, and write a data file that says it is an emulated sleep session and records
 % every pulse it would have sent. It runs twice: sync pulses alone, and with test pulses
-% on channels A and B — probes, a plasticity train, probes on one channel — through the
+% on channels A and B - probes, a plasticity train, probes on one channel - through the
 % emulator's PulsePal shim.
 tests = functiontests(localfunctions);
 end

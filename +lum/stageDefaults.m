@@ -4,7 +4,7 @@ function [S, changed] = stageDefaults(S, stage)
 % Choosing a training stage says what the animal is being asked to learn, and each
 % stage has a session that goes with it. Habituation teaches an animal that the
 % centre port starts a trial and the side ports pay, before there is anything to
-% discriminate: it therefore delivers **no light** and **air alone** during the hold,
+% discriminate: it therefore delivers no light, and air alone during the hold,
 % so that the hold is exactly as long and as salient as it will be later while
 % carrying no information, and it switches the centre light cue on (on from trial start
 % to the end of the hold, the cue's default), unless the centre light is a stimulus
@@ -12,13 +12,13 @@ function [S, changed] = stageDefaults(S, stage)
 % is.
 %
 % Automatic shaping follows the stage too: Habituation and Training switch it on, so the
-% centre hold is grown from S.GUI.HoldStart as the animal learns (lum.HoldShaping) — in
+% centre hold is grown from S.GUI.HoldStart as the animal learns (lum.HoldShaping) - in
 % habituation, together with the centre reward (S.GUI.CentreRewardAmount), from a hold
-% short enough to be completed on the first visits — and Experiment switches it off,
+% short enough to be completed on the first visits - and Experiment switches it off,
 % because an experiment asks every animal for the same trial.
 %
 % These are defaults, not a lock. The setup dialog applies them the moment the stage
-% is chosen and the operator may change anything afterwards — a habituation session
+% is chosen and the operator may change anything afterwards - a habituation session
 % with light, or a training session without, is a tick away. Nothing applies them
 % during a session: the stage is a pre-session setting (D2).
 %
@@ -39,7 +39,7 @@ function [S, changed] = stageDefaults(S, stage)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.trainingStageNote, lum.gui.SetupDialog, lum.nextTrialSpec
+% See also lum.trainingStageNote, lum.gui.SetupDialog, lum.nextTrialSpec
 
 if nargin < 2 || isempty(stage)
     stage = S.Task.TrainingStage;
@@ -74,7 +74,6 @@ if any(air)
     end
 end
 
-% Shaping: on in habituation and training (stages 1 and 2), never in an experiment (3).
 % The centre light as the cue, so the animal sees where to poke. Left alone when the
 % centre light is a stimulus component, which the cue would clash with (cueClash).
 cueLight = find(strcmp({S.Cue.Components.Type}, 'CentreLight'), 1);
@@ -85,6 +84,7 @@ if habituation && ~isempty(cueLight) && ~S.Cue.Components(cueLight).Enabled ...
     changed{end+1} = describe('the centre light cue', true);
 end
 
+% Shaping: on in habituation and training (stages 1 and 2), never in an experiment (3).
 if isscalar(stage) && ismember(stage, 1:3)
     wantShaping = stage ~= 3;
     if ~isequal(logical(S.Task.AutoShaping), wantShaping)

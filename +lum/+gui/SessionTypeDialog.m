@@ -1,11 +1,11 @@
 function [sessionType, app] = SessionTypeDialog(varargin)
-% lum.gui.SessionTypeDialog asks what kind of session is starting: behaviour, sleep or ePhys calibration.
+% lum.gui.SessionTypeDialog asks what kind of session is starting: behaviour, sleep or ePhys.
 %
 % The first window LuminoseFM opens (D11). The choice decides everything after it:
 %
-%   Behaviour  the 2-AFC task — the full setup dialog, the trial loop, the runtime
+%   Behaviour  the 2-AFC task - the full setup dialog, the trial loop, the runtime
 %              window and the online plots
-%   Sleep      a home-cage sleep recording — a reduced setup dialog, then the session
+%   Sleep      a home-cage sleep recording - a reduced setup dialog, then the session
 %              barcode (with sleep markers) and sync pulses on a clock, with a plot
 %              of the pulses sent
 %   EphysCalibration  light pulses of rising intensity and paired pulses of rising
@@ -23,10 +23,10 @@ function [sessionType, app] = SessionTypeDialog(varargin)
 %
 % Returns:
 %   sessionType  'Behaviour', 'Sleep', 'EphysCalibration', or '' if the operator cancelled
-%   app          .Figure, .choose(type), .cancel() and .choice() — the choice so far,
+%   app          .Figure, .choose(type), .cancel() and .choice() - the choice so far,
 %                for tests that do not wait
 %
-% See also: LuminoseFM, lum.gui.SetupDialog, lum.gui.SleepSetupDialog
+% See also LuminoseFM, lum.gui.SetupDialog, lum.gui.SleepSetupDialog
 
 p = inputParser;
 p.FunctionName = 'lum.gui.SessionTypeDialog';

@@ -19,7 +19,7 @@ function checkTimeline(plan, sync, rig)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.sleep.validateTestPulses, lum.ephys.validate, lum.sleep.nextBlock
+% See also lum.sleep.validateTestPulses, lum.ephys.validate, lum.sleep.nextBlock
 
 if sync.Mode == lum.SyncMode.FixedWidth
     longestPulse = sync.FixedWidth;

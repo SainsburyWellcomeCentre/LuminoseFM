@@ -7,20 +7,20 @@ classdef CameraSetup < handle
     % with every frame, and the camera window shown during the session.
     %
     % Settings are easiest to get right while looking at the picture, so the tab has a
-    % preview: **Preview** connects the cameras ticked to record exactly as the session
-    % will (lum.dev.configureCameras) and shows them; frame rate, exposure and gain apply
-    % live. **Simulated cameras** previews spincam's synthetic cameras instead, for a desk
-    % without cameras. **Full viewer...** opens spincam's own LiveViewer on the same
-    % cameras, for the finer controls; when it closes, the crop, names, frame rate,
-    % exposure and gain it left are read back into the tab. The cameras are released when
-    % the preview stops or the dialog closes, so the session can open them.
+    % preview: the Preview button connects the cameras ticked to record exactly as the
+    % session will (lum.dev.configureCameras) and shows them; frame rate, exposure and gain
+    % apply live. Simulated cameras previews spincam's synthetic cameras instead, for a desk
+    % without cameras. Full viewer... opens spincam's own LiveViewer on the same cameras,
+    % for the finer controls; when it closes, the crop, names, frame rate, exposure and gain
+    % it left are read back into the tab. The cameras are released when the preview stops or
+    % the dialog closes, so the session can open them.
     %
-    % Cropping. **Draw crop** lets the operator drag a rectangle over a camera's picture
-    % with the mouse (press, drag, release); the camera is cropped to it at once, as close
-    % as its increments allow, and the preview shows the crop. Drawing again inside a crop
-    % crops further; **Full frame** clears every crop. The Crop column can also be typed,
-    % as 'x,y wxh' in sensor pixels or 'full frame'. Crops are kept per session type
-    % (lum.dev.Cameras.cropFor): the tab shows and edits this session type's.
+    % Cropping. The Draw crop button lets the operator drag a rectangle over a camera's
+    % picture with the mouse (press, drag, release); the camera is cropped to it at once, as
+    % close as its increments allow, and the preview shows the crop. Drawing again inside a
+    % crop crops further; the Full frame button clears every crop. The Crop column can also
+    % be typed, as 'x,y wxh' in sensor pixels or 'full frame'. Crops are kept per session
+    % type (lum.dev.Cameras.cropFor): the tab shows and edits this session type's.
     %
     % Usage, inside a dialog:
     %   cameras = lum.gui.CameraSetup(tab, S.Camera, t, @refresh, 'Subject', subject);
@@ -32,7 +32,7 @@ classdef CameraSetup < handle
     % The video format's tooltip, and so the help line, is one sentence on what the format
     % selected does (lum.dev.Cameras.formatDescription), changing with the choice.
     %
-    % See also: lum.dev.Cameras, lum.dev.configureCameras, lum.gui.CameraWindow
+    % See also lum.dev.Cameras, lum.dev.configureCameras, lum.gui.CameraWindow
 
     properties (SetAccess = private)
         Controls = struct()

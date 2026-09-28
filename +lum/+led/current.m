@@ -10,7 +10,7 @@ function mA = current(cal, irradiance)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.led.irradiance, lum.led.makeCalibration
+% See also lum.led.irradiance, lum.led.makeCalibration
 
 if isempty(cal)
     error('lum:led:current:noCalibration', 'This light path has no calibration; give the current in mA.');

@@ -13,7 +13,7 @@ function text = describeShortcuts(ceilings)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.pattern.shortcuts
+% See also lum.pattern.shortcuts
 
 names = {'AAmount', 'BAmount', 'TotalLight', 'ATimeCourse', 'BTimeCourse'};
 words = {'A''s amount', 'B''s amount', 'total light', 'A''s time course', 'B''s time course'};

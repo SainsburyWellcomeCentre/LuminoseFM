@@ -8,7 +8,7 @@ function text = describe(cal, currentmA)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.led.toUnit, lum.led.irradiance
+% See also lum.led.toUnit, lum.led.irradiance
 
 if isnan(currentmA)
     text = 'set on the driver';

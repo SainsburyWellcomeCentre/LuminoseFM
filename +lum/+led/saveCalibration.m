@@ -1,12 +1,12 @@
 function [file, imageFile] = saveCalibration(cal, folder)
-% lum.led.saveCalibration writes an LED calibration, replacing any earlier one of that cable on that channel.
+% lum.led.saveCalibration writes an LED calibration over any earlier one of that cable and channel.
 %
 %   [file, imageFile] = lum.led.saveCalibration(cal)
 %
 % The calibration goes to lum.led.calibrationFile (variable Calibration), and its graph,
 % current against irradiance, beside it as a .png of the same name. The folder is created
-% if it is missing. Every later session, of any type, with the same cable on the same channel
-% reads it (lum.led.loadCalibration). Readings that cover too little of the LED's range
+% if it is missing. Every later session, of any type, with the same cable on the same
+% channel reads it (lum.led.loadCalibration). Readings that cover too little of the LED's range
 % (lum.led.checkCoverage) are refused ('lum:led:saveCalibration:tooNarrow') and nothing is
 % written, so the earlier calibration stays.
 %
@@ -17,7 +17,7 @@ function [file, imageFile] = saveCalibration(cal, folder)
 % Returns the two file names; imageFile is '' when the graph could not be written (the
 % calibration itself is saved regardless).
 %
-% See also: lum.led.makeCalibration, lum.led.loadCalibration, lum.led.plotCalibration
+% See also lum.led.makeCalibration, lum.led.loadCalibration, lum.led.plotCalibration
 
 problem = lum.led.checkCoverage(cal);
 if ~isempty(problem)

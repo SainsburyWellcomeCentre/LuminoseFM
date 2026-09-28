@@ -34,8 +34,8 @@ classdef DoricSetup < handle
     %   note = doric.problem(S);        % '' or a note for the status line
     %   cals = doric.calibrations();    % 1 x 2 cell, the light paths' calibrations
     %
-    % See also: lum.dev.DoricLED, lum.gui.DoricCalibration, lum.gui.IntensityField,
-    %           lum.led.lightPath
+    % See also lum.dev.DoricLED, lum.gui.DoricCalibration, lum.gui.IntensityField,
+    %          lum.led.lightPath
 
     properties (SetAccess = private)
         Controls = struct()

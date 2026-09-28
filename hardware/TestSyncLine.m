@@ -39,7 +39,7 @@ function report = TestSyncLine(varargin)
 % Requires Bpod to be running. Under Bpod('EMU') the emulated r0.7-1.0 has no Flex
 % I/O, so pass a 'Channel' that exists there (e.g. 'BNC2') or the call is refused.
 %
-% See also: RigConfig, CheckRig, lum.sync.barcode, lum.dev.Flex, lum.SyncMode
+% See also RigConfig, CheckRig, lum.sync.barcode, lum.dev.Flex, lum.SyncMode
 
 global BpodSystem %#ok<GVMIS> % Imported to read the channel list and run the machine
 
@@ -125,6 +125,7 @@ delete(cleanup);
 
 
 function restoreStatus(previousStatus)
+% Put back the console's status as the utility found it (RunStateMachine leaves it set).
 global BpodSystem %#ok<GVMIS>
 BpodSystem.Status.BeingUsed = previousStatus(1);
 BpodSystem.Status.InStateMatrix = previousStatus(2);

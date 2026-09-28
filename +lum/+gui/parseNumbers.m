@@ -1,8 +1,8 @@
 function values = parseNumbers(text, what)
 % lum.gui.parseNumbers reads a list of numbers typed into a text field.
 %
-% Several generator parameters are either one number or one per group — lit
-% fractions, offsets, phases — and a motif is a list by nature, so the windows take
+% Several generator parameters are either one number or one per group - lit
+% fractions, offsets, phases - and a motif is a list by nature, so the windows take
 % them as text: '0.2 0.4 0.6', '1, 3, 2, 0', or blank for "not set". Spaces, commas
 % and semicolons all separate, and a repeated separator is not an empty value.
 %
@@ -15,7 +15,7 @@ function values = parseNumbers(text, what)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.gui.StimulusDesigner, lum.pattern.withGeneratorDefaults
+% See also lum.gui.StimulusDesigner, lum.pattern.withGeneratorDefaults
 
 if isnumeric(text) || islogical(text)
     values = double(text(:)');

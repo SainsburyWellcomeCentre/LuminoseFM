@@ -48,7 +48,7 @@ function [plan, notes] = plan(S, cals)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.ephys.validate, lum.sleep.testPulsePlan, lum.sleep.nextBlock, lum.sleep.run
+% See also lum.ephys.validate, lum.sleep.testPulsePlan, lum.sleep.nextBlock, lum.sleep.run
 
 if nargin < 2 || isempty(cals)
     cals = {[], []};
@@ -116,6 +116,7 @@ plan.Seed = e.Seed;
 
 
 function used = channelsUsed(channels)
+% The optical channels a Channels setting lights: 1 for A, 2 for B.
 switch char(channels)
     case 'A'
         used = 1;
@@ -129,6 +130,7 @@ end
 
 
 function checkCommon(e)
+% The settings every step shares: repeats, the interval between epochs, the order.
 if ~(isscalar(e.Repeats) && e.Repeats >= 1 && e.Repeats == round(e.Repeats) && e.Repeats <= 10000)
     fail('badRepeats', 'Each step needs a whole number of repeats, from 1 to 10000.');
 end
@@ -144,6 +146,7 @@ end
 
 
 function [steps, notes] = inputOutputSteps(e, used, cals, limits)
+% One step per level of the input-output curve, with each channel's current for it.
 io = e.InputOutput;
 n = io.nLevels;
 if ~(isscalar(n) && n >= 2 && n == round(n) && n <= 100)
@@ -196,6 +199,7 @@ end
 
 
 function [steps, notes] = pairedPulseSteps(e, used, cals, limits)
+% One step per inter-pulse interval, every pair at the one current per channel.
 pp = e.PairedPulse;
 intervals = double(pp.Intervals(:)');
 if isempty(intervals) || any(~isfinite(intervals)) || any(intervals <= 0)
@@ -241,6 +245,7 @@ notes = cellfun(@(note) sprintf('%s: %s', what, note), notes, 'UniformOutput', f
 
 
 function order = ordered(indices, how, seed)
+% Step indices in the order asked for; 'Shuffled' draws it from its own stream.
 switch char(how)
     case 'Descending'
         order = fliplr(indices);
@@ -318,4 +323,5 @@ end
 
 
 function fail(id, varargin)
+% Raise an error with a lum:ephys:plan identifier.
 error(['lum:ephys:plan:' id], varargin{:});

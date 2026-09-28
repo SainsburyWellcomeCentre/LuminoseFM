@@ -22,7 +22,7 @@ function [problem, rules] = checkCoverage(cal)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.led.makeCalibration, lum.led.loadCalibration, lum.gui.DoricCalibration
+% See also lum.led.makeCalibration, lum.led.loadCalibration, lum.gui.DoricCalibration
 
 rules = struct('MinLitReadings', 4, 'MinTopCurrentmA', 400);
 problem = '';

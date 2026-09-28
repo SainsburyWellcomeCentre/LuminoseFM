@@ -1,6 +1,7 @@
 function tests = animalSessionTest
-% animalSessionTest plays whole behaviour sessions as an animal, and rebuilds every trial
-% from the saved file alone.
+% animalSessionTest plays whole behaviour sessions as an animal and rebuilds every trial.
+%
+% Every trial is rebuilt from the saved file alone.
 %
 % Four sessions run through LuminoseFM under Bpod('EMU'), each trial played by
 % startSessionMouse with a behaviour chosen to reach one outcome path:
@@ -25,7 +26,7 @@ function tests = animalSessionTest
 %
 % Takes about two minutes.
 %
-% See also: startSessionMouse, emulatorSessionTest, stateMachineTest
+% See also startSessionMouse, emulatorSessionTest, stateMachineTest
 tests = functiontests(localfunctions);
 end
 

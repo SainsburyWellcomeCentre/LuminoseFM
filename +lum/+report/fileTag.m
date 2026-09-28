@@ -9,7 +9,7 @@ function tag = fileTag(dataFile, subject)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.report.summaryPlots
+% See also lum.report.summaryPlots
 
 [~, name] = fileparts(char(dataFile));
 stamp = regexp(name, '\d{8}_\d{6}$', 'match', 'once');

@@ -21,7 +21,7 @@ function [widths, gaps] = pulseSchedule(sync, nPulses)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.sleep.blockStateMachine, lum.sleep.run, lum.SyncMode
+% See also lum.sleep.blockStateMachine, lum.sleep.run, lum.SyncMode
 
 switch sync.Mode
     case lum.SyncMode.FixedWidth

@@ -23,7 +23,7 @@ function mouse = startSessionMouse(behaviours)
 % counts the rows played per trial, and .Error holds the first error the animal met
 % ('' when none).
 %
-% See also: startMouse, animalSessionTest
+% See also startMouse, animalSessionTest
 
 mouse = timer('ExecutionMode', 'fixedSpacing', 'Period', 0.02, 'BusyMode', 'drop', ...
               'UserData', struct('Trial', 0, 'Next', 1, 'Started', [], 'Error', '', ...

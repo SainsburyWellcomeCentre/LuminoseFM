@@ -8,7 +8,7 @@ function choices = experimentChoices()
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.defaultSettings, lum.gui.SetupDialog
+% See also lum.defaultSettings, lum.gui.SetupDialog
 
 choices = struct();
 choices.SessionTypes = {'Behaviour', 'Sleep', 'EphysCalibration'};

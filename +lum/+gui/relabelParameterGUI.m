@@ -3,7 +3,7 @@ function relabelParameterGUI(S)
 %
 % BpodParameterGUI labels every control with the field name of the parameter, so
 % the window reads 'PostStimulusHold' and 'PortLightIntensity' and says nothing
-% about units — and a MATLAB field name cannot say it, because it has no room for
+% about units - and a MATLAB field name cannot say it, because it has no room for
 % a space or a bracket. The names are also what the data file records and what
 % the code refers to, so renaming them to read better is not an option either.
 %
@@ -17,7 +17,7 @@ function relabelParameterGUI(S)
 % all if the handles are not where this version of Bpod put them, because a
 % cosmetic touch-up must never be what stops a session starting.
 %
-% See also: lum.defaultSettings, lum.gui.runtimeFields, BpodParameterGUI
+% See also lum.defaultSettings, lum.gui.runtimeFields, BpodParameterGUI
 
 global BpodSystem %#ok<GVMIS> % Bpod's own session object
 

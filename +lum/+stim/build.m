@@ -19,7 +19,7 @@ function [cue, stimulus] = build(S)
 %
 % Returns two cell arrays of lum.stim.Component objects.
 %
-% See also: lum.stim.Component, lum.cueTiming, lum.buildTrialSM
+% See also lum.stim.Component, lum.cueTiming, lum.buildTrialSM
 
 cueNames = {lum.cueTiming(S).Type};
 cue = cell(1, numel(cueNames));

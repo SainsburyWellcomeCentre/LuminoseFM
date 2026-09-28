@@ -4,9 +4,10 @@ function [sma, plan] = buildTrialSM(context)
 % The state graph is fixed. Every trial, in every training stage, with every
 % stimulus modality, every kind of hold shaping and either break mode, visits states
 % drawn from the same named set; only the OutputActions, the state timers, the global
-% timers and where EarlyWithdrawal leads change. Online plots, the outcome scorer and
-% downstream analysis all depend on that contract, so a new modality is added as a
-% lum.stim.Component, never as a new state.
+% timers and where a poke, a completed hold, a wrong side poke or an early withdrawal
+% leads change. Online plots, the outcome scorer and downstream analysis all depend on
+% that contract, so a new modality is added as a lum.stim.Component, never as a new
+% state.
 %
 %   TrialStart -> WaitForCentrePoke -> [PreStimulusHold] -> CentreHold
 %   (the sync     (the cue is on)       (the latency, when   (the stimulus starts)
@@ -19,7 +20,7 @@ function [sma, plan] = buildTrialSM(context)
 %     | grace runs out                                (hold clock ends, from any of the three)
 %     v
 %   EarlyWithdrawal -> WaitForCentrePoke   Restart stimulus: the next poke starts it again
-%                   -> ITI                 End trial
+%                   -> WaitForLightEnd     End trial
 %
 %   WaitForCentreExit -> WaitForResponse
 %                          -> LeftRewardDelay  -> LeftReward  -> DrinkingLeft  -+
@@ -42,7 +43,7 @@ function [sma, plan] = buildTrialSM(context)
 % goes off on a global timer part way through the stimulus (lum.cueTiming).
 %
 % A completed hold never stops the light pattern (D21). When the hold is shorter than
-% the light — a growing hold, or a fixed one shorter than the stimulus window — the
+% the light - a growing hold, or a fixed one shorter than the stimulus window - the
 % animal leaves and chooses while the light plays on to its end, and the trial waits for
 % it in WaitForLightEnd before the ITI, because Bpod drops every line when a state
 % machine ends. That wait is timed by the light clock, a global timer as long as the
@@ -53,7 +54,7 @@ function [sma, plan] = buildTrialSM(context)
 %
 % The stimulus is delivered only while the animal holds. Leaving the centre port
 % before the hold is complete (beyond any grace) cancels it in EarlyWithdrawal, and
-% with S.Task.OnHoldBreak 'Restart stimulus' — the default — the animal is sent back to
+% with S.Task.OnHoldBreak 'Restart stimulus' - the default - the animal is sent back to
 % WaitForCentrePoke with the cue on again: its next poke starts the latency and the
 % stimulus again, from their beginning. The trial ends when a hold is completed or
 % when the hold window runs out.
@@ -62,8 +63,8 @@ function [sma, plan] = buildTrialSM(context)
 % TrialStart raises it and lasts the pulse's width, and WaitForCentrePoke drops it as
 % the cue comes on; in task-event mode TrialStart has no timer, the line stays high
 % through the wait for the poke, and the poke drops it. So a pulsed mode delays the
-% cue by the pulse width — 20 to 100 ms by default, invisible to an animal whose only sign that
-% a trial has started is the cue itself — and the rising edge marks the state machine
+% cue by the pulse width - 20 to 100 ms by default, invisible to an animal whose only sign that
+% a trial has started is the cue itself - and the rising edge marks the state machine
 % starting in every mode.
 %
 % The hold window (S.GUI.HoldWindow) is a global timer started in TrialStart, so it
@@ -77,7 +78,7 @@ function [sma, plan] = buildTrialSM(context)
 % EarlyWithdrawal and the hold is CentreHold's own timer; HoldBreak and
 % CentreHoldResumed still exist but cannot be reached. With grace, the hold is timed
 % by a global timer instead, because a state timer would restart every time the
-% animal came back, and the light pattern — its own global timers — carries on
+% animal came back, and the light pattern - its own global timers - carries on
 % through a forgiven break.
 %
 % On the first S.GUI.CentreRewardTrials trials of a habituation session the completed
@@ -93,10 +94,10 @@ function [sma, plan] = buildTrialSM(context)
 % WaitForResponse, whose timer starts again: the correct port still pays. RetryResponse
 % is not a trigger state (lum.triggerStates), because the trial goes on after it.
 %
-% The response window opens on the animal *leaving* the centre port, never while its
+% The response window opens on the animal leaving the centre port, never while its
 % nose is still in it. WaitForCentreExit is what enforces that: without it the side
 % ports are live while the animal is still holding, and the first beam break as it
-% backs out of the centre port is taken as its choice — which on this rig opens a
+% backs out of the centre port is taken as its choice - which on this rig opens a
 % reward valve almost the instant the hold ends. It leaves on Port2Out, or at once
 % on the centre port already being clear (condition 3), which is how a hold that ends
 % during a forgiven break still reaches the response window.
@@ -119,8 +120,8 @@ function [sma, plan] = buildTrialSM(context)
 %   sma   State machine description, ready for SendStateMachine
 %   plan  What was allocated, for tests and the trial record
 %
-% See also: lum.nextTrialSpec, lum.stim.Component, lum.scoreTrial, lum.HoldShaping,
-%           lum.triggerStates
+% See also lum.nextTrialSpec, lum.stim.Component, lum.scoreTrial, lum.HoldShaping,
+%          lum.triggerStates
 
 S = context.S;
 rig = context.rig;
@@ -128,9 +129,9 @@ spec = context.spec;
 
 %% Allocate global timers
 % Stimulus components first, then cue components that go off part way through the
-% stimulus, the hold clock and the hold window. The sync line takes none. The stimulus
-% set was validated against lum.timerBudget when the session started, and that budget
-% reserves the others, so this cannot overflow by now.
+% stimulus, the hold clock, the light clock and the hold window. The sync line takes
+% none. The stimulus set was validated against lum.timerBudget when the session started,
+% and that budget reserves the others, so this cannot overflow by now.
 nextTimer = 1;
 [timerGrants, nextTimer] = grantTimers(context.stimulus, context, nextTimer);
 [cueGrants, nextTimer] = grantTimers(context.cue, context, nextTimer);
@@ -250,11 +251,11 @@ if useSync
     end
 end
 
-% Every cue component is on while the animal is asked to poke; at the poke each keeps
-% going, stops, or is left to its timer; all of them stop when the hold ends. Every
-% timer that belongs to the stimulus, the cue's included, starts with the hold. A broken
-% hold cancels them all; a completed one cancels all but the light's and the light
-% clock (D21).
+% Every cue component is on while the animal is asked to poke, and through any latency; at
+% stimulus onset each keeps going, stops, or is left to its timer; all of them stop when the
+% hold ends. Every timer that belongs to the stimulus, the cue's included, starts with the
+% hold. A broken hold cancels them all; a completed one cancels all but the light's and the
+% light clock (D21).
 %
 % Bpod sets every output channel from the state's own row on entering it, so a level
 % a state switched on is dropped by the next state unless that state writes it again.
@@ -300,12 +301,11 @@ end
 earlyWithdrawalPunishment = lum.punishmentFor(S, 'EarlyWithdrawal');
 incorrectChoicePunishment = lum.punishmentFor(S, 'IncorrectChoice');
 
-% With restarts, WaitForCentrePoke follows the break and plays the cue tone, which
-% would cut the punishment noise off the moment it began; so the noise is let finish
-% first. Decided from the settings, not from the module, so the emulator times it the
-% same.
-% Where the trial ends after a punishment, the ITI stops the sound module, which would
-% cut the noise off one cycle after it started; there too the noise is let finish.
+% A punishment noise is let finish before anything can cut it off: with restarts and a
+% cue tone, WaitForCentrePoke follows the break and plays the tone, which would replace
+% the noise the moment it began; where the trial ends, the ITI stops the sound module one
+% cycle later. Decided from the settings, not from the module, so the emulator times it
+% the same.
 earlyWithdrawalTimer = earlyWithdrawalPunishment.Timeout;
 hasCueTone = any(cellfun(@(component) isa(component, 'lum.stim.CueTone'), context.cue));
 if (~restartsOnBreak || hasCueTone) && playsNoise(context, earlyWithdrawalPunishment)
@@ -326,8 +326,9 @@ sma = AddState(sma, 'Name', 'TrialStart', ...
     'OutputActions', lum.mergeActions(lum.timerMaskAction('GlobalTimerTrig', holdWindowTimer), ...
                                       syncHigh));
 
-% The cue: on from trial start until the poke, and on again after every hold that broke
-% when breaks restart the stimulus. It has no timer of its own: the hold window decides
+% The cue: on from trial start until the poke (and through any latency, in
+% PreStimulusHold), and on again after every hold that broke when breaks restart the
+% stimulus. It has no timer of its own: the hold window decides
 % when it gives up.
 latency = S.Stimulus.Latency;
 if latency > 0
@@ -416,10 +417,10 @@ sma = AddState(sma, 'Name', 'CentreReward', ...
 
 % The hold is over and the animal now has to leave the centre port before it can
 % answer; the side ports stay dead until it does. The response configuration goes up
-% here — the cue and the stimulus but its light off, centre light off, guide lights on;
-% the light plays on to its end (D21) — so that everything is
-% ready the moment the animal withdraws. Bounded by the response window, because
-% failing to leave is a failure to respond.
+% here (the cue and every stimulus component but the light off, centre light off, guide
+% lights on; the light plays on to its end, D21), so that everything is ready the moment
+% the animal withdraws. Bounded by the response window, because failing to leave is a
+% failure to respond.
 sma = AddState(sma, 'Name', 'WaitForCentreExit', ...
     'Timer', S.GUI.ResponseWindow, ...
     'StateChangeConditions', {rig.PokeOut.Centre, 'WaitForResponse', ...
@@ -520,9 +521,9 @@ sma = AddState(sma, 'Name', 'NoResponse', ...
 % The hold window ran out without a completed hold: the trial lapses, and the cue
 % goes off. The scorer tells a trial whose stimulus never started from one whose holds
 % all broke. With task-event sync the line drops here and rises again at the next trial's
-% start, and with a 0 s ITI only the time taken to prepare and send that trial lies between
-% the two (a few ms at the least);
-% with video the state lasts two frames, so the cameras always see the line low.
+% start, and with a 0 s ITI only the time taken to prepare and send that trial lies
+% between the two (a few ms at the least), so with video the state lasts two frames and
+% the cameras always see the line low.
 sma = AddState(sma, 'Name', 'NoInitiation', ...
     'Timer', noInitiationTimer, ...
     'StateChangeConditions', {'Tup', trialEnd}, ...
@@ -548,8 +549,8 @@ sma = AddState(sma, 'Name', 'WaitForLightEnd', ...
 % starts as soon as it reaches the state machine: the state machine starts a description
 % sent with 'RunASAP' at once when no trial is running (firmware v23, 'C' command). The
 % time between trials is then MATLAB's preparation and upload: 4-411 ms, median 0.18 s, in
-% LUMS0014's sessions of 2026-09-26 and -27 (Data.Timing.prepare + send);
-% an ITI longer than that makes it the ITI, to a state machine cycle.
+% LUMS0014's sessions of 2026-09-26 and -27 (Data.Timing.prepare + send). An ITI longer
+% than that sets the time between trials, to a state machine cycle.
 sma = AddState(sma, 'Name', 'ITI', ...
     'Timer', S.GUI.ITI, ...
     'StateChangeConditions', {'Tup', '>exit'}, ...

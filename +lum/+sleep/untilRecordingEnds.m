@@ -8,7 +8,7 @@ function tf = untilRecordingEnds(testPulses)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.sleep.testPulsePlan, lum.sleep.validate, lum.gui.SleepSetupDialog
+% See also lum.sleep.testPulsePlan, lum.sleep.validate, lum.gui.SleepSetupDialog
 
 tf = false;
 if ~isstruct(testPulses) || ~isfield(testPulses, 'Schedule') || isempty(testPulses.Schedule) ...

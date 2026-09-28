@@ -7,7 +7,7 @@ function tests = generateTest
 % what varies and what is held equal, and that every family's defaults compile within
 % the rig's timers and the emulator's. Also the properties the protocol relies on:
 % balanced groups, reproducibility from the seed, and a global random stream left
-% untouched. All pure — no Bpod.
+% untouched. All pure - no Bpod.
 tests = functiontests(localfunctions);
 end
 

@@ -23,7 +23,7 @@ classdef IntensityField < handle
     % It occupies two cells of the parent grid: the number, then the unit and the
     % current it stands for.
     %
-    % See also: lum.led.intensity, lum.led.currentFor, lum.gui.DoricSetup
+    % See also lum.led.intensity, lum.led.currentFor, lum.gui.DoricSetup
 
     properties (SetAccess = private)
         Field               % The numeric uieditfield

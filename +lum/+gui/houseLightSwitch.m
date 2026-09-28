@@ -4,10 +4,10 @@ function control = houseLightSwitch(parent, position, houseLight, t)
 %   control = lum.gui.houseLightSwitch(parent, position, houseLight, t)
 %
 % A checkbox that switches the light the moment it is clicked (houseLight.set: PulsePal's
-% output 3, D15), and follows the light as it is — a switch made any other way, or one
+% output 3, D15), and follows the light as it is - a switch made any other way, or one
 % PulsePal could not make. Greyed out, and off, when the light is not Switchable (a session
-% without light and without PulsePal, lum.dev.DisabledHouseLight). Both live figures have one, lum.OnlinePlots and lum.sleep.Plots,
-% in their header.
+% without light and without PulsePal, lum.dev.DisabledHouseLight). Both live figures have
+% one, lum.OnlinePlots and lum.sleep.Plots, in their header.
 %
 % Arguments:
 %   parent      The header panel (a classic figure's uipanel)
@@ -15,7 +15,7 @@ function control = houseLightSwitch(parent, position, houseLight, t)
 %   houseLight  The session's lum.dev.HouseLight; [] builds no switch and returns []
 %   t           lum.gui.theme
 %
-% See also: lum.dev.HouseLight, lum.OnlinePlots, lum.sleep.Plots
+% See also lum.dev.HouseLight, lum.OnlinePlots, lum.sleep.Plots
 
 control = [];
 if isempty(houseLight)

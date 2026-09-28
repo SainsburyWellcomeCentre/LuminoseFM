@@ -11,7 +11,7 @@ classdef StubPulsePal < lum.dev.PulsePal
     % one pauses and MATLAB would run a click's callback; RefuseParams makes every
     % parameter fail, as a device that stopped confirming them would.
     %
-    % See also: lum.dev.PulsePal, lum.dev.NullPulsePal, pulsePalTest
+    % See also lum.dev.PulsePal, lum.dev.NullPulsePal, pulsePalTest
 
     properties
         Answers = true          % Whether the next handshake is answered

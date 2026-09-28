@@ -19,12 +19,12 @@ function result = scoreTrial(trialEvents, spec, rig)
 %                  (RetryResponse); the first is the animal's choice.
 %   .Correct       1, 0, or NaN if there was no choice to score
 %   .Rewarded      1 if a side reward valve opened, else 0 (also after a retry)
-%   .ReactionTime  Seconds from the response window opening — the animal leaving
-%                  the centre port — to the choice poke
+%   .ReactionTime  Seconds from the response window opening - the animal leaving
+%                  the centre port - to the choice poke
 %   .HoldBreaks    Times the animal left the centre port during the hold and was
 %                  forgiven (visits to HoldBreak); 0 without grace shaping
 %   .HoldAttempts  Times the stimulus started (visits to CentreHold): 1 for a trial
-%                  held at the first try, more when broken holds restarted it, 0
+%                  held on the first attempt, more when broken holds restarted it, 0
 %                  when it never started
 %   .EarlyWithdrawals  Times the animal left the centre port before the hold was
 %                  complete and the break was not forgiven (visits to
@@ -44,7 +44,7 @@ function result = scoreTrial(trialEvents, spec, rig)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.buildTrialSM, lum.Outcome, lum.updateHistory
+% See also lum.buildTrialSM, lum.Outcome, lum.updateHistory
 
 states = trialEvents.States;
 events = trialEvents.Events;

@@ -36,8 +36,8 @@ function [S, accepted, app] = StimulusDesigner(S, rig, varargin)
 %             .status(), .chooseFamily(name), .editPLeft(values), .familyPLeft(),
 %             .stimulusSet() and .controls
 %
-% See also: lum.pattern.generate, lum.pattern.stimulusSet, lum.pattern.families,
-%           lum.gui.SetupDialog, lum.gui.PatternBrowser
+% See also lum.pattern.generate, lum.pattern.stimulusSet, lum.pattern.families,
+%          lum.gui.SetupDialog, lum.gui.PatternBrowser
 
 if nargin < 1 || isempty(S)
     S = lum.pattern.prepareSeed(lum.defaultSettings);

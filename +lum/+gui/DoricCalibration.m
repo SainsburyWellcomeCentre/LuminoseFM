@@ -11,27 +11,28 @@ classdef DoricCalibration < handle
     % channel already.
     %
     % Each channel has its own table of currents, 0 to 1000 mA in steps of 100 by default
-    % ('CurrentsmA'), never above the channel's limit, its own On and Off, and its own graph.
-    % A cable already calibrated on that channel starts with its saved readings, shown in the
-    % meter's unit, and its saved currents join the table: measure only the rows left empty
-    % (for example 800 to 1000 mA after a calibration to 700). Fill adds a series of currents
-    % to both tables, keeping every reading (From = To adds one current); a row's mA can
-    % also be typed over. Rows without a power are left out of the calibration. On lights that channel continuously (continuous mode, through
-    % the connected driver) at the selected row's current; while it is lit, choosing
-    % another row, or Next, lights it at that row's current. The operator holds the power
-    % meter at the cable's tip and types the power read, in mW or uW. The window shows the
+    % ('CurrentsmA'), never above the channel's limit, its own On and Off, and its own
+    % graph. A cable already calibrated on that channel starts with its saved readings,
+    % shown in the meter's unit, and its saved currents join the table: measure only the
+    % rows left empty (for example 800 to 1000 mA after a calibration to 700). Fill adds a
+    % series of currents to both tables, keeping every reading (From = To adds one current);
+    % a row's mA can also be typed over. Rows without a power are left out of the
+    % calibration. On lights that channel continuously (continuous mode, through the
+    % connected driver) at the selected row's current; while it is lit, choosing another
+    % row, or Next, lights it at that row's current. The operator holds the power meter at
+    % the cable's tip and types the power read, in mW or uW. The window shows the
     % irradiance, power over the area of the cable's fibers, and draws current against
     % irradiance as the readings come in (lum.led.plotCalibration), with the cable's saved
     % calibration dashed behind it when there is one.
     %
-    % Save calibrations writes each channel whose readings changed (lum.led.saveCalibration),
-    % replacing any earlier one of that cable on that channel; every session type uses it
-    % from then on, with that cable on that channel. A channel's readings must cover the
-    % LED's range (lum.led.checkCoverage: 4 currents above 0 mA at least, up to 400 mA or
-    % more), or they are not saved; the line above each table says whether they do. Choosing
-    % another cable drops that channel's
-    % unsaved readings, after asking. Closing the window switches both channels off; the
-    % session puts them back in external TTL mode.
+    % Save calibrations writes each channel whose readings changed
+    % (lum.led.saveCalibration), replacing any earlier one of that cable on that channel;
+    % every session type uses it from then on, with that cable on that channel. A channel's
+    % readings must cover the LED's range (lum.led.checkCoverage: 4 currents above 0 mA at
+    % least, up to 400 mA or more), or they are not saved; the line above each table says
+    % whether they do. Choosing another cable drops that channel's unsaved readings, after
+    % asking. Closing the window switches both channels off; the session puts them back in
+    % external TTL mode.
     %
     % Without a connected driver (DoricLED not found, the control off), On and Off are
     % greyed out and each current is set on the driver by hand, in continuous mode.
@@ -52,7 +53,7 @@ classdef DoricCalibration < handle
     % setPower(k, row, value), fill(), select(k, row), next(k), lightOn(k), lightOff(k),
     % switchOff(k) (the Off button), save(), calibration(k), close().
     %
-    % See also: lum.gui.DoricSetup, lum.led.makeCalibration, lum.led.saveCalibration
+    % See also lum.gui.DoricSetup, lum.led.makeCalibration, lum.led.saveCalibration
 
     properties (SetAccess = private)
         Figure

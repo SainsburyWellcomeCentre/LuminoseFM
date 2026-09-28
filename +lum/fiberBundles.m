@@ -22,7 +22,7 @@ function bundles = fiberBundles()
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.defaultSettings, lum.gui.DoricSetup, lum.led.lightPath
+% See also lum.defaultSettings, lum.gui.DoricSetup, lum.led.lightPath
 
 bundles = struct( ...
     'Name',         {'2-to-19', '4-to-19'}, ...

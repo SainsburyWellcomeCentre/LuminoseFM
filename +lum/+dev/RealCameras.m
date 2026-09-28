@@ -9,7 +9,7 @@ classdef RealCameras < lum.dev.Cameras
     % Nothing here runs per frame. Per trial there is one mark (a host-clock read and a
     % line in the events file); the camera window reads preview frames on its own timer.
     %
-    % See also: lum.dev.Cameras, lum.dev.openCameras, lum.gui.CameraWindow
+    % See also lum.dev.Cameras, lum.dev.openCameras, lum.gui.CameraWindow
 
     properties (SetAccess = private)
         Connected   % Struct array from lum.dev.configureCameras: Serial, Name, Row

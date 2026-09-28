@@ -30,7 +30,7 @@ function cue = cueTiming(S)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.buildTrialSM, lum.stim.build, lum.stim.timerCost, lum.defaultSettings
+% See also lum.buildTrialSM, lum.stim.build, lum.stim.timerCost, lum.defaultSettings
 
 cue = struct('Type', {}, 'Mode', {}, 'Duration', {});
 window = S.Stimulus.Duration;

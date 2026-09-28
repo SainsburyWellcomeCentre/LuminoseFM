@@ -7,6 +7,6 @@ function startTime = barcodeTime(value)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.sync.barcodeValue, lum.sync.decodeBarcode
+% See also lum.sync.barcodeValue, lum.sync.decodeBarcode
 
 startTime = datetime(2020, 1, 1) + seconds(value);

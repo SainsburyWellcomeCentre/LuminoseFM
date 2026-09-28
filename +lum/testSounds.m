@@ -3,8 +3,8 @@ function plays = testSounds(S, which, nGroups)
 %
 % The sound settings are easiest to set by ear. Each "Play" button in the setup dialog
 % asks for one of the session's sounds, built from the settings as they stand in the
-% dialog — sampling rate, amplitude, attenuation, and the sound's own frequency and
-% duration — and plays it through TestHiFiSound: on the HiFi module when Bpod has one,
+% dialog - sampling rate, amplitude, attenuation, and the sound's own frequency and
+% duration - and plays it through TestHiFiSound: on the HiFi module when Bpod has one,
 % on the PC's speakers otherwise (the emulator).
 %
 % Arguments:
@@ -13,12 +13,12 @@ function plays = testSounds(S, which, nGroups)
 %   nGroups  Number of stimulus groups, for 'Stimulus' (one tone per group)
 %
 % Returns a cell array with one element per sound to play, in order; each is the
-% name/value argument list for TestHiFiSound. The cue tone, which loops until the poke
-% in a session, plays for 0.5 s.
+% name/value argument list for TestHiFiSound. The cue tone, which loops until the stimulus
+% starts in a session, plays for 0.5 s.
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: TestHiFiSound, lum.loadSounds, lum.gui.SetupDialog
+% See also TestHiFiSound, lum.loadSounds, lum.gui.SetupDialog
 
 if nargin < 3 || isempty(nGroups)
     nGroups = 2;

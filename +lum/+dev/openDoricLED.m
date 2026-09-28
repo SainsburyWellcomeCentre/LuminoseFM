@@ -19,7 +19,7 @@ function led = openDoricLED(emulated, S)
 %
 % Returns a lum.dev.DoricLED.
 %
-% See also: lum.dev.open, lum.dev.DoricLED, lum.dev.DoricLED.locatePackage
+% See also lum.dev.open, lum.dev.DoricLED, lum.dev.DoricLED.locatePackage
 
 if ~S.Doric.Enabled
     led = lum.dev.DoricLED('Manual', [], 'control from MATLAB switched off');

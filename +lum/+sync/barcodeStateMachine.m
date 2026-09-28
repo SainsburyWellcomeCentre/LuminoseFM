@@ -6,7 +6,7 @@ function sma = barcodeStateMachine(code, channel)
 % the timing is the state machine's own 100 us cycle, it costs nothing from the
 % timer budget, and it runs identically on the rig and under Bpod('EMU').
 %
-% It runs once, on its own, before the first trial — not as states of trial 1 —
+% It runs once, on its own, before the first trial - not as states of trial 1 -
 % so the trial-flow contract, the state names every trial carries, is untouched
 % and the barcode never appears in the trial record.
 %
@@ -17,7 +17,7 @@ function sma = barcodeStateMachine(code, channel)
 % Returns the state machine description, ready for SendStateMachine. Needs Bpod
 % running, because AddState resolves channel names against the connected machine.
 %
-% See also: lum.sync.barcode, lum.dev.Flex
+% See also lum.sync.barcode, lum.dev.Flex
 
 sma = NewStateMachine();
 nElements = numel(code.Levels);

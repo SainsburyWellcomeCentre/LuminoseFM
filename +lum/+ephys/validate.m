@@ -20,7 +20,7 @@ function [plan, notes] = validate(S, rig, cals)
 %
 % This is a pure function apart from reading calibration files: no hardware, no globals.
 %
-% See also: lum.ephys.plan, lum.gui.EphysSetupDialog, lum.sleep.run, lum.sleep.validateClock
+% See also lum.ephys.plan, lum.gui.EphysSetupDialog, lum.sleep.run, lum.sleep.validateClock
 
 if nargin < 3
     cals = lum.led.calibrations(S);

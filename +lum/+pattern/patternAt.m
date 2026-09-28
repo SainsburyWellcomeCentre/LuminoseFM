@@ -18,7 +18,7 @@ function pattern = patternAt(stimulusSet, index)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.pattern.stimulusSet, lum.pattern.describe, lum.stim.OptoPattern
+% See also lum.pattern.stimulusSet, lum.pattern.describe, lum.stim.OptoPattern
 
 if index < 1 || index > stimulusSet.nPatterns || mod(index, 1) ~= 0
     error('lum:pattern:patternAt:badIndex', ...

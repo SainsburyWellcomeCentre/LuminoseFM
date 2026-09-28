@@ -4,7 +4,7 @@ function [S, accepted, app] = SetupDialog(S, rig, varargin)
 % This is the pre-session half of architecture decision D2. The runtime window is a
 % good fit for scalars that may change with an animal in the box, but it has no
 % representation for a stimulus set or a per-channel carrier, and every field it
-% owns stays editable for the whole session — which is wrong for parameters that have
+% owns stays editable for the whole session - which is wrong for parameters that have
 % to be constant for the data to mean anything. So the pre-session tier gets this
 % dialog, and the split between the tiers is structural rather than a rule the
 % operator has to remember. The runtime tier is editable here too, so a session never
@@ -66,8 +66,8 @@ function [S, accepted, app] = SetupDialog(S, rig, varargin)
 %             lum.gui.HelpLine), .cameras (the lum.gui.CameraSetup) and .doric (the
 %             lum.gui.DoricSetup)
 %
-% See also: lum.defaultSettings, lum.validateSettings, lum.gui.StimulusDesigner,
-%           lum.gui.RuntimeWindow
+% See also lum.defaultSettings, lum.validateSettings, lum.gui.StimulusDesigner,
+%          lum.gui.RuntimeWindow
 
 p = inputParser;
 p.FunctionName = 'lum.gui.SetupDialog';
@@ -249,8 +249,8 @@ end
     end
 
     function candidate = followBudget(candidate)
-        % A family's defaults follow the timers left for light. When they change — a
-        % training stage, automatic shaping, a fixed hold, a timed component — and the
+        % A family's defaults follow the timers left for light. When they change - a
+        % training stage, automatic shaping, a fixed hold, a timed component - and the
         % stimulus is still exactly the family's defaults for the timers it had, they are
         % loaded again for the new number, so that choosing Training after a family, say,
         % never leaves a pattern the machine refuses (a mixture's cycles in the emulator).
@@ -331,7 +331,7 @@ end
         % Choosing a training stage applies the session that goes with it
         % (lum.stageDefaults): habituation delivers air and no light, the other stages
         % the light pattern. The controls are written back, so the operator sees what
-        % changed and is free to change it again — these are defaults, not a lock.
+        % changed and is free to change it again - these are defaults, not a lock.
         try
             candidate = collectSettings();
         catch readError
@@ -452,8 +452,8 @@ end
     end
 
     function candidate = collectSettings()
-        % Read every control back into a settings struct. Fields no control shows —
-        % the generator, which only the designer edits — come from S.
+        % Read every control back into a settings struct. Fields no control shows -
+        % the generator, which only the designer edits - come from S.
         c = controls;
         candidate = S;
 
@@ -505,8 +505,7 @@ end
             candidate.(side{1}).GuideLight = s.GuideLight.Value;
         end
 
-        % The LED, the bundle and its cables (on the 4-to-19 bundle only; the 2-to-19
-        % bundle's fixed fibers leave the recorded choice as it was).
+        % The LED, the bundle and the cable on each channel (lum.gui.DoricSetup).
         candidate = doric.read(candidate);
         candidate.Light.Carrier = struct('Channel', {1, 2}, ...
             'Frequency', {c.Frequency(1).Value, c.Frequency(2).Value}, ...

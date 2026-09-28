@@ -10,9 +10,9 @@ function image = logo(sizePixels)
 %   sizePixels  Edge of the square image (default 64)
 %
 % Returns an sizePixels x sizePixels x 3 uint8 image, or [] if the artwork is
-% missing — windows then simply show no logo.
+% missing - windows then simply show no logo.
 %
-% See also: lum.gui.theme, lum.gui.SetupDialog, lum.OnlinePlots
+% See also lum.gui.theme, lum.gui.SetupDialog, lum.OnlinePlots
 
 persistent cache
 if nargin < 1

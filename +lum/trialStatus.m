@@ -24,7 +24,7 @@ function lines = trialStatus(trialNumber, spec, result, nextSpec, stimulusSet)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.gui.RuntimeWindow, lum.Outcome, lum.scoreTrial
+% See also lum.gui.RuntimeWindow, lum.Outcome, lum.scoreTrial
 
 if isempty(result)
     lines = {'Session started', runningText(nextSpec, stimulusSet)};

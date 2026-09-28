@@ -9,16 +9,16 @@ function [S, changes, period] = fitToCameras(S)
 % every width the operator typed is a minimum, and this function raises what falls short
 % of the frame period T = 1 / S.Camera.FrameRate (D7, D14):
 %
-%   element                          rule                              why
-%   barcode 0 bit, gap               >= 2 T                            always sampled, even with
-%                                                                      a frame rate a little low
-%   barcode 1 bit                    >= 0 bit + 3 T                    a frame's error either way
-%   behaviour marker                 >= 1 bit + 3 T                    cannot close the gap
-%   sleep marker                     >= behaviour marker + 3 T
-%   ePhys calibration marker         >= sleep marker + 3 T
-%   trial pulses, sleep and ePhys    shortest >= 2 T; a jittered range
-%   sync pulses
-%                                    keeps its spread, shifted up
+%   element                     rule                          why
+%   barcode 0 bit, gap          >= 2 T                        always sampled, even with a
+%                                                             frame rate a little low
+%   barcode 1 bit               >= 0 bit + 3 T                a frame's error either way
+%   behaviour marker            >= 1 bit + 3 T                cannot close the gap
+%   sleep marker                >= behaviour marker + 3 T
+%   ePhys calibration marker    >= sleep marker + 3 T
+%   trial pulses, and sleep     shortest >= 2 T; a jittered
+%   and ePhys sync pulses       range keeps its spread,
+%                               shifted up
 %
 % A frame samples the line at one instant, so a high or low time of n T is seen as n - 1
 % to n + 1 frames. 2 T is therefore never missed, and 3 T between neighbouring widths keeps
@@ -31,10 +31,10 @@ function [S, changes, period] = fitToCameras(S)
 %
 % Where it is used: the settings file keeps what the operator typed. lum.validateSettings
 % and lum.sleep.validate check the fitted values and say what was widened; LuminoseFM and
-% lum.sleep.run fit S once, before anything is sent, so the barcode (Data.Session.Barcode.
-% Params), the trial pulses (Data.SyncPulseWidth), the sleep pulses (Data.SyncPulses) and
-% Data.Session.Settings are what went out, and Data.Session.SyncFit lists the changes. The
-% setup dialogs preview the fitted barcode.
+% lum.sleep.run fit S once, before anything is sent, so the barcode
+% (Data.Session.Barcode.Params), the trial pulses (Data.SyncPulseWidth), the sleep pulses
+% (Data.SyncPulses) and Data.Session.Settings are what went out, and Data.Session.SyncFit
+% lists the changes. The setup dialogs preview the fitted barcode.
 %
 % Returns:
 %   S        Settings with S.Sync.Barcode and the widths of S.Sync, S.Sleep.Sync and
@@ -45,7 +45,7 @@ function [S, changes, period] = fitToCameras(S)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.sync.barcode, lum.sync.decodeBarcode, lum.validateSettings, lum.sleep.validate
+% See also lum.sync.barcode, lum.sync.decodeBarcode, lum.validateSettings, lum.sleep.validate
 
 changes = {};
 period = NaN;

@@ -24,6 +24,7 @@ means. The rig, the data format and the design live in [`docs/`](docs):
 | run everything with no hardware attached | [`docs/emulator.md`](docs/emulator.md) |
 | know what has been checked on the rig, and what still needs someone there | [`docs/rig-checks.md`](docs/rig-checks.md), and the pre-deployment report [`docs/validation-2026-09-24.md`](docs/validation-2026-09-24.md) |
 | change the code: design decisions D1–D22 and where each lives | [`docs/architecture.md`](docs/architecture.md), [`docs/repository.md`](docs/repository.md) (layout and tests) |
+| look up any function or class at the MATLAB prompt, or write comments and help text | §15 below, and [`docs/code-style.md`](docs/code-style.md) |
 
 Coding agents start from [`CLAUDE.md`](CLAUDE.md) (also `AGENTS.md`).
 
@@ -35,7 +36,8 @@ Coding agents start from [`CLAUDE.md`](CLAUDE.md) (also `AGENTS.md`).
 [9 LED intensity and calibration](#9-the-lights-intensity-the-doric-led-and-its-calibration) ·
 [10 Video](#10-video) · [11 Aligning other recordings](#11-aligning-other-recordings) ·
 [12 Your data](#12-your-data) · [13 Utilities](#13-utilities) ·
-[14 Working away from the rig](#14-working-away-from-the-rig)
+[14 Working away from the rig](#14-working-away-from-the-rig) ·
+[15 Help at the MATLAB prompt](#15-help-at-the-matlab-prompt)
 
 ---
 
@@ -637,7 +639,7 @@ Panels, in the order they are read:
     each side's trials rewarded); the number above each bar is the trials it counts
   - **Side bias** — P(chose left) over the last `BiasWindow` choices (as set when the session
     started), with the P(left) that bias correction aimed for on each trial
-  - **Reaction time** — by side chosen, with a running median, on a log axis (0.1 to 10 s at least,
+  - **Reaction time** — by side chosen, with a running median, on a log axis (0.1 to 1 s at least,
     widened to what is on screen), so a trained animal's fraction of a second and a new animal's
     several seconds both read
   - **Centre hold** — how long the animal stayed in the centre port on each trial's last hold,
@@ -1105,7 +1107,7 @@ listed, MATLAB R2025b's Workspace browser went through every change the session 
 the session ended, and ran MATLAB out of memory a few minutes later (LUMS0014's sessions of
 2026-09-25 and -26). The session removes it from the base workspace as its last step; Bpod keeps it,
 so `EndBpod`, the console and the next session work as before. For four minutes after a desktop
-behaviour session a small background process also writes `<data file name>_memory.csv` beside the data file,
+session (of any type) a small background process also writes `<data file name>_memory.csv` beside the data file,
 MATLAB's memory once a second; it can be deleted.
 
 Every field, and what to watch for in files from older versions, is in
@@ -1221,3 +1223,26 @@ runLuminoseTests('Filter', {'generateTest'})  % one file
 ```
 
 What it covers is listed in [`docs/repository.md`](docs/repository.md).
+
+---
+
+## 15. Help at the MATLAB prompt
+
+Every function, class and utility in the repository explains itself: what it is for, its
+arguments, what it returns and where to look next. MATLAB shows that text with its usual commands:
+
+```matlab
+help lum                           % every file in the lum package, one line each
+help lum.led                       % the same for one part: lum.pattern, lum.sleep, lum.dev...
+help lum.led.irradiance            % what one function does, its arguments and what it returns
+doc lum.dev.PulsePal               % the same in the help browser, See also names as links
+help lum.dev.PulsePal.holdVoltage  % one method of a class
+methods lum.dev.DoricLED           % a class's methods (properties lists its properties)
+help TestSyncLine                  % a utility's options (hardware/ must be on the path)
+which lum.version                  % where a name comes from: this repository, Bpod, MATLAB
+edit lum.buildTrialSM              % the source
+```
+
+`lookfor` does not search inside packages: `help lum.<part>` is the list to read. Bpod's own
+functions answer the same way (`help BpodTrialManager`). The full table, and how the help text and
+comments are written and checked, are in [`docs/code-style.md`](docs/code-style.md).

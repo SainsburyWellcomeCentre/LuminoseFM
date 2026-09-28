@@ -10,7 +10,7 @@ function S = prepareSeed(S)
 % Called once as a session is set up, before the setup dialog opens, so that the
 % preview the operator scrolls through is the order the session will run.
 %
-% See also: lum.pattern.newSeed, lum.pattern.generate
+% See also lum.pattern.newSeed, lum.pattern.generate
 
 generator = lum.pattern.withGeneratorDefaults(S.Stimulus.Generator);
 if generator.NewSeedEachSession

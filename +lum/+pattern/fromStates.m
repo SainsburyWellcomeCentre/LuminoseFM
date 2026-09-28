@@ -6,8 +6,8 @@ function segments = fromStates(states, binDuration)
 % decision D1). This is the translation between the two: each maximal run of bins
 % in which a channel is on becomes one segment, [channel, onset, duration].
 %
-% The result is already canonical — sorted by channel then onset, with no two
-% segments on a channel touching — so its row count is exactly the number of
+% The result is already canonical - sorted by channel then onset, with no two
+% segments on a channel touching - so its row count is exactly the number of
 % global timers the pattern costs.
 %
 % Arguments:
@@ -19,7 +19,7 @@ function segments = fromStates(states, binDuration)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.pattern.generate, lum.pattern.canonicalise, lum.stim.OptoPattern
+% See also lum.pattern.generate, lum.pattern.canonicalise, lum.stim.OptoPattern
 
 cyclePeriod = 1e-4;
 

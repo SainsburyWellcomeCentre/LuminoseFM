@@ -4,7 +4,7 @@ classdef SyncMode
     % The line goes to the acquisition devices, so its meaning is part of the
     % experiment: what a rising edge means in the electrophysiology file is
     % decided here. Stored as an integer per trial (Data.SyncMode) and part of the
-    % data format — append new modes, never renumber the existing ones, or old
+    % data format - append new modes, never renumber the existing ones, or old
     % session files change meaning. Names may be clarified; codes may not move.
     %
     % Whether the line is driven at all is separate, and stays S.Session.UseSync;
@@ -18,7 +18,7 @@ classdef SyncMode
     % costs a global timer, and all three take the same path as the barcode and a
     % sleep session's pulses, which is the path the rig is known to drive (D4).
     %
-    % See also: lum.nextTrialSpec, lum.buildTrialSM, lum.sync.barcode
+    % See also lum.nextTrialSpec, lum.buildTrialSM, lum.sync.barcode
 
     properties (Constant)
         % One pulse per trial, always S.Sync.FixedWidth long, in TrialStart. The
@@ -33,8 +33,9 @@ classdef SyncMode
         JitteredWidth = 2
 
         % No pulse. The line goes high at trial start and low when the animal
-        % pokes the centre port, so its own edges mark the task events and the
-        % recording carries the initiation latency without the behaviour file.
+        % pokes the centre port (or in NoInitiation, when it never does), so its own
+        % edges mark the task events and the recording carries the initiation
+        % latency without the behaviour file.
         TaskEvents    = 3
     end
 

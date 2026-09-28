@@ -66,7 +66,7 @@ function generator = withGeneratorDefaults(generator)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.pattern.familyDefaults, lum.pattern.generate, lum.defaultSettings
+% See also lum.pattern.familyDefaults, lum.pattern.generate, lum.defaultSettings
 
 defaults = struct('Family', 'pure', 'Continuous', false, 'BinDuration', 0.01, ...
                   'Seed', 1, 'NewSeedEachSession', true, ...

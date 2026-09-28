@@ -29,7 +29,7 @@ function measures = holdMeasures(states)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.scoreTrial, lum.report.sessionTrials, lum.OnlinePlots
+% See also lum.scoreTrial, lum.report.sessionTrials, lum.OnlinePlots
 
 completed = double(visited(states, 'CentreReward') || visited(states, 'WaitForCentreExit'));
 withdrawals = nVisits(states, 'EarlyWithdrawal');

@@ -11,6 +11,7 @@ function rig = RigConfig()
 % Fields:
 %   rig.Ports        Behaviour port numbers by role (Left/Centre/Right/Air)
 %   rig.Sides        {'Left','Right'}; side index 1 = Left, 2 = Right throughout
+%   rig.SidePorts    Port numbers of the left and right ports, [1 3]
 %   rig.LED          Output channel driving each port's LED, by role
 %   rig.Valve        Output channel driving each port's solenoid, by role
 %   rig.PokeIn       Event name for entry into each port, by role
@@ -31,17 +32,17 @@ function rig = RigConfig()
 % rig is an r2+ with 16 global timers and Flex I/O. Always size patterns against
 % rig.Limits.GlobalTimers rather than assuming 16.
 %
-% See also: CheckRig, lum.pattern.validate
+% See also CheckRig, lum.pattern.validate
 
 global BpodSystem %#ok<GVMIS> % Imported to read the connected machine's channel list
 
-%% Fixed wiring (see docs/hardware.md and the hardware map in CLAUDE.md)
-% Ports 1-3 are the behaviour ports proper: each has a photogate, an LED and a
-% water valve. Reward is delivered at the left and right ports, and at the centre port
-% only for habituation's centre reward (S.GUI.CentreRewardAmount, valve 2). Port 4 carries one line, the
-% air valve, so the other names generated below (rig.LED.Air and port 4's photogate)
-% exist as state machine channels but are connected to nothing. Port 5 is unused: the
-% house light moved from its LED line to PulsePal (rig.HouseLight).
+%% Fixed wiring (docs/hardware.md)
+% Ports 1-3 are the behaviour ports proper: each has a photogate, an LED and a water
+% valve. Reward is delivered at the left and right ports, and at the centre port only for
+% the centre reward (S.GUI.CentreRewardAmount, valve 2). Port 4 carries one line, the air
+% valve, so the other names generated below (rig.LED.Air and port 4's photogate) exist as
+% state machine channels but are connected to nothing. Port 5 is unused: the house light
+% moved from its LED line to PulsePal (rig.HouseLight).
 rig.Ports = struct('Left', 1, 'Centre', 2, 'Right', 3, 'Air', 4);
 rig.Sides = {'Left', 'Right'};      % Side index 1 = Left, 2 = Right
 rig.SidePorts = [rig.Ports.Left rig.Ports.Right];

@@ -7,7 +7,7 @@ classdef RealHouseLight < lum.dev.HouseLight
     % port settings, and says so when it is not: the light still switches, but the
     % switches are then on the camera clock only.
     %
-    % See also: lum.dev.HouseLight, lum.dev.NullHouseLight, RigConfig
+    % See also lum.dev.HouseLight, lum.dev.NullHouseLight, RigConfig
 
     methods
         function obj = RealHouseLight(pulsePal, config, on)

@@ -20,7 +20,7 @@ D:\luminoseData\<subject>\LuminoseFM\Session Data\<subject>_LuminoseFM_<YYYYMMDD
 D:\luminoseData\<subject>\LuminoseFM\Session Settings\<settings name>.mat
 D:\luminoseData\<subject>\LuminoseFM\Session Data\<...>_ANLG.dat   (Flex analog stream, raw)
 D:\luminoseData\<subject>\LuminoseFM\Session Data\<...>_plots.png  (the online figure at the end)
-D:\luminoseData\<subject>\LuminoseFM\Session Data\<...>_memory.csv  (MATLAB's memory after a desktop behaviour session)
+D:\luminoseData\<subject>\LuminoseFM\Session Data\<...>_memory.csv  (MATLAB's memory after a desktop session)
 D:\luminoseData\<subject>\LuminoseFM\Session Videos\<view>_<data file name>.avi   (video, one per camera)
 D:\luminoseData\<subject>\LuminoseFM\Session Videos\<view>_<data file name>.csv   (one row per frame)
 D:\luminoseData\<subject>\LuminoseFM\Session Videos\<data file name>_events.csv  (marks, host clock)
@@ -61,7 +61,7 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
 - At teardown the online figure is saved as `<data file name>_plots.png` beside the data file
   (`lum.gui.savePlotsImage`), before the final save, which records its path in
   `Session.PlotsImage` (`''` if it could not be written; the console says why).
-- As a desktop behaviour session ends (0.9.7, not headless), `lum.watchMemoryAfterSession` starts a separate
+- As a desktop session of any type ends (0.9.7, not headless), `lum.watchMemoryAfterSession` starts a separate
   PowerShell process that writes `<data file name>_memory.csv` for four minutes: comment lines with
   the MATLAB timers still running, then one row a second with MATLAB's private and resident memory
   (`PrivateGB`, `WorkingSetGB`), its thread count, the CPU seconds MATLAB's own thread used in that
@@ -546,6 +546,11 @@ the null device shims swallowed is recorded in `Data.Session.DeviceLog`. See
   widths. Align those sessions by the barcode and `Data.TrialStartTimestamp`; see
   [`sync-and-barcode.md`](sync-and-barcode.md).
 - **Analog timestamps from 0.2** need `lum.dev.Flex.alignAnalog`, above.
+- **Sessions before 0.4.1** with light may have run with PulsePal unprogrammed: a session went on
+  when PulsePal did not connect, and Bpod gated BNC1/BNC2 while PulsePal answered with its last
+  program, so the file looks right while the LEDs fired at other times. The first line of
+  `Session.DeviceLog.PulsePal` says so (`not connected (connection failed)`). From 0.4.1 such a
+  session does not start.
 - **The first 0.6.1 sessions** (`FakeSubject_LuminoseFM_20260917_091854` and any other run before the
   house light moved to the plots' header and to PulsePal) have `Settings.GUI.HouseLight` or only
   `Settings.Sleep.HouseLight`, no `Session.HouseLight` record, and switches took effect only at the

@@ -32,7 +32,7 @@ function fields = runtimeFields(S)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.defaultSettings, lum.gui.SetupDialog, lum.gui.RuntimeWindow
+% See also lum.defaultSettings, lum.gui.SetupDialog, lum.gui.RuntimeWindow
 
 meta = structOrEmpty(S, 'GUIMeta');
 panels = structOrEmpty(S, 'GUIPanels');
@@ -42,7 +42,7 @@ names = fieldnames(S.GUI);
 panelNames = fieldnames(panels);
 
 % Panel by panel, in declaration order, skipping anything a panel names that S.GUI
-% does not actually have — a stale panel entry is a typo in the settings, not a
+% does not actually have - a stale panel entry is a typo in the settings, not a
 % reason to refuse to open a window.
 order = {};
 panelOf = struct();

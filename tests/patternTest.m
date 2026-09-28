@@ -1,5 +1,5 @@
 function tests = patternTest
-% patternTest exercises light patterns as the state machine sees them: lum.pattern.*
+% patternTest exercises light patterns as the state machine sees them (lum.pattern).
 %
 % A pattern becomes one global timer per stretch of light on a channel, so the
 % translation from joint states to segments, and the normal form segments are kept

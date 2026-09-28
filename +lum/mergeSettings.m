@@ -7,7 +7,7 @@ function [S, added] = mergeSettings(defaults, loaded)
 % first animal of the day. Merging makes that a non-event: the new parameter appears
 % with its default and the operator is told which ones were filled in.
 %
-% Three kinds of change need more than filling in:
+% Four kinds of change need more than filling in:
 %
 %   Renamed    A setting that moved or was renamed would otherwise be filled in
 %              from the default while the operator's value sat unused under the
@@ -16,6 +16,8 @@ function [S, added] = mergeSettings(defaults, loaded)
 %              channel, a list of cue names that became rows) is converted.
 %   Retired    A setting nothing reads any more is removed, and listed, so that a
 %              stale value cannot be mistaken for a live one.
+%   Replaced   An old default the operator never changed (the ITI's 1 s, the LED's
+%   default    700 mA limit...) takes the new default; a value that differs is kept.
 %
 % Declarations are always taken from the defaults, never from the file: GUIMeta,
 % GUIPanels and GUITabs, and the name lists Sync.ModeNames and
@@ -35,7 +37,7 @@ function [S, added] = mergeSettings(defaults, loaded)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.defaultSettings
+% See also lum.defaultSettings, lum.validateSettings
 
 if nargin < 2 || isempty(loaded) || ~isstruct(loaded) || isempty(fieldnames(loaded))
     S = defaults;

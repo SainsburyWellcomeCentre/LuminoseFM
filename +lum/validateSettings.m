@@ -22,12 +22,12 @@ function [stimulusSet, budget, notes] = validateSettings(S, rig, stimulusSet)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.gui.SetupDialog, lum.gui.StimulusDesigner, lum.timerBudget
+% See also lum.gui.SetupDialog, lum.gui.StimulusDesigner, lum.timerBudget
 
 notes = {};
 
 if ~ismember(S.Session.Type, lum.experimentChoices().SessionTypes)
-    fail('badSessionType', 'The session type must be Behaviour or Sleep.');
+    fail('badSessionType', 'The session type must be Behaviour, Sleep or EphysCalibration.');
 end
 if ~(S.Session.MaxTrials >= 1 && mod(S.Session.MaxTrials, 1) == 0)
     fail('badTrialCount', 'The maximum number of trials must be a positive integer.');
@@ -53,7 +53,7 @@ if nargin < 3 || isempty(stimulusSet)
     stimulusSet = lum.pattern.stimulusSet(S, budget, rig.Opto.nChannels);
 end
 
-% Reading the cue is its own check: a negative time after the poke is rejected here
+% Reading the cue is its own check: a negative time into the stimulus is rejected here
 % rather than at the first trial.
 cue = lum.cueTiming(S);
 
@@ -62,7 +62,7 @@ window = S.Stimulus.Duration;
 for component = S.Stimulus.Components(:)'
     checkTiming(component, window, sprintf('Stimulus %s', readable(component.Type)));
 end
-% A cue line that stays on after the poke and a stimulus component on the same line
+% A cue line that stays on into the stimulus and a stimulus component on the same line
 % would both drive it during the stimulus.
 for part = cue
     if ~ismember(part.Type, {'CentreLight', 'Air'}) || strcmp(part.Mode, 'Off')
@@ -71,9 +71,9 @@ for part = cue
     row = S.Stimulus.Components(strcmp({S.Stimulus.Components.Type}, part.Type));
     if ~isempty(row) && row(1).Enabled
         fail('cueClash', ...
-             ['The %s is in the cue and stays on after the poke, so it cannot also be a '...
+             ['The %s is in the cue and stays on into the stimulus, so it cannot also be a '...
               'stimulus component: both would drive the same line during the stimulus. '...
-              'Give it 0 s after the poke on the Cue tab, or untick the stimulus %s on the '...
+              'Give it 0 s into the stimulus on the Cue tab, or untick the stimulus %s on the '...
               'Task tab.'], readable(part.Type), readable(part.Type));
     end
 end
@@ -118,7 +118,7 @@ if S.Session.UseSound
     % two sounds that start with the stimulus would leave only the second.
     inHold = {};
     if ~isempty(cueTone) && ~strcmp(cueTone.Mode, 'Off')
-        inHold{end+1} = 'the cue tone (it carries on after the poke)';
+        inHold{end+1} = 'the cue tone (it carries on into the stimulus)';
     end
     if hasStimulusTone
         inHold{end+1} = 'the stimulus tone';
@@ -130,7 +130,7 @@ if S.Session.UseSound
         fail('soundClash', ...
              ['The HiFi module plays one sound at a time, and each new sound cuts off the '...
               'one playing, so only one of these can sound during the stimulus: %s. Switch '...
-              'the others off, or give the cue tone 0 s after the poke.'], strjoin(inHold, ', '));
+              'the others off, or give the cue tone 0 s into the stimulus.'], strjoin(inHold, ', '));
     end
 end
 

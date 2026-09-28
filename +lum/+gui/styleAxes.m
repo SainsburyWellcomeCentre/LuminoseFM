@@ -4,16 +4,17 @@ function styleAxes(ax, titleText, t)
 %   lum.gui.styleAxes(ax, 'Reaction time')
 %   lum.gui.styleAxes(ax, 'Reaction time', lum.gui.theme())
 %
-% White panel; dark axes (theme Axis) with ticks out and no top or right edge, tick labels and
-% axis labels in the same dark grey; faint horizontal gridlines only; the title in sentence
-% case at the top left, in ink and regular weight; the type from lum.gui.theme's Font (one
-% family, one scale: title 12, axis label 11, tick label 10 points). Holds the axes, so what is drawn next adds to them. A panel
-% that wants vertical gridlines too (a plane) turns them on after this call.
+% White panel; dark axes (theme Axis) with ticks out and no top or right edge, tick labels
+% and axis labels in the same dark grey; faint horizontal gridlines only; the title in
+% sentence case at the top left, in ink and regular weight; the type from lum.gui.theme's
+% Font (one family, one scale: title 12, axis label 11, tick label 10 points). Holds the
+% axes, so what is drawn next adds to them. A panel that wants vertical gridlines too (a
+% plane) turns them on after this call.
 %
 % Used by the online figure (lum.OnlinePlots), the sleep figure (lum.sleep.Plots) and the
 % summary plots (lum.report.summaryPlots), so the three read the same.
 %
-% See also: lum.gui.panelLegend, lum.gui.theme
+% See also lum.gui.panelLegend, lum.gui.theme
 
 if nargin < 3
     t = lum.gui.theme();

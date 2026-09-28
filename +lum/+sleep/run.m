@@ -24,7 +24,8 @@ function run(S, rig, subject, headless, doricLED, startup)
 %              step's carrier between blocks; onsets read back from the states
 %   teardown   the plots saved as an image, the pulse and light records, the analog
 %              stream, the final file, the settings kept for the next session, then the
-%              video stopped and its summary added to the file, devices released
+%              video stopped and its summary added to the file, devices released, and in a
+%              desktop MATLAB the memory sampler started (lum.watchMemoryAfterSession)
 %
 % The house light starts at S.Sleep.HouseLight and is switched from the sleep window's
 % header at once, mid-block included (devices.houseLight, D15). PulsePal holds it on its
@@ -50,7 +51,8 @@ function run(S, rig, subject, headless, doricLED, startup)
 %                       HouseLight (lum.dev.HouseLight.record: every switch, and every
 %                       edge on Bpod's clock),
 %                       PlotsImage (lum.gui.savePlotsImage), SyncFit (what
-%                       lum.sync.fitToCameras widened)
+%                       lum.sync.fitToCameras widened), Startup (lum.StartupTimes),
+%                       StoppedBlock (the plan of a block the End button cut short)
 %   Data.SyncPulses     .Onset (s, state machine clock), .Width (s) and .Block, one value
 %                       per pulse sent
 %   Data.LightSegments  With light: .Onset (s, state machine clock), .Duration (s),
@@ -75,8 +77,8 @@ function run(S, rig, subject, headless, doricLED, startup)
 %   startup   The protocol's lum.StartupTimes, carried on to the first block (a new one
 %             when omitted); stored as Data.Session.Startup
 %
-% See also: LuminoseFM, lum.gui.SleepSetupDialog, lum.sleep.Plots, lum.sleep.validate,
-%           lum.sleep.testPulsePlan, lum.sleep.nextBlock
+% See also LuminoseFM, lum.gui.SleepSetupDialog, lum.sleep.Plots, lum.sleep.validate,
+%          lum.sleep.testPulsePlan, lum.sleep.nextBlock
 
 global BpodSystem %#ok<GVMIS> % Bpod's own session object
 
@@ -612,7 +614,7 @@ record.ProtocolVersion = lum.version();
 function on = houseLightAtStart(houseLight, blockNumber, arrivedAt)
 % The house light's level as a block started: from the loopback input's first edge in the
 % block when there is one, otherwise the level PulsePal held when the block started on
-% MATLAB's clock — its events arrived arrivedAt, one block's length after it started.
+% MATLAB's clock - its events arrived arrivedAt, one block's length after it started.
 global BpodSystem %#ok<GVMIS>
 duration = BpodSystem.Data.TrialEndTimestamp(blockNumber) - BpodSystem.Data.TrialStartTimestamp(blockNumber);
 on = lum.dev.HouseLight.levelAtStart(BpodSystem.Data.RawEvents.Trial{blockNumber}.Events, ...

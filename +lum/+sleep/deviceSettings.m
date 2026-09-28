@@ -15,7 +15,7 @@ function deviceSettings = deviceSettings(S)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.sleep.run, lum.dev.open, lum.dev.openPulsePal
+% See also lum.sleep.run, lum.dev.open, lum.dev.openPulsePal
 
 deviceSettings = S;
 deviceSettings.Session.UseSound = false;

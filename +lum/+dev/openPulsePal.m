@@ -8,14 +8,14 @@ function pulsePal = openPulsePal(emulated, S, connect)
 % LED channels on one trigger, or an output looping continuously with no trigger at all.
 % Light then comes at the wrong time or on the wrong channel, while the session file
 % shows every light timer starting on the poke. So on the rig a session that delivers
-% light does not start without PulsePal — there is no fallback to the null shim — and a
+% light does not start without PulsePal - there is no fallback to the null shim - and a
 % connected PulsePal has every output stopped before anything else is sent.
 %
 % Once its outputs are stopped, PulsePal must answer a handshake (checkConnection): the
 % explicit proof that the port reaches a live device before any light is gated.
 %
 % PulsePal also drives the house light (output 3, lum.dev.HouseLight), so on the rig
-% every session tries to open it — with or without light, behaviour or sleep. A session
+% every session tries to open it - with or without light, behaviour or sleep. A session
 % without light (S.Session.UseOpto off) that cannot have it runs on the null shim, with a
 % warning, and without the house light (lum.dev.openHouseLight disables its switch). The
 % emulator gets the null shim.
@@ -32,7 +32,7 @@ function pulsePal = openPulsePal(emulated, S, connect)
 % session with light cannot have PulsePal connected, stopped and made to answer; warns with
 % 'lum:dev:openPulsePal:noHouseLight' when a session without light cannot.
 %
-% See also: lum.dev.open, lum.dev.RealPulsePal, lum.dev.PulsePal.stopOutputs, lum.dev.HouseLight
+% See also lum.dev.open, lum.dev.RealPulsePal, lum.dev.PulsePal.stopOutputs, lum.dev.HouseLight
 
 if emulated
     pulsePal = lum.dev.NullPulsePal('emulator mode');

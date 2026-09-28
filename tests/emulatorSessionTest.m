@@ -7,14 +7,12 @@ function tests = emulatorSessionTest
 % behaviour. Everything else in the suite tests a part; this tests that the parts
 % still work when wired together.
 %
-% The session runs with no pokes, so every trial ends in NoInitiation. That is
-% deliberate. Driving the emulated ports from a MATLAB timer via ManualOverride
-% re-enters the console's callback queue and stops the session part way through, as
-% though somebody had pressed End. The choice, reward, punishment and hold-shaping
-% paths are state machine structure, covered in stateMachineTest, and outcome scoring
-% is covered in scoreTrialTest — both without that fragility. To exercise the poking
-% paths interactively, run Bpod('EMU') and play the mouse with the console's port
-% buttons, which is what emulator mode is for.
+% The session runs with no pokes, so every trial ends in NoInitiation: this test is about
+% the session around the trials (every per-trial series, the LED current, a house light
+% switch part way through, the plots image, the startup times, the summary plots and log).
+% The choice, reward, punishment and hold-shaping paths are played as an animal in
+% animalSessionTest (startSessionMouse), and built and scored in stateMachineTest and
+% scoreTrialTest.
 tests = functiontests(localfunctions);
 end
 
@@ -106,7 +104,7 @@ verifyTrue(testCase, isfield(perTrial, 'RewardAmount'));
 end
 
 function testTheSessionBarcodeIsRecorded(testCase)
-% The emulator has no Flex I/O, so the barcode is recorded but not sent — and the
+% The emulator has no Flex I/O, so the barcode is recorded but not sent - and the
 % device log says so.
 session = testCase.TestData.sessionData.Session;
 verifyFalse(testCase, session.Barcode.Sent);

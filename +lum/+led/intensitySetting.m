@@ -17,7 +17,7 @@ function varargout = intensitySetting(S, type, irradiance, currentmA)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.led.intensity, lum.gui.DoricSetup
+% See also lum.led.intensity, lum.gui.DoricSetup
 
 switch char(type)
     case 'Behaviour'

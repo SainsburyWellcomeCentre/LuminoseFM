@@ -16,7 +16,7 @@ classdef (Abstract) TimedOutput < lum.stim.Component
     %
     % lum.stim.isTimed decides which, for this class and for the timer budget alike.
     %
-    % See also: lum.stim.PortLight, lum.stim.Air, lum.stim.isTimed, lum.timerBudget
+    % See also lum.stim.PortLight, lum.stim.Air, lum.stim.isTimed, lum.timerBudget
 
     properties (SetAccess = protected)
         Source  % 'Cue' or 'Stimulus'
@@ -101,7 +101,7 @@ classdef (Abstract) TimedOutput < lum.stim.Component
         value = onValue(obj, context)
         % timing(context) says whether it is on this trial, and when from stimulus onset.
         % A cue component has onset 0 and lum.cueTiming's duration: Inf until the hold
-        % ends, 0 off at the poke.
+        % ends, 0 off as the stimulus starts, or how long it stays on into the stimulus.
         [enabled, onset, duration] = timing(obj, context)
     end
 

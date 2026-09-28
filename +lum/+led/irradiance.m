@@ -9,7 +9,7 @@ function value = irradiance(cal, currentmA)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.led.current, lum.led.makeCalibration
+% See also lum.led.current, lum.led.makeCalibration
 
 value = NaN(size(currentmA));
 if isempty(cal)

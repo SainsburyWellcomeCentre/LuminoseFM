@@ -41,7 +41,7 @@ function punishment = punishmentFor(S, event)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.defaultSettings, lum.buildTrialSM
+% See also lum.defaultSettings, lum.buildTrialSM
 
 % Codes match the popupmenu order in lum.defaultSettings. They are written into
 % every trial record, so append new options rather than renumbering these.

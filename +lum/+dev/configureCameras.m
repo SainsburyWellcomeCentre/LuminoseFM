@@ -25,7 +25,7 @@ function connected = configureCameras(manager, camera, varargin)
 % Returns a struct array, one element per connected camera: Serial, Name, Row (its
 % index in S.Camera.Cameras).
 %
-% See also: lum.dev.openCameras, lum.dev.RealCameras, lum.gui.CameraSetup
+% See also lum.dev.openCameras, lum.dev.RealCameras, lum.gui.CameraSetup
 
 p = inputParser;
 addParameter(p, 'Strict', true);

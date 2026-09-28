@@ -2,32 +2,32 @@ classdef PulsePal < lum.dev.Device
     % lum.dev.PulsePal programs the carrier of the optogenetic stimulus.
     %
     % Architecture decision D1 splits the stimulus across two devices: Bpod global
-    % timers gate BNC1/BNC2 to define the light *pattern* of channels A and B, and
-    % PulsePal turns each gate into the *carrier* — a pulse train, or constant
+    % timers gate BNC1/BNC2 to define the light pattern of channels A and B, and
+    % PulsePal turns each gate into the carrier - a pulse train, or constant
     % light. Both PulsePal trigger channels run in gated mode, so OUT1 pulses
     % exactly while BNC1 is high, and OUT2 while BNC2 is high.
     %
-    % This class owns the translation from a carrier struct to PulsePal parameters
-    % and the caching that keeps reprogramming cheap. Subclasses RealPulsePal and
-    % NullPulsePal differ only in send() and sendStopOutput(): whether the bytes reach
-    % a device or only the log. Construct through lum.dev.open, which asks
-    % lum.dev.openPulsePal: a session that delivers light does not start without the
-    % device, and a connected device has its outputs stopped first (stopOutputs).
+    % This class owns the translation from a carrier struct to PulsePal parameters and the
+    % caching that keeps reprogramming cheap. Subclasses RealPulsePal and NullPulsePal
+    % differ only in send(), sendStopOutput(), sendOutputVoltage() and handshake(): whether
+    % the bytes reach a device or only the log. Construct through lum.dev.open, which asks
+    % lum.dev.openPulsePal: a session that delivers light does not start without the device,
+    % and a connected device has its outputs stopped first (stopOutputs).
     %
     % PulsePal also drives the house light, on an output no trigger reaches (OUT3,
     % rig.HouseLight): holdVoltage() sets that output's resting voltage, which the
     % firmware returns to after every stop, abort and disconnect, and then writes the
     % voltage to the output (op 79), so the level holds whatever else PulsePal is told
-    % (lum.dev.HouseLight, D15). The
-    % switch is clicked by the operator, and MATLAB runs a click's callback inside any
-    % pause or drawnow — including those in PulsePal's serial code and its handshake.
-    % So a voltage asked for while another command is talking to the device is sent
-    % the moment that command finishes, and the two never share the port.
+    % (lum.dev.HouseLight, D15). The switch is clicked by the operator, and MATLAB runs a
+    % click's callback inside any pause or drawnow, including those in PulsePal's serial
+    % code and its handshake. So a voltage asked for while another command is talking
+    % to the device is sent the moment that command finishes, and the two never share
+    % the port.
     %
     % Carrier: a struct array with one element per optical channel, element k
     % programming PulsePal output k (S.Light.Carrier, plus MaxDuration). The two
     % channels drive different LEDs into different cables, so each carries its own
-    % numbers — equalising the light two channels deliver is a per-channel
+    % numbers - equalising the light two channels deliver is a per-channel
     % calibration, not one number.
     %
     %   .Frequency    Carrier frequency in Hz. 0 means constant-on for the gate.
@@ -42,7 +42,7 @@ classdef PulsePal < lum.dev.Device
     %   devices = lum.dev.open(rig, S);
     %   devices.pulsePal.configure(carrier);  % inter-trial window only
     %
-    % See also: lum.dev.open, lum.stim.OptoPattern, docs/architecture.md (D1)
+    % See also lum.dev.open, lum.stim.OptoPattern, lum.dev.openPulsePal
 
     properties (Constant)
         % PulsePal parameter codes, from ProgramPulsePalParam's header.
@@ -53,7 +53,7 @@ classdef PulsePal < lum.dev.Device
                        'CustomTrainID', 14, 'CustomTrainTarget', 15, ...
                        'CustomTrainLoop', 16, 'RestingVoltage', 17, 'TriggerMode', 128);
 
-        % Trigger mode as the *firmware* encodes it: 0 = normal, 1 = toggle, 2 = gated.
+        % Trigger mode as the firmware encodes it: 0 = normal, 1 = toggle, 2 = gated.
         % ProgramPulsePalParam's header comment says 1/2/3 and is off by one; the
         % firmware's own comment (PulsePal_2_0_1.ino:95) and its comparisons against
         % TriggerMode == 2 for the gated case are what this follows.
@@ -117,7 +117,7 @@ classdef PulsePal < lum.dev.Device
             %
             % done (optional) is called once the device has it, as done([]), or as
             % done(err) when the device refused it. When another command is talking to the
-            % device — programming, stopping, a handshake — the voltage is sent the moment
+            % device - programming, stopping, a handshake - the voltage is sent the moment
             % that command finishes, and a later request for the same output replaces one
             % still waiting.
             if nargin < 4
@@ -183,7 +183,7 @@ classdef PulsePal < lum.dev.Device
             %
             % Programming parameters changes what the next trigger does, not what
             % PulsePal is doing now: a train still running carries on, and an output
-            % left looping continuously — from the front panel or by another program —
+            % left looping continuously - from the front panel or by another program -
             % plays with no trigger at all. lum.dev.openPulsePal sends this once,
             % straight after connecting and before any trial. A stopped output returns
             % to its resting voltage, so a held output (holdVoltage) stays where it is.

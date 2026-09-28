@@ -17,8 +17,8 @@ function code = barcode(value, params, kind)
 % right direction.
 %
 % The markers say what kind of session the barcode opens (D11, D18): params.MarkerWidth
-% for a behaviour session, params.SleepMarkerWidth — longer — for a sleep session, and
-% params.EphysMarkerWidth — longer again — for an ePhys calibration session
+% for a behaviour session, params.SleepMarkerWidth - longer - for a sleep session, and
+% params.EphysMarkerWidth - longer again - for an ePhys calibration session
 % (lum.sync.markerWidth). lum.sync.decodeBarcode reads the kind back from the opening
 % marker.
 %
@@ -44,7 +44,7 @@ function code = barcode(value, params, kind)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.sync.barcodeValue, lum.sync.decodeBarcode, lum.sync.barcodeStateMachine
+% See also lum.sync.barcodeValue, lum.sync.decodeBarcode, lum.sync.barcodeStateMachine
 
 if nargin < 3 || isempty(kind)
     kind = 'Behaviour';

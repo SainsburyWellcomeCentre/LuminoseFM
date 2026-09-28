@@ -10,7 +10,7 @@ function target = folder(dataFile, kind)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.report.summaryPlots, lum.report.sessionLog
+% See also lum.report.summaryPlots, lum.report.sessionLog
 
 names = struct('Plots', 'Session Plots', 'Logs', 'Session Logs');
 if ~isfield(names, kind)

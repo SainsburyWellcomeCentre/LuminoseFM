@@ -22,12 +22,8 @@ function [spec, queue] = nextTrialSpec(S, stimulusSet, queue, history, trialNumb
 %
 % A swap searches the rest of the queue (at most the session's MaxTrials, a vectorised
 % test), so bias correction keeps its target for as long as the session holds trials
-% that pay the side it asks for; until 0.9.4 it looked 50 trials ahead and faded once
+% that pay the side it asks for; up to 0.9.3 it looked 50 trials ahead and faded once
 % those were used up.
-%
-% The function is pure — it reads settings, the set, the queue and history, and
-% returns a spec and the queue — so the whole trial-generation policy is testable
-% with no hardware and no Bpod.
 %
 % Arguments:
 %   S            Settings struct
@@ -67,7 +63,7 @@ function [spec, queue] = nextTrialSpec(S, stimulusSet, queue, history, trialNumb
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.pattern.stimulusSet, lum.newHistory, lum.buildTrialSM, lum.scoreTrial
+% See also lum.pattern.stimulusSet, lum.newHistory, lum.buildTrialSM, lum.scoreTrial
 
 if trialNumber > numel(queue)
     error('lum:nextTrialSpec:queueExhausted', ...

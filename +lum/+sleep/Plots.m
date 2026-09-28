@@ -8,7 +8,7 @@ classdef Plots < handle
     %                 and the house light switch, which acts at once
     %   Schedule      (test pulses only) every step on channels A and B across the
     %                 session, with the part already sent shaded
-    %   Lines         the sync line — and channels A and B — as sent over the last 30 s
+    %   Lines         the sync line - and channels A and B - as sent over the last 30 s
     %   Latest epoch  (test pulses only) the last epoch sent: its gates, and the light
     %                 PulsePal puts in them, so a pair of probes or a burst can be read
     %   Pulses sent   every sync pulse's width against session time, so a jittered
@@ -21,7 +21,7 @@ classdef Plots < handle
     % the figure only hides it (so it can still be saved as an image at teardown), and does
     % not stop the session.
     %
-    % See also: lum.sleep.run, lum.OnlinePlots, lum.gui.drawTestPulseSchedule, lum.gui.theme
+    % See also lum.sleep.run, lum.OnlinePlots, lum.gui.drawTestPulseSchedule, lum.gui.theme
 
     properties (SetAccess = private)
         Figure   % The figure this object owns
@@ -235,8 +235,8 @@ classdef Plots < handle
 
         function close(obj)
             % close() closes the figure for good, if it is still open. Closing it any
-            % other way — the operator, or the console's End button through
-            % RunProtocol('Stop') — only hides it, so the session can still save it as an
+            % other way - the operator, or the console's End button through
+            % RunProtocol('Stop') - only hides it, so the session can still save it as an
             % image at teardown (lum.gui.savePlotsImage) before calling this.
             if ~isempty(obj.Figure) && isvalid(obj.Figure)
                 delete(obj.Figure);

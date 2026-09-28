@@ -2,7 +2,7 @@ function tests = punishmentTest
 % punishmentTest exercises the punishment settings: lum.punishmentFor.
 %
 % Which mistakes are punished and what the punishment is are two separate
-% runtime choices, and every combination has to behave. Pure function — no Bpod.
+% runtime choices, and every combination has to behave. Pure function - no Bpod.
 tests = functiontests(localfunctions);
 end
 

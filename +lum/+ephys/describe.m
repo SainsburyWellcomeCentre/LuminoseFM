@@ -10,7 +10,7 @@ function lines = describe(S, plan)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.ephys.plan, lum.gui.EphysSetupDialog, lum.sleep.Plots
+% See also lum.ephys.plan, lum.gui.EphysSetupDialog, lum.sleep.Plots
 
 e = S.Ephys;
 lines = {sprintf('%g ms pulses of constant light on %s, one epoch every %g s, %d per step, %s order', ...
@@ -46,6 +46,7 @@ end
 
 
 function text = channelText(channels)
+% The channels as the summary words them.
 if strcmp(channels, 'A and B')
     text = 'A and B together';
 else
@@ -54,6 +55,7 @@ end
 
 
 function text = rangeText(values)
+% '5' for one value, '5-40' for several, lowest to highest.
 if isscalar(values)
     text = sprintf('%g', values);
 else

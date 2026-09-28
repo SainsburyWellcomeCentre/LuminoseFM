@@ -33,7 +33,7 @@ function ceilings = shortcuts(stimulusSet)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.pattern.describeShortcuts, lum.pattern.applyContingency
+% See also lum.pattern.describeShortcuts, lum.pattern.applyContingency
 
 nPatterns = stimulusSet.nPatterns;
 weight = accumarray(stimulusSet.TrialPattern(:), 1, [nPatterns 1])';

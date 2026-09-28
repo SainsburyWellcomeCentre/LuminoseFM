@@ -39,7 +39,7 @@ function T = sessionTrials(Data)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.report.summaryPlots, lum.report.sessionLog
+% See also lum.report.summaryPlots, lum.report.sessionLog
 
 n = Data.nTrials;
 T = struct();

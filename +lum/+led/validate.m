@@ -6,16 +6,16 @@ function notes = validate(S, cals, type)
 %   notes = lum.led.validate(S, cals, 'Sleep')
 %
 % S.Doric: two limits within the LED's 1000 mA rating; the calibration window's currents
-% within it too; the session type's intensity
-% (lum.led.intensitySetting): two irradiances, 0 or more, and two whole currents, 0 or
-% more, each within its limit; and a light path for each channel on two different cables
-% (lum.led.lightPath). None of this depends on a calibration, so lum.validateSettings,
-% lum.sleep.validate and lum.ephys.validate run it without one. Given the channels'
-% calibrations, it also says what each channel will run at where that is not what was
-% asked (lum.led.intensity): an irradiance out of the channel's reach, or a channel with
-% no calibration, which runs at the current in mA. It also notes a calibration that reads
-% more than DarkLimit mW/mm2 with the LED at 0 mA: the power meter was not zeroed, so the
-% current for a low irradiance comes out too high. None of these stops a session.
+% within it too; the session type's intensity (lum.led.intensitySetting): two irradiances, 0
+% or more, and two whole currents, 0 or more, each within its limit; and a light path for
+% each channel on two different cables (lum.led.lightPath). None of this depends on a
+% calibration, so lum.validateSettings, lum.sleep.validate and lum.ephys.validate run it
+% without one. Given the channels' calibrations, it also says what each channel will run at
+% where that is not what was asked (lum.led.intensity): an irradiance out of the channel's
+% reach, or a channel with no calibration, which runs at the current in mA. It also notes a
+% calibration that reads more than 0.3 mW/mm2 with the LED at 0 mA: the power meter
+% was not zeroed, so the current for a low irradiance comes out too high. None of these
+% stops a session.
 %
 % Arguments:
 %   S     Settings struct; reads S.Doric, S.Light and the type's intensity
@@ -26,7 +26,7 @@ function notes = validate(S, cals, type)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.led.intensity, lum.led.lightPath, lum.validateSettings, lum.gui.DoricSetup
+% See also lum.led.intensity, lum.led.lightPath, lum.validateSettings, lum.gui.DoricSetup
 
 if nargin < 3 || isempty(type)
     type = S.Session.Type;
@@ -89,4 +89,5 @@ end
 
 
 function fail(id, varargin)
+% Raise an error with a lum:led:validate identifier.
 error(['lum:led:validate:' id], varargin{:});

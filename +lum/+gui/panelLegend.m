@@ -7,7 +7,7 @@ function key = panelLegend(ax, handles, labels, t)
 % no box; dark text at the theme's legend size. Every key in the online, sleep and summary
 % plots goes through here.
 %
-% See also: lum.gui.styleAxes, lum.gui.theme
+% See also lum.gui.styleAxes, lum.gui.theme
 
 if nargin < 4
     t = lum.gui.theme();

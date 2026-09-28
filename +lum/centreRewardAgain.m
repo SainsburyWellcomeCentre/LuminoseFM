@@ -23,7 +23,7 @@ function [S, history, unticked] = centreRewardAgain(S, history, trialNumber)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.nextTrialSpec, lum.newHistory, lum.defaultSettings
+% See also lum.nextTrialSpec, lum.newHistory, lum.defaultSettings
 
 unticked = false;
 if ~isfield(S.GUI, 'CentreRewardAgain') || S.GUI.CentreRewardAgain ~= 1

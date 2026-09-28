@@ -3,11 +3,11 @@ classdef StubHiFi < lum.dev.HiFi
     %
     % lum.dev.NullHiFi deliberately returns empty output actions, because a
     % session with no module has to run silently. That makes it the wrong double
-    % for testing *which* sound a component chose: there is nothing to read back.
+    % for testing which sound a component chose: there is nothing to read back.
     % This stub keeps the availability flag true, so playAction returns the real
     % output action, while every transfer is only logged.
     %
-    % See also: lum.dev.HiFi, lum.dev.NullHiFi, stateMachineTest
+    % See also lum.dev.HiFi, lum.dev.NullHiFi, stateMachineTest
 
     methods
         function obj = StubHiFi(moduleName, samplingRate)

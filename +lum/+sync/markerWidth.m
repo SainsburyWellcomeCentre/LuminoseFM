@@ -14,7 +14,7 @@ function width = markerWidth(params, kind)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.sync.barcode, lum.sync.decodeBarcode, lum.sync.barcodeKinds
+% See also lum.sync.barcode, lum.sync.decodeBarcode, lum.sync.barcodeKinds
 
 switch kind
     case 'Behaviour'

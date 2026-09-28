@@ -15,7 +15,7 @@ function [block, cursor] = nextBlock(plan, syncPulses, cursor, maxStates)
 %
 % The block runs from cursor.Time to the latest such moment within 10 s, shortened
 % until its states fit the state machine. Its states are the spans between successive
-% edges of the three lines — sync, A, B — each holding every line at one level, so any
+% edges of the three lines - sync, A, B - each holding every line at one level, so any
 % mix of pulses costs one state per edge and no global timers.
 %
 % Arguments:
@@ -40,7 +40,7 @@ function [block, cursor] = nextBlock(plan, syncPulses, cursor, maxStates)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.sleep.blockStateMachine, lum.sleep.run, lum.sleep.validate
+% See also lum.sleep.blockStateMachine, lum.sleep.run, lum.sleep.validate
 
 cycle = 1e-4;
 blockCycles = round(10 / cycle);
@@ -115,7 +115,7 @@ cursor.NextSync = lastSync + 1;
 
 
     function point = freePoint(point)
-        % The latest moment at or before point that is inside no gate, pulse or epoch —
+        % The latest moment at or before point that is inside no gate, pulse or epoch -
         % or, where the run of activity starts at the block's own start, its end.
         for iteration = 1:1000
             moved = false;

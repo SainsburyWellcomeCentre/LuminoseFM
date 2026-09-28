@@ -27,7 +27,7 @@ function generator = familyDefaults(generator, family, budget, duration)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.pattern.families, lum.pattern.withGeneratorDefaults, lum.gui.StimulusDesigner
+% See also lum.pattern.families, lum.pattern.withGeneratorDefaults, lum.gui.StimulusDesigner
 
 if nargin < 3 || isempty(budget)
     budget = Inf;
@@ -93,8 +93,8 @@ switch family
         % spread over it in cycles, both channels starting each cycle: the mixture is
         % present throughout the window and the dark is a short gap in every cycle, not a
         % tail after the light. Each cycle costs a timer per channel, so five cycles where
-        % ten timers are left for light, fewer where not (the emulator: two), and no more
-        % than the smallest amount (0.1 of the window) has bins for.
+        % ten timers are left for light, fewer where not (the emulator, with three left: one),
+        % and no more than the smallest amount (0.1 of the window) has bins for.
         generator.MixtureRule = 'share';
         generator.MixtureRatios = [2 1; 1 2];
         generator.MixtureShareBoundary = [1 1];

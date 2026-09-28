@@ -2,7 +2,8 @@
 
 Where the code lives and what the test suite covers. The design behind it is in
 [`architecture.md`](architecture.md); how to use the protocol is in [`../README.md`](../README.md);
-the conventions for changing it are in [`../CLAUDE.md`](../CLAUDE.md).
+the conventions for changing it are in [`../CLAUDE.md`](../CLAUDE.md), and how its help text and
+comments are written and checked in [`code-style.md`](code-style.md).
 
 ---
 
@@ -49,7 +50,7 @@ LuminoseFM/
 │   ├── loadSounds.m              the session's sounds, loaded once
 │   ├── testSounds.m              a sound of the session as a test, for the setup dialog's Play buttons
 │   ├── toneFrequencies.m         stimulus tone frequencies, shared by the two above
-│   ├── watchMemoryAfterSession.m MATLAB's memory for 4 min after a desktop behaviour session (_memory.csv)
+│   ├── watchMemoryAfterSession.m MATLAB's memory for 4 min after a desktop session (_memory.csv)
 │   ├── version.m, repoRoot.m     the version recorded in every file; the repository's folder
 │   ├── +pattern/                 stimulus families and generator, stimulus set, contingency, single-cue ceilings
 │   ├── +stim/                    cue and stimulus components
@@ -92,6 +93,7 @@ LuminoseFM/
     ├── rig-checks.md             how to run a rig check, what has been checked, what waits for the operator
     ├── validation-2026-09-24.md  the pre-deployment validation of 0.9.3 → 0.9.4
     ├── repository.md             this file
+    ├── code-style.md             help at the MATLAB prompt; help text, comments and lint
     ├── BpodSystemInfo.png        channel, event and output list of the rig
     ├── logo/                     the Luminose logo
     ├── behaviour_box_design/     box, base plate and home-cage cover drawings
@@ -147,7 +149,8 @@ skipped where the package is not found.
 | `ephysTest` | the ePhys calibration schedule (levels even in mA or in irradiance, the default curve's top, pairs, intervals, order, refusals), its validation, the EphysCalibration barcode fitted to the cameras |
 | `reportTest` | the runtime window's trial lines in habituation and training, and the attempt a hold was completed at; where the summary plots and log go and how they are named; twelve plots and a log from a made-up session; the outcome raster paging past 400 trials; `lum.report.fromFile` reading a saved file without changing a byte; the replayed online figure, the summary plots' numbers and the log agreeing on which holds were completed and at which attempt |
 | `memoryWatchTest` | the memory sampler lists the running timers and writes a row a second (Windows only) |
-| `lintTest` | zero MATLAB Code Analyzer messages over the whole repository |
+| `lintTest` | zero MATLAB Code Analyzer messages over the whole repository (what the MATLAB language server and the Editor show) |
+| `helpTextTest` | every file's help text and comments (`code-style.md`): help present; an H1 that names the file in one sentence on one line; a `See also` line (no colon) outside `tests/`, whose names of this repository exist; comment lines within 100 characters, ASCII, with no Markdown emphasis |
 
 **Under `Bpod('EMU')`**:
 

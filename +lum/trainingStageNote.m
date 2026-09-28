@@ -1,11 +1,12 @@
 function note = trainingStageNote(S)
 % lum.trainingStageNote says in one line what the training stage does to rewards.
 %
-% Habituation rewards *both* side ports, whichever way the animal goes, so that it
+% Habituation rewards both side ports, whichever way the animal goes, so that it
 % learns the side ports pay before it has to learn which one. Watched from the
-% console that is indistinguishable from a broken contingency — every poke gets
-% water — so the stage and its consequence are stated wherever the operator can
-% still act on them: in the setup dialog, and in the session log.
+% console that is indistinguishable from a broken contingency - every poke gets
+% water - so the stage and its consequence are stated wherever the operator can
+% still act on them: in the setup dialog, the command window as the session starts, and
+% the session log.
 %
 % The rule described here is the one lum.nextTrialSpec applies; the two must stay
 % in step.
@@ -18,7 +19,7 @@ function note = trainingStageNote(S)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.nextTrialSpec, lum.gui.SetupDialog
+% See also lum.nextTrialSpec, lum.gui.SetupDialog
 
 stage = S.Task.TrainingStage;
 names = S.Task.TrainingStageNames;

@@ -28,14 +28,14 @@ classdef DoricLED < lum.dev.Device
     %   led = lum.dev.openDoricLED(emulated, S);   % connecting starts at once
     %   led.ensureReady();                         % session start: wait, or error
     %   led.setUp(lum.led.intensity(S, cals).CurrentmA, S.Doric.MaxCurrentmA);
-    %   mA = led.applyPending();                   % prepare window, every trial
+    %   mA = led.applyPending(trialNumber);        % prepare window, every trial
     %   record = led.record();                     % teardown, before close
     %   led.close();                               % light off, driver released
     %
     % Every command is also a line in the device log (log(), Data.Session.DeviceLog).
     %
-    % See also: lum.dev.openDoricLED, lum.led.lightPath, lum.gui.DoricSetup,
-    %           lum.gui.DoricWindow, doric.LightSource
+    % See also lum.dev.openDoricLED, lum.led.lightPath, lum.gui.DoricSetup,
+    %          lum.gui.DoricWindow, doric.LightSource
 
     properties (SetAccess = private)
         Mode = 'Manual'       % 'Device', 'Simulated' or 'Manual'
@@ -66,7 +66,7 @@ classdef DoricLED < lum.dev.Device
 
     methods
         function obj = DoricLED(mode, lightSource, reason, transport)
-            % DoricLED(mode, lightSource, reason, transport) — use lum.dev.openDoricLED.
+            % DoricLED(mode, lightSource, reason, transport) - use lum.dev.openDoricLED.
             obj@lum.dev.Device('DoricLED', strcmp(mode, 'Device'));
             obj.Mode = mode;
             obj.Reason = reason;
@@ -109,8 +109,8 @@ classdef DoricLED < lum.dev.Device
             % describeState() is one line for the windows: mode, device and state.
             switch obj.Mode
                 case 'Manual'
-                    text = sprintf('Not controlled from MATLAB (%s): set the driver by hand to external TTL mode.', ...
-                                   obj.Reason);
+                    text = sprintf(['Not controlled from MATLAB (%s): set the driver by hand to '...
+                                    'external TTL mode.'], obj.Reason);
                     return
                 case 'Simulated'
                     where = 'simulated driver (emulator)';
@@ -381,6 +381,7 @@ classdef DoricLED < lum.dev.Device
                 try
                     delete(obj.transport);
                 catch
+                    % Already gone with the light source: nothing left to release.
                 end
                 obj.transport = [];
             end
@@ -423,12 +424,14 @@ classdef DoricLED < lum.dev.Device
         end
 
         function onFault(obj, event)
+            % The package reported a fault: keep its reason for the windows.
             obj.faultText = event.Reason;
             obj.note('faulted: %s', event.Reason);
             obj.notifyChanged();
         end
 
         function text = faultReason(obj)
+            % Why the driver is not answering, in words: ours, the package's, or 'no reply'.
             text = obj.faultText;
             if isempty(text) && obj.isControlled()
                 text = obj.LightSource.FaultReason;
@@ -439,6 +442,7 @@ classdef DoricLED < lum.dev.Device
         end
 
         function requireReady(obj)
+            % Error unless the driver is connected and answering.
             if ~obj.isControlled() || ~strcmp(obj.state(), 'Ready')
                 error('lum:dev:DoricLED:notConnected', ...
                       'The Doric LED driver is not connected (%s).', obj.describeState());
@@ -446,6 +450,7 @@ classdef DoricLED < lum.dev.Device
         end
 
         function recordCurrent(obj, k, currentmA, tag)
+            % Note channel k's new current, and add it to the record of changes.
             obj.CurrentmA(k) = currentmA;
             if obj.nChanges < obj.MaxChanges
                 obj.nChanges = obj.nChanges + 1;
@@ -454,6 +459,7 @@ classdef DoricLED < lum.dev.Device
         end
 
         function notifyChanged(obj)
+            % Tell the windows to redraw (the Changed event).
             if isvalid(obj)
                 notify(obj, 'Changed');
             end
@@ -463,7 +469,7 @@ end
 
 
 function checkCurrents(currentmA, maxCurrentmA)
-% Two whole currents within two limits, each limit within the LED's rating.
+% Two whole currents, 0 mA or more, each within its channel's limit.
 if numel(currentmA) ~= 2 || numel(maxCurrentmA) ~= 2 || any(~isfinite(currentmA)) ...
         || any(currentmA < 0) || any(currentmA ~= round(currentmA))
     error('lum:dev:DoricLED:badCurrent', 'The LED currents must be two whole numbers of mA, A then B.');

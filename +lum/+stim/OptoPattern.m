@@ -2,8 +2,8 @@ classdef OptoPattern < lum.stim.Component
     % lum.stim.OptoPattern delivers a trial's two-channel light pattern.
     %
     % This is the component that implements architecture decision D1. The
-    % pattern's envelope — which of channel A (BNC1) and channel B (BNC2) is high,
-    % when, for how long — is compiled into one-shot Bpod global timers, all
+    % pattern's envelope - which of channel A (BNC1) and channel B (BNC2) is high,
+    % when, for how long - is compiled into one-shot Bpod global timers, all
     % triggered together from the hold state. PulsePal, programmed in the
     % inter-trial window, turns each gate into its channel's carrier. Nothing in the
     % timing path runs in MATLAB.
@@ -12,7 +12,7 @@ classdef OptoPattern < lum.stim.Component
     % against the machine's timer budget when the session starts, not here: by
     % trial-build time the pattern is known to fit.
     %
-    % See also: lum.stim.Component, lum.pattern.stimulusSet, lum.dev.PulsePal
+    % See also lum.stim.Component, lum.pattern.stimulusSet, lum.dev.PulsePal
 
     properties (Constant)
         % Margin added to the PulsePal pulse train duration. The train must outlast
@@ -62,10 +62,11 @@ classdef OptoPattern < lum.stim.Component
 
         function actions = stopActions(~, context)
             % stopActions() pulls the lines the pattern uses low, when a hold breaks. The
-            % trial builder also cancels the timers; the emulator does not implement
-            % cancelling, so driving the lines low as well keeps light from outliving a
-            % broken hold there. A completed hold leaves the light to play to its end
-            % (D21), so this is not used there.
+            % trial builder also cancels the timers; the emulator cancels only partly (a
+            % timer still in its onset delay starts later anyway, docs/emulator.md), so
+            % driving the lines low as well keeps light from outliving a broken hold
+            % there. A completed hold leaves the light to play to its end (D21), so this
+            % is not used there.
             actions = {};
             if ~context.spec.OptoOn || isempty(context.pattern.Segments)
                 return

@@ -20,7 +20,7 @@ function cameras = openCameras(emulated, S)
 %
 % Returns a lum.dev.RealCameras or lum.dev.NullCameras.
 %
-% See also: lum.dev.open, lum.dev.configureCameras, lum.dev.Cameras
+% See also lum.dev.open, lum.dev.configureCameras, lum.dev.Cameras
 
 camera = S.Camera;
 if ~camera.Enabled

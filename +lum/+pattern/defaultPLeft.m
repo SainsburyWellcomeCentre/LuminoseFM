@@ -14,7 +14,7 @@ function pLeft = defaultPLeft(nGroups, previous)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.pattern.stimulusSet, lum.pattern.applyContingency
+% See also lum.pattern.stimulusSet, lum.pattern.applyContingency
 
 if nGroups <= 1
     pLeft = 0.5;

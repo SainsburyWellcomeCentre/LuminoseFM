@@ -17,12 +17,11 @@ function [S, accepted, app] = EphysSetupDialog(S, rig, varargin)
 %   Cameras            video (lum.gui.CameraSetup)
 %
 % Intensities are shown and typed in mW/mm2 where a channel's light path (its cable,
-% calibrated on that channel) is calibrated, in mA where it is not
-% (lum.gui.IntensityField); settings keep both forms (S.Ephys). By default the curve runs
-% from 0 to 12 mW/mm2, or to the most the channel gives if less, and the pairs are at
-% 8 mW/mm2; uncalibrated, from 0 mA to the channel's limit, and pairs at 100 mA. Everything is
-% validated on every edit by lum.ephys.validate, and Start stays disabled while anything
-% fails.
+% calibrated on that channel) is calibrated, in mA where it is not (lum.gui.IntensityField);
+% settings keep both forms (S.Ephys). By default the curve runs from 0 to 12 mW/mm2, or to
+% the most the channel gives if less, and the pairs are at 8 mW/mm2; uncalibrated, from 0 mA
+% to the channel's limit, and pairs at 100 mA. Everything is validated on every edit by
+% lum.ephys.validate, and Start stays disabled while anything fails.
 %
 % Arguments:
 %   S    Settings struct, from the launch manager's settings file
@@ -41,7 +40,7 @@ function [S, accepted, app] = EphysSetupDialog(S, rig, varargin)
 %   app       With 'Wait' false: .Figure, .collect(), .refresh(), .start(), .cancel(),
 %             .status(), .controls, .helpLine, .cameras and .doric
 %
-% See also: lum.ephys.plan, lum.ephys.validate, lum.sleep.run, lum.gui.SleepSetupDialog
+% See also lum.ephys.plan, lum.ephys.validate, lum.sleep.run, lum.gui.SleepSetupDialog
 
 p = inputParser;
 p.FunctionName = 'lum.gui.EphysSetupDialog';

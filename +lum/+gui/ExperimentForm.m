@@ -16,7 +16,7 @@ classdef ExperimentForm
     % The genotype is an editable dropdown: the listed genotypes
     % (lum.experimentChoices) are suggestions, and any other can be typed.
     %
-    % See also: lum.gui.SetupDialog, lum.gui.SleepSetupDialog, lum.gui.Form
+    % See also lum.gui.SetupDialog, lum.gui.SleepSetupDialog, lum.gui.Form
 
     methods (Static)
         function controls = buildAnimal(parent, S, choices, t)

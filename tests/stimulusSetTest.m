@@ -1,10 +1,11 @@
 function tests = stimulusSetTest
-% stimulusSetTest exercises the session's stimulus set: lum.pattern.stimulusSet, the
-% contingency (lum.pattern.applyContingency, lum.pattern.typedPLeft) and the single-cue
-% ceilings (lum.pattern.shortcuts).
+% stimulusSetTest exercises the session's stimulus set and its contingency.
+%
+% lum.pattern.stimulusSet, the contingency (lum.pattern.applyContingency,
+% lum.pattern.typedPLeft) and the single-cue ceilings (lum.pattern.shortcuts).
 %
 % The set is what the trial records index into, what the data file stores once, and
-% the place where a session that cannot be run — or cannot mean anything — is
+% the place where a session that cannot be run - or cannot mean anything - is
 % refused. All pure; no Bpod.
 tests = functiontests(localfunctions);
 end

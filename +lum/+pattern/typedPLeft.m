@@ -6,8 +6,8 @@ function [pLeft, typedFor] = typedPLeft(pLeft, typedFor, labels)
 % family's). Typed values belong to the groups they were typed for, so the setup
 % dialog and the stimulus designer keep them only while the groups stay the same, and
 % go back to the family's as soon as the groups change: another family, other levels,
-% another count. Values whose groups are not known — from a settings file, or back from
-% the designer — are kept when there is one per group.
+% another count. Values whose groups are not known - from a settings file, or back from
+% the designer - are kept when there is one per group.
 %
 % Arguments:
 %   pLeft     P(left) as typed; empty for the family's contingency
@@ -19,7 +19,7 @@ function [pLeft, typedFor] = typedPLeft(pLeft, typedFor, labels)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.pattern.applyContingency, lum.gui.SetupDialog, lum.gui.StimulusDesigner
+% See also lum.pattern.applyContingency, lum.gui.SetupDialog, lum.gui.StimulusDesigner
 
 if isempty(pLeft)
     pLeft = [];

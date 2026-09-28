@@ -1,21 +1,21 @@
 function [S, accepted, app] = SleepSetupDialog(S, rig, varargin)
 % lum.gui.SleepSetupDialog collects what a home-cage sleep session needs before it runs.
 %
-% The reduced counterpart of lum.gui.SetupDialog, for sessions that record sleep in
-% the home cage (D11). There is no task, so no stimulus set, cue or runtime tier: what
-% the data file records about the animal (the same panels as the behaviour dialog,
-% lum.gui.ExperimentForm), how long to record, the sync pulses sent on Flex2 and the
-% session barcode that opens them, with a preview of that barcode — and the test
-% pulses (D13): whether light is sent on channels A and B, a summary and preview of
-% the schedule, and the button that opens lum.gui.TestPulseDesigner to design it. With
-% test pulses on, the recording lasts as long as their schedule, which the duration
-% field then shows. The house light's level at the start is set here (S.Sleep.HouseLight);
-% during the session it is switched from the sleep window, at once.
+% The reduced counterpart of lum.gui.SetupDialog, for sessions that record sleep in the home
+% cage (D11). There is no task, so no stimulus set, cue or runtime tier: what the data file
+% records about the animal (the same panels as the behaviour dialog,
+% lum.gui.ExperimentForm), how long to record, the sync pulses sent on Flex2 and the session
+% barcode that opens them, with a preview of that barcode - and the test pulses (D13):
+% whether light is sent on channels A and B, a summary and preview of the schedule, and the
+% button that opens lum.gui.TestPulseDesigner to design it. With test pulses on, the
+% recording lasts as long as their schedule, which the duration field then shows. The house
+% light's level at the start is set here (S.Sleep.HouseLight); during the session it is
+% switched from the sleep window, at once.
 %
 % A Doric LED tab sets the LED driver, the fiber bundle and each channel's intensity, with
 % its calibration (lum.gui.DoricSetup); a Cameras tab sets up the session's video, with a
-% live preview (lum.gui.CameraSetup); and a help line at the foot of the window describes the field under the pointer
-% (lum.gui.HelpLine).
+% live preview (lum.gui.CameraSetup); and a help line at the foot of the window describes
+% the field under the pointer (lum.gui.HelpLine).
 %
 % Everything is validated on every edit by lum.sleep.validate, and Start stays
 % disabled while anything fails.
@@ -38,8 +38,8 @@ function [S, accepted, app] = SleepSetupDialog(S, rig, varargin)
 %   app       With 'Wait' false: .Figure, .collect(), .refresh(), .start(),
 %             .cancel(), .status(), .controls, .helpLine, .cameras and .doric
 %
-% See also: lum.sleep.run, lum.sleep.validate, lum.gui.SessionTypeDialog,
-%           lum.gui.TestPulseDesigner
+% See also lum.sleep.run, lum.sleep.validate, lum.gui.SessionTypeDialog,
+%          lum.gui.TestPulseDesigner
 
 p = inputParser;
 p.FunctionName = 'lum.gui.SleepSetupDialog';
@@ -316,7 +316,7 @@ end
 
     function candidate = collectSettings()
         % Read every control back into a settings struct; everything no control shows
-        % — the behaviour tiers — comes from S untouched.
+        % - the behaviour tiers - comes from S untouched.
         c = controls;
         candidate = S;
         candidate.Meta = lum.gui.ExperimentForm.read(c, candidate.Meta);

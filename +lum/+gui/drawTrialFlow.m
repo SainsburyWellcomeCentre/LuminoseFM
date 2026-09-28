@@ -1,10 +1,10 @@
 function drawTrialFlow(targetAxes, S)
-% lum.gui.drawTrialFlow draws one trial as a timeline, from the cue to the inter-trial interval.
+% lum.gui.drawTrialFlow draws one trial as a timeline, from the cue to the ITI.
 %
 % Every block carries its current length, so changing the stimulus window, its latency
 % from the poke or a runtime timing is seen in context rather than as a number in a
-% field. Blocks whose length the animal decides — waiting for the poke with the cue on,
-% leaving and choosing, the outcome — are drawn at a fixed width and labelled with their
+% field. Blocks whose length the animal decides - waiting for the poke with the cue on,
+% leaving and choosing, the outcome - are drawn at a fixed width and labelled with their
 % limit. The bracket under the hold, from the poke, says what a broken hold does and,
 % when the hold is shaped, how.
 %
@@ -19,7 +19,7 @@ function drawTrialFlow(targetAxes, S)
 %   targetAxes  Axes to draw into
 %   S           Settings struct (need not be valid: bad values draw as zero)
 %
-% See also: lum.gui.SetupDialog, lum.cueTiming, lum.HoldShaping
+% See also lum.gui.SetupDialog, lum.cueTiming, lum.HoldShaping
 
 t = lum.gui.theme();
 cla(targetAxes);
@@ -164,7 +164,7 @@ end
 function width = textWidth(text, isBold)
 % A generous estimate of a 9 pt label's width in pixels. Generous on purpose: the
 % estimate is what keeps a caption inside the axes, and one that came out short left
-% the longest caption — the shaped centre hold's — a few pixels over the left edge on
+% the longest caption - the shaped centre hold's - a few pixels over the left edge on
 % a narrow window.
 perCharacter = 7.1 + 0.7 * isBold;
 width = numel(text) * perCharacter;

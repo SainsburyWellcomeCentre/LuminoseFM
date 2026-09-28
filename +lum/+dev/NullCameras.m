@@ -4,7 +4,7 @@ classdef NullCameras < lum.dev.Cameras
     % Recording switched off, or, in the emulator, spincam not found. Starting and
     % stopping are logged; marks return NaN, so Data.CameraTime says no clock was kept.
     %
-    % See also: lum.dev.Cameras, lum.dev.RealCameras, lum.dev.openCameras
+    % See also lum.dev.Cameras, lum.dev.RealCameras, lum.dev.openCameras
 
     methods
         function obj = NullCameras(settings, reason)

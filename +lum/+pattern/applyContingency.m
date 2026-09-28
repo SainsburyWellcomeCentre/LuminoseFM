@@ -21,7 +21,7 @@ function stimulusSet = applyContingency(stimulusSet, groupPLeft, reversed)
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.pattern.stimulusSet, lum.pattern.shortcuts
+% See also lum.pattern.stimulusSet, lum.pattern.shortcuts
 
 if nargin < 3 || isempty(reversed)
     reversed = false;

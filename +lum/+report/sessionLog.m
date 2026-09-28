@@ -25,7 +25,7 @@ function [file, lines] = sessionLog(Data, dataFile, varargin)
 %
 % Returns the file written and its lines.
 %
-% See also: lum.report.write, lum.report.sessionTrials, lum.report.summaryPlots
+% See also lum.report.write, lum.report.sessionTrials, lum.report.summaryPlots
 
 p = inputParser;
 p.FunctionName = 'lum.report.sessionLog';
@@ -233,6 +233,7 @@ end
 %% Pieces ------------------------------------------------------------------------
 
 function L = section(L, title)
+% A Markdown section heading, with a blank line either side.
 L{end+1} = '';
 L{end+1} = sprintf('## %s', title);
 L{end+1} = '';
@@ -240,6 +241,7 @@ end
 
 
 function name = stageName(S)
+% The training stage's name.
 name = 'unknown stage';
 if S.Task.TrainingStage >= 1 && S.Task.TrainingStage <= numel(S.Task.TrainingStageNames)
     name = S.Task.TrainingStageNames{S.Task.TrainingStage};
@@ -248,6 +250,7 @@ end
 
 
 function label = familyLabel(stimulusSet)
+% The stimulus family's label, or its name when it is not a known family.
 families = lum.pattern.families();
 family = families(strcmp({families.Name}, stimulusSet.Family));
 label = stimulusSet.Family;
@@ -258,6 +261,7 @@ end
 
 
 function text = groupText(stimulusSet)
+% Every group with the P(left) it ran with.
 parts = cell(1, stimulusSet.nGroups);
 for k = 1:stimulusSet.nGroups
     parts{k} = sprintf('%s (P(left) %.2f)', stimulusSet.GroupLabels{k}, stimulusSet.GroupPLeft(k));
@@ -310,6 +314,7 @@ end
 
 
 function text = componentText(rows)
+% The enabled components of a cue or stimulus table, or 'none'.
 on = rows([rows.Enabled]);
 if isempty(on)
     text = 'none';
@@ -320,6 +325,7 @@ end
 
 
 function text = stimulusComponentText(S)
+% What the stimulus delivers: the light pattern and each enabled component.
 parts = {};
 if S.Session.UseOpto
     parts{end+1} = 'light pattern';
@@ -337,6 +343,7 @@ end
 
 
 function text = sideText(side)
+% A side's outputs: port light, tone and guide light.
 parts = {};
 if side.Light.Enabled
     parts{end+1} = 'port light';
@@ -350,6 +357,7 @@ end
 
 
 function text = centreRewardText(S)
+% When the centre reward is given, and how much.
 g = S.GUI;
 if g.CentreRewardAmount <= 0
     text = 'none';
@@ -362,6 +370,7 @@ end
 
 
 function text = runLimitText(S)
+% The same-side run limit, or that there is none.
 if S.Task.MaxSameSide < 1
     text = 'any number of trials';
 else
@@ -371,6 +380,7 @@ end
 
 
 function text = byGroupText(T)
+% How often the animal chose left on each group's trials with a choice.
 labels = T.stimulusSet.GroupLabels;
 parts = cell(1, numel(labels));
 for k = 1:numel(labels)
@@ -383,6 +393,7 @@ end
 
 
 function out = recordingLines(Data)
+% The Recordings section: video, barcode, trial sync pulses and the flow meter.
 out = {};
 session = Data.Session;
 if isfield(session, 'Cameras') && isfield(session.Cameras, 'Summary') && ~isempty(session.Cameras.Summary) ...
@@ -413,6 +424,7 @@ end
 
 
 function text = errorText(camera)
+% '; error: ...' when a camera's recording reported one, else ''.
 text = '';
 if isfield(camera, 'Error') && ~isempty(camera.Error)
     text = sprintf('; error: %s', camera.Error);
@@ -421,6 +433,7 @@ end
 
 
 function text = labelOf(S, name)
+% A runtime parameter's label as the windows show it, or its name.
 text = name;
 if isfield(S.GUIMeta, name) && isfield(S.GUIMeta.(name), 'Label')
     text = S.GUIMeta.(name).Label;
@@ -444,11 +457,13 @@ end
 
 
 function text = menuItem(S, name)
+% A runtime parameter's current value as the windows show it.
 text = valueText(S, name, S.GUI.(name));
 end
 
 
 function text = readable(name)
+% A component type in words: 'CentreLight' -> 'Centre light'.
 names = struct('CentreLight', 'Centre light', 'Tone', 'Tone', 'Air', 'Air');
 text = name;
 if isfield(names, name)
@@ -458,6 +473,7 @@ end
 
 
 function text = emulatedText(Data)
+% ', EMULATED ...' for an emulated session, else ''.
 text = '';
 if isfield(Data.Session, 'Emulated') && Data.Session.Emulated
     text = ', EMULATED (no animal, no hardware)';
@@ -475,6 +491,7 @@ end
 
 
 function value = fieldOr(container, name, default)
+% A field of a struct, or the default when it is absent or empty.
 value = default;
 if isstruct(container) && isfield(container, name) && ~isempty(container.(name))
     value = container.(name);
@@ -483,6 +500,7 @@ end
 
 
 function text = orDash(text)
+% '-' for an empty value.
 if isempty(text)
     text = '-';
 end
@@ -490,11 +508,13 @@ end
 
 
 function text = oneLine(text)
+% Text, or a cell of lines, as one line with single spaces.
 text = strtrim(regexprep(char(strjoin(cellstr(text), ' ')), '\s+', ' '));
 end
 
 
 function value = ternary(condition, whenTrue, whenFalse)
+% whenTrue if condition, otherwise whenFalse.
 if condition
     value = whenTrue;
 else
@@ -504,11 +524,13 @@ end
 
 
 function total = sumPresent(values)
+% The sum of the values that are not NaN.
 total = sum(values(~isnan(values)));
 end
 
 
 function values = nanToZero(values)
+% NaN counted as 0.
 values(isnan(values)) = 0;
 end
 

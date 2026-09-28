@@ -10,7 +10,7 @@ classdef HiFi < lum.dev.Device
     % up to a few hundred thousand samples, so loadSound() refuses to run once
     % the session loop has started (see freeze()).
     %
-    % See also: lum.dev.open, lum.stim.Sound, TestHiFiSound
+    % See also lum.dev.open, lum.stim.Sound, TestHiFiSound
 
     properties (Constant)
         MaxSlots = 20  % Waveform slots in the module's active sound set

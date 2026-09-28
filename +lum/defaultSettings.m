@@ -4,20 +4,21 @@ function S = defaultSettings()
 % The struct has two tiers, split by when a parameter may legally change
 % (architecture decision D2):
 %
-%   Pre-session tier — S.Meta, S.Session, S.Task, S.Cue, S.Stimulus, S.Left,
+%   Pre-session tier - S.Meta, S.Session, S.Task, S.Cue, S.Stimulus, S.Left,
 %   S.Right, S.Light, S.Doric, S.Sound, S.Camera, S.Sync, S.Sleep, S.Ephys. Chosen once in
 %   the setup dialog (or the sleep or ePhys calibration setup dialog), frozen for the
 %   session, and stored once in the data file. Changing any of these mid-session would
 %   make the session's data uninterpretable, so nothing in the runtime window can touch
-%   them. The one exception is the LED intensity (S.Doric.IrradiancemWmm2 or CurrentmA),
-%   which the LED window changes between trials and each trial records (D17).
+%   them. The one exception is the LED intensity (S.Doric.IrradiancemWmm2 or CurrentmA,
+%   and a sleep session's test pulses'), which the LED window changes between trials or
+%   blocks and each trial or gate of light records (D17).
 %
 %   S.Session.Type says which kind of session the settings were last used for,
 %   'Behaviour', 'Sleep' or 'EphysCalibration' (D11, D18); the chooser shown at launch
 %   starts on it. S.Sleep is read only by sleep sessions, S.Ephys only by ePhys
 %   calibration sessions, and the behaviour tiers only by behaviour ones.
 %
-%   Runtime tier — S.GUI, with S.GUIMeta, S.GUIPanels and S.GUITabs describing it
+%   Runtime tier - S.GUI, with S.GUIMeta, S.GUIPanels and S.GUITabs describing it
 %   to the runtime window. Only parameters that are safe to change with an animal
 %   in the box. Synced once per trial and recorded per trial, because they really
 %   do vary within a session.
@@ -46,8 +47,8 @@ function S = defaultSettings()
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also: lum.gui.SetupDialog, lum.gui.runtimeFields, lum.mergeSettings,
-%           lum.validateSettings, docs/architecture.md (D2)
+% See also lum.gui.SetupDialog, lum.gui.runtimeFields, lum.mergeSettings,
+%          lum.validateSettings
 
 %% Pre-session tier: the experiment
 S.Meta.Subject = '';                % Filled from the Bpod launch manager at session start
@@ -113,7 +114,7 @@ S.Task.OnHoldBreak = 'Restart stimulus';
 %% Pre-session tier: cue
 % What asks the animal to start a trial. One row per component, each switched on
 % independently. An enabled component is on from trial start until the stimulus starts
-% — through the wait for the poke and any latency after it — and again whenever a
+% - through the wait for the poke and any latency after it - and again whenever a
 % broken hold sends the animal back to poke. From stimulus onset it continues through
 % the whole stimulus (ThroughStimulus, the default) or stays on for Duration seconds,
 % 0 switching it off as the stimulus starts (lum.cueTiming). Every row is kept even
@@ -245,7 +246,7 @@ S.Sync.Barcode = struct('Enabled', true, 'nBits', 32, 'MarkerWidth', 0.1, ...
 %% Pre-session tier: sleep sessions
 % A home-cage sleep recording: the session barcode, then sync pulses on the same line
 % for DurationMinutes, one every Interval seconds (jittered by up to IntervalJitter
-% either side). Pulse widths follow Mode, a lum.SyncMode code — Fixed width or
+% either side). Pulse widths follow Mode, a lum.SyncMode code - Fixed width or
 % Jittered width; task events mean nothing without a task (lum.sleep).
 S.Sleep.DurationMinutes = 120;
 % The white house light inside the box during a sleep recording (PulsePal output 3). The
@@ -278,9 +279,10 @@ S.Sleep.Sync = struct('Mode', lum.SyncMode.JitteredWidth, 'FixedWidth', 0.05, ..
 %             'Rest' or a train's name; Channels one of lum.sleep.stepChoices; Minutes
 %             the length of a probe or rest step (a train step lasts its trains), or Inf
 %             for a last probe or rest step that goes on until the recording ends
-%             (lum.sleep.untilRecordingEnds), the default. By default probes alternate: a pair on A, 30 s, a pair on B, 30 s, and so on,
-%             so no epoch lights both channels and each evoked response has one source;
-%             'A and B' sends each epoch on both channels at once.
+%             (lum.sleep.untilRecordingEnds), the default. By default probes alternate:
+%             a pair on A, 30 s, a pair on B, 30 s, and so on, so no epoch lights both
+%             channels and each evoked response has one source; 'A and B' sends each
+%             epoch on both channels at once.
 S.Sleep.TestPulses.Enabled = false;
 S.Sleep.TestPulses.Voltage = [5 5];
 S.Sleep.TestPulses.IrradiancemWmm2 = [2 2];
@@ -312,9 +314,9 @@ S.Sleep.TestPulses.Schedule = struct('Kind', {'Probe'}, 'Channels', {'Alternate 
 % spaced in mA; PairedPulse.CurrentmA). An irradiance above what the channel gives runs
 % at the most it gives (lum.led.currentFor), and MaxmA NaN is the channel's current
 % limit, so the curve by default goes from 0 to 12 mW/mm2 or the channel's most, if
-% less. Order 'Shuffled' runs the steps of each protocol
-% in an order drawn from Seed. Sync pulses and the house light work as in sleep
-% sessions; the session barcode has the ePhys marker (S.Sync.Barcode.EphysMarkerWidth).
+% less. Order 'Shuffled' runs the steps of each protocol in an order drawn from Seed.
+% Sync pulses and the house light work as in sleep sessions; the session barcode has
+% the ePhys marker (S.Sync.Barcode.EphysMarkerWidth).
 S.Ephys.Channels = 'A';
 S.Ephys.PulseWidth = 0.005;         % Seconds
 S.Ephys.InterEpochInterval = 1;     % Seconds, onset to onset
@@ -476,8 +478,6 @@ S.GUITabs.Trial = {'Reward', 'CentreReward', 'Timing'};
 S.GUITabs.Task = {'Punishment', 'Bias', 'Shaping'};
 S.GUITabs.Delivery = {'Delivery'};
 
-
-%% Declarations -----------------------------------------------------------------
 
 function side = sideDefaults(toneFrequency)
 % The outputs of one side port, all off.
