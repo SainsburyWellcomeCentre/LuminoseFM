@@ -126,7 +126,8 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
 - the protocol version and the device log (`DeviceLog.PulsePal`, `DeviceLog.HiFi`,
   `DeviceLog.FlexIO`, `DeviceLog.Cameras`, `DeviceLog.DoricLED`)
 - `StoppedReason` — empty for a session that ran to its end or was stopped from the console, and
-  the error message otherwise
+  the error message otherwise. A session stopped from the console can end with one or two trials
+  that ran but are in no record (*Video*, *Unrecorded trials at the end*)
 - `PlotsImage` — full path of the `_plots.png` saved at teardown, or `''`
 - `HouseLight` — the wiring: `Output` (PulsePal output, 3), `Voltage` (on, 5 V), `Input` (`'BNC1'`),
   `OnEvent` (`'BNC1High'`), `OffEvent` (`'BNC1Low'`); `Switchable` (false when a session without light
@@ -398,10 +399,39 @@ fall = find(diff(T.TTL_State) == -1) + 1;
 [value, first] = lum.sync.decodeBarcode(t(rise), t(fall), S.Barcode.Params);
 assert(isequal(value, S.Barcode.Value), 'This video is not this session');
 pulses = rise(first + S.Barcode.Params.nBits + 2:end);         % one per trial after the barcode
-n = SessionData.nTrials;                                       % a stopped trial may add one more
+n = SessionData.nTrials;                                       % the End button may add one or two
+assert(numel(pulses) - n >= 0 && numel(pulses) - n <= 2, 'Pulses and trials do not match');
 fit = polyfit(SessionData.TrialStartTimestamp, t(pulses(1:n))', 1);  % camera = a*bpod + b
 bpodTime = (t - fit(2)) / fit(1);                              % each frame on Bpod's session clock
+recorded = bpodTime <= SessionData.TrialEndTimestamp(n);       % frames after the last trial: discard
 ```
+
+**Unrecorded trials at the end.** A behaviour session ended with the console's End button leaves
+trial pulses after the last recorded trial, for trials that are in no record: not in `RawEvents`,
+not in any per-trial series, no `TrialEnd` row in `_events.csv`, their `SyncPulseWidth` unknown.
+
+- Pulse `n` + 1, 0.1 ms after `TrialEndTimestamp(n)` (0.01–0.35 s after it in 0.9.8–0.9.10
+  sessions with light), is the trial the End button cut short. Bpod discards a stopped trial's
+  data. Every version has it.
+- From 0.9.11, pulse `n` + 2, at the moment of the press, is the trial after it. The next trial is
+  uploaded as each trial starts, set to start by itself when the running one ends (`RunASAP`,
+  `architecture.md` D3). `RunProtocol('Stop')` sends the state machine one halt command: that ends
+  the cut-short trial, and the state machine starts the queued one. It runs with nothing recording
+  it and nothing halting it (the teardown sends no second halt after the End button): it ends by
+  itself, about a minute later without a poke (the hold window) and later if the animal does the
+  trial, with its cue light, ports, air and valves working as in any trial, and its light while
+  the LED driver is on (the teardown switches it off).
+
+LUMS0014 2026-09-29: 374 pulses for 372 trials; pulse 373 at trial 372's end, pulse 374 39.7 s later
+at the press, the video stopping 3.3 s after it. For analysis, use the first `n` pulses only and
+discard everything recorded after `TrialEndTimestamp(n)`: video frames, and spikes or any other
+recording aligned by the sync line. Whatever the animal did then (a reward, stimulus air, pokes) is
+on those recordings but in no Bpod record. `SessionData.Analog` stops at the press, so it covers
+only the cut-short trial after `TrialEndTimestamp(n)`; drop those samples too. A session that ran
+to `MaxTrials` has neither pulse (nothing is queued after the last trial); one that ended on an
+error can have them too, since its teardown's single `RunProtocol('Stop')` can release a queued
+trial the same way. More than two extra pulses means the match
+is wrong. `python-analysis.md` §4 does the same in Python.
 
 A frame samples the line once, so edges are known to one frame period (10 ms at 100 Hz) and each
 pulse's width in frames is its Bpod width to within one frame (jittered widths can also match trials
@@ -469,6 +499,10 @@ the null device shims swallowed is recorded in `Data.Session.DeviceLog`. See
 ---
 
 ## Reading older files
+
+- **Sessions before 0.9.11** stopped from the console have at most one trial pulse after the last
+  recorded trial (the trial the End button cut short), not two (*Video*, *Unrecorded trials at the
+  end*).
 
 - **Sessions from 0.9.8 to 0.9.10 with light** prepared the next trial in the ITI (`TriggerStates`
   `{'ITI'}`), after the trial had ended at the default 0 s ITI (0.25 s from 0.9.11): every trial started

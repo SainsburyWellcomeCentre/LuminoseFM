@@ -33,6 +33,7 @@ before changing the stimulus path, the state graph, sleep blocks or the GUI. The
 | [`docs/sync-and-barcode.md`](docs/sync-and-barcode.md) | The sync TTL and the session barcode | anything on the sync line changes |
 | [`docs/naming-and-versions.md`](docs/naming-and-versions.md) | The glossary, and what changed in each version (newest first) | every release, and every rename |
 | [`docs/emulator.md`](docs/emulator.md) | What `Bpod('EMU')` does and does not reproduce | the emulator's behaviour or our reliance on it changes |
+| [`docs/learning-time-literature.md`](docs/learning-time-literature.md) | Published learning times for odour and optogenetic-OB discrimination, each linked to its paper; the estimate for LuminoseFM's Training stage; LUMS0014's sessions so far | an animal first shows a group split or reaches criterion, or the training procedure changes |
 | [`docs/rig-checks.md`](docs/rig-checks.md) | How to run a rig check, the checks waiting for the operator (*Pending*), and every result (*Done*) | a rig check runs, or a change needs one |
 | [`docs/validation-<date>.md`](docs/validation-2026-09-24.md) | A pre-deployment validation: inventory, results, fixes, open questions | a validation runs (a new file; old ones are records) |
 | [`docs/repository.md`](docs/repository.md) | The repository layout and what each test file covers | files or tests are added |
@@ -457,7 +458,9 @@ WaitForCentrePoke → NoInitiation → WaitForLightEnd           (hold window ov
   uploaded (`Data.Timing.devices`). The default ITI covers that (`lum.minimumITI`), so it starts
   on time too; a shorter ITI delays it with one dead time warning. Any new device command a trial
   needs goes through the same two functions. A runtime setting or LED change made during trial *k*
-  reaches trial *k*+2 when trial *k*+1 was already prepared.
+  reaches trial *k*+2 when trial *k*+1 was already prepared. Because a trial is always queued, the
+  End button starts it unrecorded (*Gotchas*, the End button); a change to how a session stops
+  must deal with that trial.
 - **The hold ends in `WaitForCentreExit`**, which waits for `Port2Out` (or condition 3, the centre
   port already clear) before opening the response window. Do not shortcut `CentreHold` straight
   into `WaitForResponse`: the side ports would be live with the animal's nose still in the centre
@@ -883,6 +886,13 @@ says. `docs/code-style.md` has the full convention; this is what every change mu
   `lum.report.fromFile(dataFile)` does the same for a saved session and **only reads** it
   (rescoring pre-0.9.6 files in memory); `'OnlinePlots', true` also replaces `_plots.png` with the
   current `lum.OnlinePlots` replayed trial by trial. **Never write a `.mat` from `lum.report`.** Sleep and ePhys sessions write neither yet.
+- **Unrecorded trials at the end.** A session ended with the End button (or on an error) can have
+  trial pulses on the sync recordings after the last recorded trial: the trial it cut short
+  (`nTrials` + 1, every version) and, from 0.9.11, the queued trial the halt let start
+  (`nTrials` + 2; LUMS0014 2026-09-29: 374 pulses, 372 trials). Neither is in the data file. Analysis uses the first
+  `nTrials` pulses and discards everything after `TrialEndTimestamp(nTrials)`
+  (`docs/data-format.md`, *Video*; `docs/python-analysis.md` §4); an audit counts the extra pulses
+  (0 to 2).
 - **Emulated sessions** write a complete data file flagged `Data.Info.EmulatorMode = 1`.
 - **Older files.** Trial pulses from 0.2 to 0.5.0 are ~100 µs glitches (D4): align those sessions by
   the barcode and `Data.TrialStartTimestamp`. Up to 0.9.5 a side poke after the response window was
@@ -1041,6 +1051,14 @@ Each has already cost time and is guarded in code; don't undo them.
   the protocol with MATLAB's `run`, which makes the repository the current folder until the protocol
   returns. Hence the plot figures' `CloseRequestFcn` only hides them (their `close()` deletes), and
   the settings file is captured before the loop, not read from `Path.Settings` at teardown (D16).
+- **The End button starts the queued trial, and nothing stops it** (0.9.11; found 2026-09-29).
+  `RunProtocol('Stop')` sends the state machine one halt command (`'X'`). With the next trial
+  uploaded with `RunASAP` as each trial starts, that halt ends the running trial and the state
+  machine starts the queued one; `getTrialData` returns at once because `BeingUsed` is 0, so nothing
+  records it, and the teardown sends no second halt (it calls `RunProtocol('Stop')` only after a
+  session that ran to its end or failed). The trial runs to its own end, cue light, ports, air and
+  valves live. Not fixed: `docs/architecture.md` lists the fix (a second halt as the loop sees
+  `BeingUsed` 0, checked on the rig) as an open question; the data docs say how to discard it.
 - **A timer callback must not let the End button in.** The End button's callback runs inside any
   `drawnow` or `pause` that processes callbacks, including one inside a timer's callback. In 0.8.0 the
   camera window was a protocol figure whose timer drew with `drawnow limitrate`, so Stop closed the

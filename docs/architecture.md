@@ -202,6 +202,16 @@ and keeps the *observable* behaviour identical. The mode is recorded in
   2026-09-28: 332 of 332 trials, median 196 ms), with nothing running in the gap and the dead time
   warning after each. 0.9.11 moved the window to the trial's start, the device commands into the
   ITI, and the default ITI to 0.25 s.
+- **The End button starts the queued trial (found 2026-09-29).** With the next trial always
+  uploaded (`RunASAP`), the End button's `RunProtocol('Stop')`, which sends the state machine one
+  halt command, ends the running trial and the state machine then starts the queued one. Nothing
+  records it (`getTrialData` returns at once once `Status.BeingUsed` is 0), and nothing halts it:
+  the teardown calls `RunProtocol('Stop')` only after a session that ran to its end or failed. It
+  runs to its own end (the hold window, 60 s, without a poke; longer if the animal does the trial)
+  with the cue light, ports, air and valves live, and its light while the LED driver is on. Its trial
+  pulse follows the cut-short trial's on every sync recording (LUMS0014 2026-09-29: 374 pulses, 372
+  trials). Not fixed yet (open questions); analysis discards everything after the last recorded
+  trial (`data-format.md`, *Video*; `python-analysis.md` §4).
 - In the emulator the same calls run the trial to completion first.
 - `lum.dev.open` is the only place that reads `BpodSystem.EmulatorMode`.
 
@@ -1582,6 +1592,12 @@ These are properties of Bpod v1.9.0 that shaped the code and are easy to redisco
 
 Questions answered on the rig move to [`rig-checks.md`](rig-checks.md) (*Done*), with their sessions.
 
+- How to stop the trial the End button lets start (D3). A second halt command sent as soon as the
+  loop sees `Status.BeingUsed` 0, before the teardown, would end it within milliseconds; it needs a
+  rig check (count the pulses after the last trial) and must not disturb `RunProtocol('Stop')`'s own
+  flush. A session that ends on an error can release a queued trial the same way (its teardown's
+  single `RunProtocol('Stop')`), so the fix belongs where both paths leave the loop. Until then the
+  data docs say to detect and discard it.
 - Bias correction reorders a balanced order (D5), so its long-run effect is bounded by the
   set's own side proportion. If sustained correction is needed, the alternative is to let it
   draw outside the balance and record the imbalance.

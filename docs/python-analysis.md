@@ -106,15 +106,49 @@ The same recipe for any recording of the sync line (camera, Neuropixels, anythin
    `Session.Barcode.Value` (`Hex` in text): that proves the recording is this session. Its kind
    (behaviour, sleep, ePhys) comes from the opening marker's width.
 3. The rising edges after the barcode's closing marker are the trial pulses: the first `nTrials`
-   match `TrialStartTimestamp`. There may be **one more**: the trial the End button cut short,
-   which Bpod does not record (LUMS0014: 308 pulses, 307 trials, every session). Sleep and ePhys
-   sessions stopped mid-block have `Session.StoppedBlock` describing the extra pulses.
+   match `TrialStartTimestamp`. A behaviour session ended with the console's End button (or on an
+   error) has
+   pulses after them that belong to no recorded trial (*Unrecorded trials at the end*, below):
+   up to 0.9.10 **one more**, the trial the End button cut short (LUMS0014: 308 pulses, 307
+   trials, every session to 2026-09-28); from 0.9.11 **up to two more**. Use only the first
+   `nTrials`. Sleep and ePhys sessions stopped mid-block have `Session.StoppedBlock` describing
+   the extra pulses.
 4. Fit `recording = a * bpod + b` by least squares over the matched pulses, and check the
    residuals: on LUMS0014 2026-09-27, fitting the camera host clock (`HostTime_s`) gave `a` =
    0.99999091 (9 ppm slower than Bpod's), residuals SD 2.8 ms, largest 6.1 ms (within one 10 ms
    frame).
 5. Where pulse widths are jittered, confirm the match pulse by pulse (width in the recording
    against `SyncPulseWidth[k]`, to within a frame for cameras) before trusting it.
+6. Discard everything the recording holds after the last recorded trial's end,
+   `TrialEndTimestamp[nTrials - 1]` mapped through the fit: frames, spikes, analog samples.
+
+**Unrecorded trials at the end.** From 0.9.11 the next trial is uploaded as each trial starts,
+set to start by itself when the running one ends (`RunASAP`, D3). The End button's
+`RunProtocol('Stop')` sends the state machine one halt command: it ends the running trial (cut
+short, never recorded) and the state machine then starts the trial already queued. That trial
+runs with nothing recording it and nothing halting it: the teardown sends no second halt after the
+End button. It ends by itself, about a minute later without a poke (the hold window, 60 s by
+default) and later if the animal does the trial: its cue light, ports, air and valves work as in
+any trial, and its light as long as the LED driver is on (the teardown switches it off). Neither
+trial is in the data file, `RawEvents`
+or `_events.csv` (no `TrialEnd` row), and their `SyncPulseWidth` is not stored, so their pulses
+cannot be matched by width. On the recording:
+
+| Pulse | Starts | Is |
+|---|---|---|
+| `nTrials + 1` | 0.1 ms after `TrialEndTimestamp[nTrials - 1]` (0.01–0.35 s after it with light, 0.9.8–0.9.10) | the trial the End button cut short |
+| `nTrials + 2` (from 0.9.11) | at the End button press | the queued trial, which ran unrecorded |
+
+A session that ran to `MaxTrials` has none (nothing is queued after the last trial); one that ended
+on an error can have them too, since its teardown's single `RunProtocol('Stop')` can release a
+queued trial the same way. LUMS0014 2026-09-29 (0.9.11): 374
+pulses for 372 trials; pulse 373 at trial 372's end, pulse 374 39.7 s later at the press, and the
+video stopped 3.3 s after that, so the video does not show how trial 374 ended. Anything the animal did in either trial (a reward, the stimulus air,
+pokes) is in the video and any neural recording but in no Bpod record, so the time after
+`TrialEndTimestamp[nTrials - 1]` is not usable as a baseline, a rest period or a trial. The Flex
+analog stream stops at the press (Bpod stops it in `RunProtocol('Stop')`), so its samples after the
+last trial's end cover only the cut-short trial. More extra pulses than this means the pulses and
+trials are misaligned: stop.
 
 ```python
 import numpy as np
@@ -152,10 +186,13 @@ t = t - 128 * np.concatenate([[0], np.cumsum(steps)])
 rise, fall = edges(t, log["TTL_State"].to_numpy() == 1)
 value, first = decode_barcode(rise, fall, params)
 assert value == session["Barcode"]["Value"]
-pulses = rise[first + params["nBits"] + 2:]     # one per trial, maybe one more
+pulses = rise[first + params["nBits"] + 2:]     # one per trial, then up to two unrecorded ones
 n = sd["nTrials"]
+extra = len(pulses) - n                         # 0; 1: cut short by End; 2 (0.9.11 on): the queued trial too
+assert 0 <= extra <= 2, "pulses and trials do not match"
 a, b = np.polyfit(sd["TrialStartTimestamp"][:n], pulses[:n], 1)
 frame_bpod_time = (t - b) / a
+recorded = frame_bpod_time <= sd["TrialEndTimestamp"][n - 1]   # frames after this: discard
 ```
 
 `TTL_State` is −1 when the line was not read; treat it as missing. Frame edges are known to one
@@ -318,7 +355,7 @@ full list.
 
 | Before | What to do |
 |---|---|
-| 0.9.11 | No `Timing.devices`. From 0.9.8, a session with light has a 0.01–0.35 s gap between every trial's end and the next one's start (`TrialStartTimestamp(k+1) - TrialEndTimestamp(k)`) with no state machine running: pokes then are not in `RawEvents`. The ITI was 0 s by default (0.25 s from 0.9.11). Video from SpinCam engine 1.2.0 or earlier may have 128 s steps in `HardwareTimestamp_us` (§3) |
+| 0.9.11 | At most one unrecorded trial pulse after the last trial (two from 0.9.11, §4). No `Timing.devices`. From 0.9.8, a session with light has a 0.01–0.35 s gap between every trial's end and the next one's start (`TrialStartTimestamp(k+1) - TrialEndTimestamp(k)`) with no state machine running: pokes then are not in `RawEvents`. The ITI was 0 s by default (0.25 s from 0.9.11). Video from SpinCam engine 1.2.0 or earlier may have 128 s steps in `HardwareTimestamp_us` (§3) |
 | 0.9.8 | `Settings.Task.HoldLength` / `FixedHold` are `Settings.GUI.HoldLength` (index: 1 whole stimulus, 2 fixed) / `GUI.FixedHold` from 0.9.8, and per trial in `TrialSettings`. A session with light always reserves the light clock from 0.9.8. Same-side runs could reach `MaxSameSide` + 1. The version string has no commit on the rig |
 | 0.9.7 | Sleep and ePhys sessions stopped mid-block have no `StoppedBlock` |
 | 0.9.6 | **Rescore**: a side poke after the response window was scored as a choice. Rescore from `RawEvents` (port `lum.scoreTrial`; LUMS0014's first session: 3 trials change). Default-named videos have `topview`/`sideview` swapped: use the camera serial |
@@ -346,7 +383,9 @@ record in the HDF5 file (`/checks`, one row per check with its value and pass/fa
 - same-side runs of `CorrectSide` stay within `Settings.Task.MaxSameSide` except where
   `BiasTargetPLeft` pushed towards that side (from 0.9.8)
 - the barcode decodes from every recording of the sync line and equals `Session.Barcode.Value`;
-  pulses after it = `nTrials` or `nTrials` + 1; the clock fit's residuals are under one frame
+  pulses after it = `nTrials`, `nTrials` + 1 or (from 0.9.11, End button) `nTrials` + 2, the extra
+  ones where §4 puts them, and everything after the last trial's end flagged unrecorded and left out
+  of the analysis; the clock fit's residuals are under one frame
   (cameras) or 0.1 ms (Neuropixels); jittered widths match trial by trial
 - per camera: frames logged = frames written, none missed or dropped (`Session.Cameras.Summary`,
   the frame log's `FramesMissedBefore`, `WriterDropFlag`)

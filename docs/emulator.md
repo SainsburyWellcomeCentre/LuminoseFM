@@ -51,6 +51,9 @@ session looks, take screenshots from outside MATLAB.
   left change.
 - **No Flex I/O at all** — so no airflow stream, no sync pulses and no session barcode (it is
   recorded as not sent).
+- **No queued trial.** The emulator runs each trial to completion before the next is sent, so the
+  End button leaves no unrecorded trial behind, as it can on the rig from 0.9.11
+  (`architecture.md` D3; `data-format.md`, *Video*).
 - **PulsePal and the HiFi module are not connected** (null shims log what they would have sent), so sound states run silently and no light is
   delivered. The runtime window opens in its reduced, single-page form (Bpod's own parameter
   window, relabelled). The setup dialog's **▶ Play** buttons play through the PC's speakers.

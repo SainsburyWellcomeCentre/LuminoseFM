@@ -129,6 +129,14 @@ reported, not changed here; `docs/python-analysis.md` removes the steps.
 | `Data.Session.TriggerStates` `{'ITI'}` in a session with light | `{'WaitForCentrePoke'}` in every session |
 | The camera's 128 s timestamp steps in the frame logs | Fixed in SpinCam (its repository, at the operator's request): engine and package 1.3.0 take any step of whole 128 s periods that the host clock does not show out of `HardwareTimestamp_us` as they record (`TimestampGuard`), count them (`Summary.Cameras(k).TimestampCorrections`, kept in `Session.Cameras` and named in the session log), and `spincam.io.readFrameLog` repairs older logs (LUMS0014 2026-09-28 topview: 2 steps, span then 7074.8 s as the sideview's). `docs/python-analysis.md` for Python |
 
+Found after the release, auditing `LUMS0014_LuminoseFM_20260929_112849` (Training, 372 trials, ended
+with the End button): with the next trial always uploaded, the End button's single halt command
+ends the running trial and the state machine then starts the queued one, which runs unrecorded to
+its own end (its trial pulse is on both cameras: 374 pulses for 372 trials). Not fixed;
+`data-format.md` (*Video*, *Unrecorded trials at the end*) and `python-analysis.md` §4 say how to
+detect it and discard everything after the last recorded trial, and `architecture.md` lists the fix
+as an open question.
+
 ### 0.9.9 → 0.9.10 — help text and comments to one standard, checked
 
 Every comment and help text read against the code it describes, and corrected where it had drifted;

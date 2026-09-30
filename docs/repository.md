@@ -92,6 +92,7 @@ LuminoseFM/
     ├── sync-and-barcode.md       the sync TTL and the session barcode
     ├── naming-and-versions.md    glossary and what changed between versions
     ├── emulator.md               running with no hardware attached
+    ├── learning-time-literature.md published learning times, with links, and the estimate for this task
     ├── rig-checks.md             how to run a rig check, what has been checked, what waits for the operator
     ├── validation-2026-09-24.md  the pre-deployment validation of 0.9.3 → 0.9.4
     ├── repository.md             this file

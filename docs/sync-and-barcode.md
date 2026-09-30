@@ -115,6 +115,13 @@ the End button stopped, which is not in the data file), decoded the barcode, and
 pulse's width to Bpod's within a frame. The code to align frames to Bpod's clock is in
 [`data-format.md`](data-format.md#video).
 
+A session ended with the End button leaves one trial pulse after the last recorded trial (the
+trial it cut short) and, from 0.9.11, sometimes two: the next trial, already uploaded, starts when
+Stop halts the cut-short one, and runs unrecorded to its own end (LUMS0014 2026-09-29:
+374 pulses, 372 trials). Align with the first `nTrials` pulses only, and discard what the recordings
+hold after the last trial's end ([`data-format.md`](data-format.md#video), *Unrecorded trials at the
+end*).
+
 ---
 
 ## Sleep and ePhys calibration sessions

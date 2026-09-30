@@ -486,6 +486,13 @@ The same is stored in the data file (`Data.Session.Startup`).
 When the session ends — at its last trial, on an error, or with the console's **End** button — the
 protocol closes the camera and LED windows first, then saves; Bpod closes the other windows.
 
+After the **End** button the box can run one more trial that nothing records and nothing stops:
+its cue light comes on, and a poke starts the stimulus air (and the light, until the protocol has
+switched the LED off) and can earn water that is counted nowhere. Without a poke it ends by itself
+after the hold window (60 s); if the animal does the trial it ends after the choice. Take the animal
+out once the cue is off (the centre port's light, with the default cue). Analysis leaves out everything after the last recorded trial
+([`docs/data-format.md`](docs/data-format.md#video), *Unrecorded trials at the end*).
+
 ### Session setup
 
 Shown once, before the first trial. Everything on it is validated on every edit; the status line
