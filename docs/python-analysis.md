@@ -347,6 +347,10 @@ trial, volts = block[:, 0], block[:, 1:] / 4095 * 5
 Its samples start with the barcode's run, which Bpod counts as a trial: in the `.mat`, samples
 taken during the barcode have `Analog.TrialNumber` 0 and timestamps corrected to the Bpod clock
 (data-format.md). The raw file needs the same correction (`lum.dev.Flex.alignAnalog`).
+`Analog.Timestamps` count samples, so they run early after a trial in which the state machine
+missed a deadline (`RawData.StateMachineErrorCodes`, 10 ms in LUMS0014 2026-09-29 from trial 316):
+for millisecond alignment, take each trial's first sample (`Analog.TrialNumber`) as its
+`TrialStartTimestamp`.
 
 ## 7. What changed between versions (for the loader)
 

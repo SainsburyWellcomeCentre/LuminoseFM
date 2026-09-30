@@ -69,15 +69,25 @@ choosing left or right with a wheel.
 | 2026-09-27 | Habituation | off | 307 | – | 52% / 49% |
 | 2026-09-28 | Training | on, window 0.5 s | 333 | 41% | 73% / 78% |
 | 2026-09-29 | Training | on, window 0.3 s | 372 | 37% | 87% / 86% |
+| 2026-09-30 | Training, a wrong choice ends the trial | on, window 0.3 s | 506 | 52% | 60% / 56% |
 
-The procedure took 3 days, in line with the 2–7 days of pretraining above. LUMS0014 now does about
-350 trials a session and completes 97% of holds. There is no sign yet that the light controls its
-choices: it goes left as often on A trials as on B trials.
+The procedure took 3 days, in line with the 2–7 days of pretraining above. LUMS0014 now does 350
+to 500 trials a session and completes nearly every hold. There is no sign yet that the light
+controls its choices: it goes left as often on A trials as on B trials.
 
-One difference from the studies above is that errors cost almost nothing. Punishment is off
-(`S.GUI.PunishCondition` = None), so after a wrong choice the mouse may go to the other port and
+Up to 2026-09-29 errors cost almost nothing, unlike in the studies above. Punishment was off
+(`S.GUI.PunishCondition` = None), so after a wrong choice the mouse could go to the other port and
 still be paid. On 2026-09-29 it was rewarded on 345 of 372 trials while choosing correctly 37% of
 the time.
+
+**2026-09-30 is day 1 of the estimate below.** `PunishCondition` is *Incorrect choice* with a
+timeout of 0 s: a wrong choice ends the trial with no reward, and the next trial starts after the
+0.25 s ITI. The cost of an error is the missed reward alone. The side bias of the two sessions
+before went (left on 58% of choices, from 86%), and the choices followed the last trial instead:
+the mouse chose the side that had paid on the trial before on 65% of trials (it stayed after 59%
+of rewards and changed side after 71% of errors). The paying side repeats on about half of the
+trials, so that rule earns 52%. In a logistic fit of the choice, the side that paid last has a
+weight of 1.35 ± 0.20 and the stimulus 0.07 ± 0.19; P(left | A) − P(left | B) is 0.04 ± 0.04.
 
 ## Estimate for LuminoseFM
 

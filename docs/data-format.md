@@ -480,6 +480,18 @@ analog timestamp about 1.8 s late and numbered every sample one trial too high â
 appeared to arrive as the animal reached the reward port. Samples taken during the barcode now
 have `TrialNumber` 0, and `Analog.info.Alignment` says the correction was applied.
 
+**`Analog.Timestamps` count samples; `Analog.TrialNumber` is the anchor.** A timestamp is the
+sample's index at 1 kHz, not a time the state machine measured. When the state machine misses a
+hardware deadline it takes no samples for that long, and every later timestamp is early by it.
+Bpod marks such a trial in `SessionData.RawData.StateMachineErrorCodes{k}` (1; empty otherwise).
+LUMS0014 2026-09-29: trial 315 lost 10.3 ms (in its last 8 s, from the air's timing), and from
+trial 316 on the first sample of each trial is stamped about 10 ms before its `TrialStartTimestamp`.
+2026-09-30: trial 78, 1.7 ms. To place airflow against a trial's events to the millisecond, count
+from the trial's own first sample: `find(Analog.TrialNumber == k, 1)` is `TrialStartTimestamp(k)`
+to within one sample. Within the marked trial itself, events after the missed deadline are stamped
+early by the same amount against the trial's start and end timestamps, which are the state
+machine's clock time.
+
 Session files from version 0.2 with a barcode sent (e.g.
 `FakeSubject_LuminoseFM_20260911_140213`) still carry the shifted timeline:
 
