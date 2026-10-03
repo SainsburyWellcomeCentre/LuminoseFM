@@ -33,7 +33,7 @@ before changing the stimulus path, the state graph, sleep blocks or the GUI. The
 | [`docs/sync-and-barcode.md`](docs/sync-and-barcode.md) | The sync TTL and the session barcode | anything on the sync line changes |
 | [`docs/naming-and-versions.md`](docs/naming-and-versions.md) | The glossary, and what changed in each version (newest first) | every release, and every rename |
 | [`docs/emulator.md`](docs/emulator.md) | What `Bpod('EMU')` does and does not reproduce | the emulator's behaviour or our reliance on it changes |
-| [`docs/learning-time-literature.md`](docs/learning-time-literature.md) | Published learning times for odour and optogenetic-OB discrimination, each linked to its paper; the estimate for LuminoseFM's Training stage; LUMS0014's sessions so far | an animal first shows a group split or reaches criterion, or the training procedure changes |
+| [`docs/learning-time-literature.md`](docs/learning-time-literature.md) | Published learning times for odour and optogenetic-OB discrimination, each linked to its paper; the estimate for LuminoseFM's Training stage; LUMS0014's sessions so far; the light a trial delivers, the tissue heating it causes, the published light for OSN-ChR2 perception, ChR2(H134R) desensitization, the carrier options | an animal first shows a group split or reaches criterion, or the training procedure, the light's intensity or its carrier changes |
 | [`docs/rig-checks.md`](docs/rig-checks.md) | How to run a rig check, the checks waiting for the operator (*Pending*), and every result (*Done*) | a rig check runs, or a change needs one |
 | [`docs/validation-<date>.md`](docs/validation-2026-09-24.md) | A pre-deployment validation: inventory, results, fixes, open questions | a validation runs (a new file; old ones are records) |
 | [`docs/repository.md`](docs/repository.md) | The repository layout and what each test file covers | files or tests are added |
@@ -307,7 +307,8 @@ Each rule below is guarded in code; the decision behind it (D*n*) is in `docs/ar
   `finishRecording('SessionSaved', n)` and a second small save for its summary → close the runtime
   window and the plots → `closeDevices` (the LED first, the house light before PulsePal) →
   (behaviour) `lum.report.write` → (desktop) `lum.watchMemoryAfterSession` → `RunProtocol('Stop')`
-  → `unlinkFromBaseWorkspace`. Keep every step in both teardowns (`LuminoseFM` and `lum.sleep.run`)
+  → `unlinkFromBaseWorkspace` → `announceFinished` (the console's *MATLAB can be closed*, 0.9.12:
+  operators close MATLAB at once, and closed earlier the report or memory record is lost). Keep every step in both teardowns (`LuminoseFM` and `lum.sleep.run`)
   except the report, which is behaviour's alone; nothing from `+lum` may run after Stop.
 - **`unlinkFromBaseWorkspace` is the last step of every session path** (0.9.7, local to
   `LuminoseFM.m`): `clear BpodSystem` in the base workspace; the global stays. With `BpodSystem`
@@ -573,7 +574,9 @@ WaitForCentrePoke → NoInitiation → WaitForLightEnd           (hold window ov
 - **The optical carrier is per channel.** `S.Light.Carrier` is a struct array, one element per
   optical channel, each with `Channel`, `Frequency`, `PulseWidth`, `Voltage`; `lum.stim.OptoPattern`
   adds `MaxDuration`. Element *k* programs PulsePal output *k*, and a mismatched `Channel` field is
-  rejected (`lum.dev.PulsePal.validateCarrier`, static: no device and no log line).
+  rejected (`lum.dev.PulsePal.validateCarrier`, static: no device and no log line). A pulse must be
+  shorter than the period (80 ms at 20 Hz is refused); `Frequency` 0 is constant light while the
+  gate is high (one pulse as long as the train, the window + 0.1 s), the pulse width ignored.
 - **Determinism.** Anything that must be sub-millisecond accurate lives in the state machine or
   PulsePal, not in MATLAB loop code.
 
@@ -972,6 +975,12 @@ Bpod state machine r2+, firmware 23, FSM `COM3`, App `COM4`. `docs/hardware.md` 
   (`LEDFLS_465_465`, USB, "LED Driver" on Doric port 4) runs both channels in **external TTL mode**
   at their LED currents (D17); PulsePal's 5 V is a TTL level, not the intensity. LED ch1 →
   commutator A, ch2 → commutator B.
+- **On the animal:** OMP-ChR2(H134R)-YFP mice (genotype `OSN-ChR`); the bundle's fibre tips couple
+  to a GRIN lens in contact with the olfactory bulb. LED calibrations (and so every irradiance in
+  settings and data) are at the fibre tips, not the GRIN face. Light dose, heating, ChR2
+  desensitization and the published intensities for OSN-ChR2 perception are in
+  `docs/learning-time-literature.md`, *Light intensity and tissue heating*: read it before
+  proposing an intensity or carrier change.
 - **Fiber bundles** (`lum.fiberBundles`), cables named by colour, any two on A and B at the
   commutator, recorded in `S.Light.Cables` (A then B): 2-to-19 with blue (9 spots) and green (10),
   **blue on A and green on B** by default; 4-to-19 with black (4 spots), blue, orange, green (5 each),

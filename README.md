@@ -1083,8 +1083,10 @@ few trials.
 - **Ending a session takes a few seconds longer** (0.9.8): once the data are saved, the video
   stopped and the rig released, the session draws the summary plots and writes the log, about
   0.3 s a plot (4–8 s in all). The console says *writing its summary plots and log* while it does,
-  and where they went when it is done. Wait for the *session ended* line before closing MATLAB.
-  Nothing in the data file depends on them.
+  and where they went when it is done. Wait for the last line, *the session is finished; MATLAB
+  can be closed* (0.9.12), before closing MATLAB: closed earlier, the plots, the log or the memory
+  record below can be missing. The data, the settings and the video are written before them, and
+  nothing in the data file depends on them.
 - **Plots and log for an older session**, or again with the current version:
   `lum.report.fromFile(dataFile)`; add `'OnlinePlots', true` to redraw `_plots.png` too. The data
   file is only read. Sessions before 0.9.6 are rescored in memory with the current scorer (a side
@@ -1135,7 +1137,9 @@ the session ended, and ran MATLAB out of memory a few minutes later (LUMS0014's 
 2026-09-25 and -26). The session removes it from the base workspace as its last step; Bpod keeps it,
 so `EndBpod`, the console and the next session work as before. For four minutes after a desktop
 session (of any type) a small background process also writes `<data file name>_memory.csv` beside the data file,
-MATLAB's memory once a second; it can be deleted.
+MATLAB's memory once a second; it can be deleted. The console says until when. Closing MATLAB
+sooner only shortens it, or leaves none when MATLAB is closed before the session is finished
+(LUMS0014 2026-10-03); nothing else needs it.
 
 Every field, and what to watch for in files from older versions, is in
 [`docs/data-format.md`](docs/data-format.md).

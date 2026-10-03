@@ -101,6 +101,7 @@ if ismember(S.Session.Type, {'Sleep', 'EphysCalibration'})
         RunProtocol('Stop');
     end
     unlinkFromBaseWorkspace();
+    announceFinished();
     return
 end
 
@@ -525,7 +526,8 @@ clear runner runtime devices plots cueComponents stimulusComponents cameraWindow
 report = [];
 if saved
     fprintf(['LuminoseFM: the session is saved and the rig released; writing its summary plots '...
-             'and log (a few seconds)...\n']);
+             'and log (a few seconds; leave MATLAB open until the console says the session is '...
+             'finished)...\n']);
     report = lum.report.write(BpodSystem.Data, BpodSystem.Path.CurrentDataFile);
 end
 
@@ -560,6 +562,7 @@ if BpodSystem.Status.BeingUsed == 1 || ~isempty(stoppedReason)
 end
 
 unlinkFromBaseWorkspace();
+announceFinished();
 
 if ~isempty(stoppedReason)
     % After the teardown, so the rig is already free when the operator reads it.
@@ -950,6 +953,14 @@ if ~isempty(runner)
     runner.close();
 end
 closeDevices(devices);  % The cameras' close stops the recording
+
+
+function announceFinished()
+% Tells the operator the teardown is over. MATLAB closed during it can leave the summary
+% plots, the log or the memory record unwritten (LUMS0014 2026-10-03: closed as the log was
+% written, so no _memory.csv); the data, settings and video are written before them. A
+% local function, because it runs after RunProtocol('Stop') has removed +lum from the path.
+fprintf('LuminoseFM: the session is finished; MATLAB can be closed.\n');
 
 
 function unlinkFromBaseWorkspace()

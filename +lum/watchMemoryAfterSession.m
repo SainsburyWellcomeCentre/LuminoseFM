@@ -15,7 +15,9 @@ function logFile = watchMemoryAfterSession(dataFile, seconds)
 % and removed in 0.9.7; the sampler stays to show whether it comes back.
 %
 % Windows only; the teardown of every desktop session (behaviour, sleep, ePhys calibration)
-% calls it last, before RunProtocol('Stop').
+% calls it last, before RunProtocol('Stop'). The record is a diagnostic and nothing reads it:
+% MATLAB closed during the four minutes leaves it short, and closed before the teardown
+% reaches this call leaves none.
 % It never throws: a sampler that cannot start is a warning.
 %
 % Arguments:
@@ -46,8 +48,10 @@ try
     info.CreateNoWindow = true;
     info.UseShellExecute = false;
     System.Diagnostics.Process.Start(info);
-    fprintf('LuminoseFM: watching MATLAB''s memory for %d s after the session: %s\n', ...
-            round(seconds), logFile);
+    % The operator may close MATLAB at once: that only shortens this record, so say so.
+    fprintf(['LuminoseFM: recording MATLAB''s memory until %s in %s; closing MATLAB sooner '...
+             'only shortens this record.\n'], ...
+            char(datetime('now') + round(seconds) / 86400, 'HH:mm:ss'), logFile);
 catch watchError
     warning('lum:watchMemoryAfterSession:notStarted', ...
             'MATLAB''s memory is not watched after this session: %s', watchError.message);

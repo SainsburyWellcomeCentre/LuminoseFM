@@ -75,6 +75,13 @@ session (`S.Light.Cables`, A then B); it must match the commutator.
 Each spot is the end of one 100 µm fiber, so a cable's light leaves through its spot count × π × (50 µm)²
 (`lum.led.lightPath`).
 
+On the animal, the bundle's fiber tips couple to a GRIN lens whose far face is in contact with the
+olfactory bulb. The mice are OMP-ChR2(H134R)-YFP (genotype `OSN-ChR`): the light drives ChR2 in the
+olfactory sensory neurons' axons and glomerular terminals. LED calibrations measure the light at
+the fiber tips, not at the GRIN lens's face, so the irradiance at the bulb is lower by the lens's
+loss, and by *M*² if it magnifies the pattern *M* times
+([`learning-time-literature.md`](learning-time-literature.md), *The light path to the bulb*).
+
 **Who sets what.** Bpod and PulsePal time the light (D1); the driver sets how bright it is. Both LED
 channels run in **external TTL mode**: a channel is lit at its LED current while PulsePal's output
 into its TTL input is high. With the DoricLED package found and **Control the LED from MATLAB** ticked

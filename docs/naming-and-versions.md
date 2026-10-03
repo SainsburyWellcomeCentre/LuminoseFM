@@ -84,6 +84,20 @@ names.
 
 Newest first. Each table puts the old behaviour or name on the left and the new on the right.
 
+### 0.9.11 → 0.9.12 — the console says when MATLAB can be closed
+
+LUMS0014's session of 2026-10-03 has no `_memory.csv`: the operator closed MATLAB as the teardown
+wrote the session log, before `lum.watchMemoryAfterSession` started (the log was written at
+13:21:06.6, and the sampler's header is written by MATLAB itself a moment later). The data file, the
+settings file, the video and the summary plots were all complete; only the memory record and the
+teardown's last steps were lost, and nothing reads the record.
+
+| 0.9.11 | 0.9.12 |
+|---|---|
+| The teardown's last console line was the session summary, or the memory sampler's | The last line is *the session is finished; MATLAB can be closed* (`announceFinished`, local to `LuminoseFM.m`), in behaviour, sleep and ePhys sessions |
+| *writing its summary plots and log (a few seconds)* | adds *leave MATLAB open until the console says the session is finished* |
+| *watching MATLAB's memory for 240 s after the session* | *recording MATLAB's memory until HH:mm:ss …; closing MATLAB sooner only shortens this record* |
+
 ### 0.9.10 → 0.9.11 — after LUMS0014's first session with light: the next trial uploaded as each trial starts, a 0.25 s ITI
 
 Found auditing `LUMS0014_LuminoseFM_20260928_123501` (Training, the first session with light:

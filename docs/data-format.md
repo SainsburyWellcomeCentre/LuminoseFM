@@ -69,7 +69,9 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
   `BusiestThreadCPUSeconds`). It is a diagnostic: it found the cause of the "Out of memory" that
   followed LUMS0014's sessions of 2026-09-25 and 2026-09-26 (MATLAB's Workspace browser; the session
   now takes `BpodSystem` out of the base workspace as it ends). Nothing reads it, and it may be
-  deleted.
+  deleted. MATLAB closed during its four minutes leaves it short, and closed before the teardown
+  started it leaves none (LUMS0014 2026-10-03); the console's last line, *the session is finished;
+  MATLAB can be closed* (0.9.12), comes after it starts.
 - As a behaviour session ends (0.9.8), after the final save, the video's second save and the release
   of every device, `lum.report.write` writes the summary plots into `Session Plots` and the log into
   `Session Logs`, beside `Session Data` (`lum.report.folder`). Both are drawn from `SessionData`
