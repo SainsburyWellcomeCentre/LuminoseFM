@@ -1,4 +1,4 @@
-function [S, added] = mergeSettings(defaults, loaded)
+function [S, added] = mergeSettings(defaults, loaded, varargin)
 % lum.mergeSettings brings a loaded settings struct up to date with the defaults.
 %
 % Settings files persist per subject and outlive the code that wrote them. When a
@@ -18,6 +18,8 @@ function [S, added] = mergeSettings(defaults, loaded)
 %              stale value cannot be mistaken for a live one.
 %   Replaced   An old default the operator never changed (the ITI's 1 s and 0 s, the
 %   default    LED's 700 mA limit...) takes the new default; a value that differs is kept.
+%              Not with 'AsRun': settings a session ran with (Data.Session.Settings) keep
+%              their values, so a report on an old session says what it ran with.
 %
 % Session.SettingsVersion is the release that last wrote the file (0.9.11 on), always set
 % from the defaults after merging; its absence marks a file from before 0.9.11.
@@ -34,6 +36,11 @@ function [S, added] = mergeSettings(defaults, loaded)
 %   defaults  Struct of defaults, from lum.defaultSettings
 %   loaded    Struct loaded from the settings file; may be empty
 %
+% Options:
+%   'AsRun'   true for settings a session ran with, read for a report
+%             (lum.report.sessionTrials): renamed, reshaped and retired settings are
+%             converted, but no old default is replaced (default false)
+%
 % Returns:
 %   S      The merged settings struct
 %   added  Cell array describing what was filled in, converted or retired
@@ -48,7 +55,12 @@ if nargin < 2 || isempty(loaded) || ~isstruct(loaded) || isempty(fieldnames(load
     return
 end
 
-[loaded, migrated] = migrateLegacy(defaults, loaded);
+options = inputParser;
+options.FunctionName = 'lum.mergeSettings';
+addParameter(options, 'AsRun', false, @(x) islogical(x) || isnumeric(x));
+parse(options, varargin{:});
+
+[loaded, migrated] = migrateLegacy(defaults, loaded, logical(options.Results.AsRun));
 [S, filled] = mergeStruct(defaults, loaded, '');
 added = [migrated filled];
 
@@ -62,7 +74,7 @@ S.Task.TrainingStageNames = defaults.Task.TrainingStageNames;
 S.Session.SettingsVersion = defaults.Session.SettingsVersion;
 
 
-function [loaded, migrated] = migrateLegacy(defaults, loaded)
+function [loaded, migrated] = migrateLegacy(defaults, loaded, asRun)
 % Convert settings written by earlier versions, so that the merge sees the current
 % layout and the operator's own values survive it.
 migrated = {};
@@ -251,6 +263,73 @@ if hasPath(loaded, 'Stimulus.Generator') && isstruct(loaded.Stimulus.Generator) 
     migrated{end+1} = note;
 end
 
+%% Replaced defaults: old defaults the operator never changed take the new ones
+% Settings as a session ran them (a data file's Session.Settings) keep their values.
+if ~asRun
+    [loaded, replaced] = replaceOldDefaults(defaults, loaded);
+    migrated = [migrated, replaced];
+end
+
+%% Reshaped (version 0.9.6): crops are kept per session type
+% Up to 0.9.5 one crop per camera (Camera.Cameras(k).Roi) served every session type, so a
+% crop drawn for the behaviour box also cropped the home cage. Each type now keeps its own
+% (Camera.Crops). A file's crops were drawn for the last session it ran, so they are kept
+% for that session type only.
+if hasPath(loaded, 'Camera.Cameras') && ~hasPath(loaded, 'Camera.Crops') ...
+        && isstruct(loaded.Camera.Cameras) && isfield(loaded.Camera.Cameras, 'Roi') ...
+        && any(arrayfun(@(row) ~isempty(row.Roi), loaded.Camera.Cameras))
+    kind = 'Behaviour';
+    if hasPath(loaded, 'Session.Type')
+        kind = lum.dev.Cameras.cropKind(loaded.Session.Type);
+    end
+    loaded.Camera.Crops = lum.dev.Cameras.noCrops();
+    loaded.Camera = lum.dev.Cameras.keepCrop(loaded.Camera, kind);
+    migrated{end+1} = sprintf('Camera.Crops (the crops in the file kept for %s sessions only)', ...
+                              lum.gui.Form.sessionLabel(kind, true));
+end
+
+%% Moved (version 0.9.8): the hold without shaping is a runtime setting
+% Task.HoldLength ('Whole stimulus' or 'Fixed') and Task.FixedHold became GUI.HoldLength (an
+% index into lum.HoldShaping.holdLengths, as a runtime menu stores it) and GUI.FixedHold, so
+% the operator can set the hold between trials from the runtime window's Timing panel.
+if hasPath(loaded, 'Task.HoldLength')
+    old = loaded.Task.HoldLength;
+    index = find(strcmp(lum.HoldShaping.holdLengths(), char(string(old))), 1);
+    if ~isempty(index) && ~hasPath(loaded, 'GUI.HoldLength')
+        loaded.GUI.HoldLength = index;
+    end
+    loaded = removePath(loaded, 'Task.HoldLength');
+    migrated{end+1} = sprintf('GUI.HoldLength (was Task.HoldLength, ''%s'')', char(string(old)));
+end
+if hasPath(loaded, 'Task.FixedHold')
+    if ~hasPath(loaded, 'GUI.FixedHold')
+        loaded.GUI.FixedHold = loaded.Task.FixedHold;
+    end
+    loaded = removePath(loaded, 'Task.FixedHold');
+    migrated{end+1} = 'GUI.FixedHold (was Task.FixedHold)';
+end
+
+%% Retired (version 0.2, and 0.4)
+% The hand-written stimulus table was replaced by the stimulus generator; its rows
+% cannot be converted into generator parameters, so the defaults are used instead.
+% Version 0.4 starts the stimulus on the poke, so the pre-stimulus hold is gone.
+retired = {'Meta.Experimenter', 'Meta.Rig', 'Sound.CueDuration', 'Stimulus.Patterns', ...
+           'Task.StimulusNames', 'Task.LeftProbability', 'Task.StimulusWeights', ...
+           'GUI.PreStimulusHold'};
+for i = 1:numel(retired)
+    if hasPath(loaded, retired{i})
+        loaded = removePath(loaded, retired{i});
+        migrated{end+1} = sprintf('%s (retired)', retired{i}); %#ok<AGROW>
+    end
+end
+
+
+function [loaded, migrated] = replaceOldDefaults(defaults, loaded)
+% Give the new default to every setting still at an old default, each recognised by what
+% the file lacks from the release that changed it. The ITI's 0.9.8 replacement must run
+% before GUI.HoldLength is moved in (migrateLegacy calls this first).
+migrated = {};
+
 %% Replaced default (version 0.9.2): test pulses one channel at a time, all recording long
 % Up to 0.9.1 the default schedule sent paired probes on A and B together every 2 s for
 % 240 min. A file still holding exactly that schedule was never designed by anyone, so it
@@ -301,24 +380,6 @@ if hasPath(loaded, 'Camera.Cameras') && ~hasPath(loaded, 'Camera.Crops') ...
     end
 end
 
-%% Reshaped (version 0.9.6): crops are kept per session type
-% Up to 0.9.5 one crop per camera (Camera.Cameras(k).Roi) served every session type, so a
-% crop drawn for the behaviour box also cropped the home cage. Each type now keeps its own
-% (Camera.Crops). A file's crops were drawn for the last session it ran, so they are kept
-% for that session type only.
-if hasPath(loaded, 'Camera.Cameras') && ~hasPath(loaded, 'Camera.Crops') ...
-        && isstruct(loaded.Camera.Cameras) && isfield(loaded.Camera.Cameras, 'Roi') ...
-        && any(arrayfun(@(row) ~isempty(row.Roi), loaded.Camera.Cameras))
-    kind = 'Behaviour';
-    if hasPath(loaded, 'Session.Type')
-        kind = lum.dev.Cameras.cropKind(loaded.Session.Type);
-    end
-    loaded.Camera.Crops = lum.dev.Cameras.noCrops();
-    loaded.Camera = lum.dev.Cameras.keepCrop(loaded.Camera, kind);
-    migrated{end+1} = sprintf('Camera.Crops (the crops in the file kept for %s sessions only)', ...
-                              lum.gui.Form.sessionLabel(kind, true));
-end
-
 %% Replaced default (version 0.9.8): the next trial starts as soon as it is sent
 % Up to 0.9.7 the ITI was 1 s by default; it is 0 s, so the time between trials is only
 % what the next trial takes to prepare and send. A file from before 0.9.8 (it has no
@@ -355,42 +416,6 @@ if hasPath(loaded, 'Session.MaxTrials') && ~hasPath(loaded, 'Session.SettingsVer
                                '%d, more trials for bias correction to draw on)'], ...
                               defaults.Session.MaxTrials);
 end
-
-%% Moved (version 0.9.8): the hold without shaping is a runtime setting
-% Task.HoldLength ('Whole stimulus' or 'Fixed') and Task.FixedHold became GUI.HoldLength (an
-% index into lum.HoldShaping.holdLengths, as a runtime menu stores it) and GUI.FixedHold, so
-% the operator can set the hold between trials from the runtime window's Timing panel.
-if hasPath(loaded, 'Task.HoldLength')
-    old = loaded.Task.HoldLength;
-    index = find(strcmp(lum.HoldShaping.holdLengths(), char(string(old))), 1);
-    if ~isempty(index) && ~hasPath(loaded, 'GUI.HoldLength')
-        loaded.GUI.HoldLength = index;
-    end
-    loaded = removePath(loaded, 'Task.HoldLength');
-    migrated{end+1} = sprintf('GUI.HoldLength (was Task.HoldLength, ''%s'')', char(string(old)));
-end
-if hasPath(loaded, 'Task.FixedHold')
-    if ~hasPath(loaded, 'GUI.FixedHold')
-        loaded.GUI.FixedHold = loaded.Task.FixedHold;
-    end
-    loaded = removePath(loaded, 'Task.FixedHold');
-    migrated{end+1} = 'GUI.FixedHold (was Task.FixedHold)';
-end
-
-%% Retired (version 0.2, and 0.4)
-% The hand-written stimulus table was replaced by the stimulus generator; its rows
-% cannot be converted into generator parameters, so the defaults are used instead.
-% Version 0.4 starts the stimulus on the poke, so the pre-stimulus hold is gone.
-retired = {'Meta.Experimenter', 'Meta.Rig', 'Sound.CueDuration', 'Stimulus.Patterns', ...
-           'Task.StimulusNames', 'Task.LeftProbability', 'Task.StimulusWeights', ...
-           'GUI.PreStimulusHold'};
-for i = 1:numel(retired)
-    if hasPath(loaded, retired{i})
-        loaded = removePath(loaded, retired{i});
-        migrated{end+1} = sprintf('%s (retired)', retired{i}); %#ok<AGROW>
-    end
-end
-
 
 function names = retiredGeneratorFields()
 % Generator fields of the families before 0.9.0.

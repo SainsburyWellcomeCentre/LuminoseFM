@@ -6,7 +6,9 @@ LuminoseFM's Training stage (pure channel: A pays left, B pays right). Written 2
 LUMS0014's fifth session. The last section, [Light intensity and tissue
 heating](#light-intensity-and-tissue-heating) (2026-10-03), works out how much light a trial
 delivers, what that does to the temperature of the brain, how it compares with the light that made
-mice perceive OSN-ChR2 activation, and what the PulsePal carrier can change.
+mice perceive OSN-ChR2 activation, and what the PulsePal carrier can change. [Do the pulses reach
+the mouse?](#do-the-pulses-reach-the-mouse) (2026-10-03) tests from LUMS0014's early withdrawals
+whether it senses the light at all.
 
 Every number below comes from the linked peer-reviewed paper. Each was checked against the paper's
 text (full text or abstract) and its DOI against Crossref. The [estimate](#estimate-for-luminosefm)
@@ -128,6 +130,72 @@ completed on the first attempt fell from 84% of the first 50 trials to 33–48% 
 withdrawals came a median 231 ms after stimulus onset (quartiles 185–262 ms). The light was 8
 mW/mm² on each channel, as on every training day (A 253 mA of the 1000 mA limit, orange cable, up
 to 21.9 mW/mm²; B 496 mA, blue cable, up to 12.9 mW/mm²), delivered as six 5 ms pulses at 20 Hz.
+
+### Do the pulses reach the mouse?
+
+Measured 2026-10-03, when four punished sessions had shown no split and nothing had shown that
+LUMS0014 senses the light at all. With latency 0 the light starts at the poke, so the time from
+light onset to a withdrawal is only the time spent in the port, and says nothing by itself. The
+carrier gives a test that needs no discrimination between A and B: PulsePal fills the 0.3 s window
+with 5 ms pulses starting at 0, 50, …, 250 ms, so an animal that senses them tends to leave the
+port at a fixed time after a pulse. Each early withdrawal made 20–300 ms into the light is folded
+on the 50 ms period, and R is the length of the mean phase vector (0 for withdrawals spread evenly
+over the period, 1 for all at one phase).
+
+The withdrawal times have a shape of their own (most come in the last 100 ms, just short of the
+hold), and that shape alone gives R above 0: a Rayleigh test on the six light sessions gives
+p ≈ 10⁻⁹, which overstates it. R is therefore compared with 2,000 sets of withdrawal times drawn
+from the same distribution smoothed with a 25 ms Gaussian (half a period), which keeps the shape
+and removes any 20 Hz structure. On withdrawal times with no locking this test falls below p 0.05
+in 5–6% of sets, and in 1.5% for this mouse's own withdrawal times smeared over a period, as a test
+at 0.05 should.
+
+| Sessions | Withdrawals | R at 20 Hz | p | Mean time after a pulse began |
+|---|---|---|---|---|
+| Six with light (09-28 to 10-03) | 2,398 | 0.093 | 0.015 | 39 ms |
+| The last three with light | 1,303 | 0.118 | 0.0045 | 38 ms |
+| Three habituation sessions, air and no light (holds of 0.3 s or more) | 1,006 | 0.047 | 0.95 | — |
+
+Each session, as its log and `13_PulseLocking` give it (`lum.report.pulseLocking`, over each
+session's whole light: 0.5 s on 09-28, and the 1 s window that would have been lit in habituation):
+
+| Session | Light | Withdrawals | R | p | Mean time after a pulse began |
+|---|---|---|---|---|---|
+| 2026-09-25 | no | 146 | 0.185 | 0.047 | 11 ms |
+| 2026-09-26 | no | 624 | 0.056 | 0.53 | 34 ms |
+| 2026-09-27 | no | 726 | 0.052 | 0.51 | 45 ms |
+| 2026-09-28 | yes | 621 | 0.013 | 0.95 | 48 ms |
+| 2026-09-29 | yes | 351 | 0.076 | 0.31 | 43 ms |
+| 2026-09-30 | yes | 307 | 0.099 | 0.25 | 36 ms |
+| 2026-10-01 | yes | 337 | 0.081 | 0.35 | 38 ms |
+| 2026-10-02 | yes | 535 | 0.124 | 0.033 | 37 ms |
+| 2026-10-03 | yes | 431 | 0.142 | 0.021 | 39 ms |
+
+- **20 Hz stands out.** Pooled over the light sessions it is the strongest frequency from 10 to
+  40 Hz; neither 10 nor 40 Hz exceeds the shape's surrogates.
+- **The locking grew over training**, from none on the first day with light to p 0.02–0.03 in
+  each of the last two sessions alone, and the mean time after a pulse stayed at 36–43 ms from the
+  second day with light on. The one habituation session below 0.05 (09-25, 146 withdrawals, at
+  11 ms) is the one in twenty a test at 0.05 gives by chance.
+- **A and B trials lock alike** (difference in R p 0.69, the same phase), though B's LED runs at
+  about twice A's current (496 against 253 mA) for the same irradiance at the tips.
+- **Nothing else differs between A and B in the port**: the chance of an attempt ending in an early
+  withdrawal 0.46 against 0.51 (p 0.054, mostly from the first session with light), the median
+  withdrawal time, and holds completed on the first attempt.
+
+So LUMS0014 very probably senses the pulses: a withdrawal tends to come about 39 ms (or 89, 139 ms
+…) after a pulse began. This does not say through which sense. Light on the bulb, blue light
+escaping at the implant and seen, and a sound from the LED driver or the LED switching would all
+give it. That A and B lock alike weakly argues against what scales with LED current (driver noise,
+light leaking at the commutator or the patch cords), since B runs at twice A's current, but it
+does not rule out light escaping at the implant, which follows the irradiance at the tips; and the
+test has little power for that difference. The rig check *P14* (`docs/rig-checks.md`) looks and
+listens for both; a session with the cable connected and the light blocked from the bulb would
+settle it. Nor is it discrimination: the choices still do not tell A from B.
+
+Every behaviour session now reports it: a line in the log's *Behaviour* section and the summary plot
+`13_PulseLocking`. Watch R and the mean time after a pulse from session to session. A carrier
+without separate pulses (constant light, or one pulse a window) leaves nothing to lock to.
 
 ## Estimate for LuminoseFM
 
@@ -252,6 +320,7 @@ light per area per trial at the fibre tips, for each carrier (*Carrier options* 
 | 20 Hz × 25 ms (150 ms) | 1.20 mJ/mm² (1.0×) | 1.80 mJ/mm² (1.5×) | 1.94 mJ/mm² (1.6×) |
 | 10 Hz × 80 ms (240 ms) | 1.92 mJ/mm² (1.6×) | 2.88 mJ/mm² (2.4×) | 3.10 mJ/mm² (2.6×) |
 | Constant (300 ms) | 2.40 mJ/mm² (2.0×) | 3.60 mJ/mm² (3.0×) | 3.87 mJ/mm² (3.2×) |
+| One 80 ms pulse (1 Hz × 80 ms), Chong's time course | 0.64 mJ/mm² (0.5×) | 0.96 mJ/mm² (0.8×) | 1.03 mJ/mm² (0.9×) |
 | Irradiance against Chong's 15 mW/mm² | 53% | 80% | 86% |
 
 In brackets, the ratio to Chong's 15 mW/mm² × 80 ms = 1.2 mJ/mm². With the 5 ms carrier, raising the
@@ -301,12 +370,21 @@ The carrier is `S.Light.Carrier`, one row per channel on the setup dialog's *Lig
   with an early withdrawal. Sleep and ePhys probes already use it.
 - **20 Hz × 20–25 ms** keeps the 20 Hz structure with gaps of 25–30 ms (1.4–1.7 τ off), 40–50% of
   the window lit.
+- **One 80 ms pulse a window** is *Frequency (Hz)* 1 and *Pulse width (s)* 0.08 on both rows. The
+  pulse starts as the gate opens; the next would come at 1 s, after PulsePal's train has ended (the
+  window + 0.1 s), so any window up to 0.9 s gets exactly one: Chong's 80 ms of constant light,
+  ending well before most withdrawals. 3 Hz × 80 ms does the same in a 0.3 s window only (a second
+  pulse at 333 ms in a longer one); 4 Hz gives two, at 0 and 250 ms. It leaves no pulses for the
+  locking above.
 
 Checked on 2026-10-03 against LUMS0014's settings file, without hardware (`lum.validateSettings`
 and the null PulsePal): every carrier above is accepted with 14 timers left for light, and PulsePal
 would be sent, on both outputs, gated mode (2), each output linked to its own trigger input, a
 train of 0.4 s at 5 V, and pulse and gap of 5 and 45 ms, 20 and 30 ms, 25 and 25 ms, 80 and 20 ms,
-or, for Frequency 0, one 0.4 s pulse. 80 ms at 20 Hz is refused: *Channel A: PulseWidth (0.08 s)
+or, for Frequency 0, one 0.4 s pulse. The same check for one 80 ms pulse: 1, 2, 3 and 3.3 Hz × 80 ms
+are accepted, PulsePal would be sent an 80 ms pulse, a gap of 0.92 s at 1 Hz (0.2533 s at 3 Hz)
+and a 0.4 s gated train, and the 0.3 s gate holds the pulse at 0 ms alone. 80 ms at 20 Hz is
+refused: *Channel A: PulseWidth (0.08 s)
 leaves no gap at 20 Hz. Reduce the pulse width below the 0.05 s period, or set Frequency to 0 for
 constant light.*
 
@@ -320,6 +398,7 @@ fraction):
 | 20 Hz × 25 ms | 0.16 mW | 0.24 mW | 0.25 mW |
 | 10 Hz × 80 ms | 0.25 mW | 0.38 mW | 0.41 mW |
 | Constant | 0.31 mW | 0.47 mW | 0.51 mW |
+| One 80 ms pulse | 0.084 mW | 0.13 mW | 0.14 mW |
 
 The highest, constant light at 12.9 mW/mm², is 0.51 mW for 0.3 s: a sixth of the 3 mW at which Owen
 et al. first saw effects, for under a third of their 1 s. It is above their 0.25 mW photometry
@@ -342,11 +421,21 @@ on 2026-10-03:
 - Four sessions without a split is not yet a failure by the estimate (a first split in 1–2 weeks;
   question the stimulus after about 7,000 punished trials).
 
-The step closest to Chong's light is 12 mW/mm² with 20 Hz × 20 ms pulses (1.2× Chong's light per
-trial, pulses still separate), or constant light (3× at 12 mW/mm², 2× at 8). Whichever is chosen,
+Three steps come close to Chong's light: 12 mW/mm² with 20 Hz × 20 ms pulses (1.2× Chong's light
+per trial, pulses still separate), constant light (3× at 12 mW/mm², 2× at 8), or one 80 ms pulse a
+window (Chong's time course, 0.8× at 12).
+
+**Recommended (2026-10-03): 20 Hz × 20 ms at 12 mW/mm².** Its 30 ms gaps (1.7 τ off) keep each
+pulse a separate event, so the pulse locking above (*Do the pulses reach the mouse?*) can still be
+measured in every session. If R rises with four times the light per pulse, the stronger light
+reached the mouse, and that shows within a session or two rather than the week or more a first
+split takes. Constant light and the single pulse leave nothing to lock to; they come after: constant
+light if the 20 ms pulses still give no split, the single pulse to match Chong's time course. 20 ms
+is preferred to 25 ms for its longer gaps. Whichever is chosen,
 change nothing else in the same session, so that a change in behaviour can be put down to the
 light, and count that session as a new start for a first split. Note the irradiance and carrier in
 the *Light* column of the table above. If the stronger light changes nothing, a session of light
 against no light tests perception directly. More light also makes it likelier that the mouse sees
 blue light escaping at the implant: that cannot tell A from B, since both are equal, but it matters
-in a light-against-dark test.
+in a light-against-dark test, and it would raise the pulse locking without the bulb's help (rig
+check *P14*).

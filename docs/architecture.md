@@ -1278,7 +1278,25 @@ from every session comes together in date order. They reuse the online figure's 
 (habituation by the reward, other stages by the side, per trial's stage), psychometric layout and
 raster rule (`lum.OnlinePlots.psychometricLayoutOf`, `rasterByEvidenceOf`), and add what the live
 figure has no room for (outcome reasons, hold attempts, engagement, port activity, MATLAB's
-timing).
+timing, and from 0.9.13 early withdrawals against the light's carrier pulses,
+`13_PulseLocking`).
+
+**Early withdrawals against the pulses (0.9.13).** A first split between A and B can take weeks,
+and until one appears nothing in the choices says whether the animal senses the light. The carrier's
+pulses start with each light segment (D1), so an animal that senses them tends to leave the port at
+a fixed time after one. `lum.report.pulseLocking` folds each early withdrawal made in the light on
+the carrier's period and measures R, the mean phase vector's length. It is judged against
+surrogates drawn from the withdrawal times' own distribution smoothed over half a period, not by a
+Rayleigh test, because the times' shape alone gives R above 0 (most withdrawals come just before
+the hold ends); the test was checked to call 5–6% of pulse-free sets at p 0.05. The surrogates come
+from a private seeded stream, so a session always reports the same p. Sessions without light are
+measured against the pulses they would have had, as a control. It needs separate pulses: constant
+light is not measured. The plot and a log line report it; nothing is stored.
+
+**Reports read the settings as run (0.9.13).** `lum.report.sessionTrials` merges
+`Session.Settings` with `lum.mergeSettings(..., 'AsRun', true)`: renamed, reshaped and retired
+settings are converted so old files read like new ones, but no old default is replaced, since a
+replacement is a decision about the next session, not a fact about this one.
 
 **A hold completed after retries is a completed hold (0.9.9).** In the operator's view a mouse
 that withdrew early, came back and held for the full time held: it goes on to choose and may be
@@ -1475,7 +1493,8 @@ MATLAB, power-cycle the state machine and PulsePal).
 
 ### Summary plots and log
 `+lum/+report/` (D22): `write` (the behaviour teardown's call), `summaryPlots`, `sessionLog`,
-`sessionTrials` (the one pass over `SessionData` both read), `folder`, `fileTag`, `heading`,
+`sessionTrials` (the one pass over `SessionData` both read, its settings as run),
+`pulseLocking` (early withdrawals against the light's pulses), `folder`, `fileTag`, `heading`,
 `replayOnlinePlots` and `fromFile` (a saved session, read only). `lum.trialStatus` is the runtime
 window's trial lines. `lum.holdMeasures` is what all of them, and the online figure, say about a
 trial's hold. `lum.gui.styleAxes` and `lum.gui.panelLegend` give every plot panel the theme's look.

@@ -10,9 +10,10 @@ function [file, lines] = sessionLog(Data, dataFile, varargin)
 % Sections: the session (when, how long, how it ended, the code), the animal and what else
 % was recorded or given, the settings that shape a trial (stage, hold and shaping, stimulus,
 % light, reward, timing, punishment, bias correction, components, sync, video), the
-% behaviour (trials, score, choices, water, the hold, reaction time, bias, P(left) by group,
-% 50-trial blocks), every runtime setting changed during the session, and the recordings
-% (video frames, barcode, analog stream). Numbers come from lum.report.sessionTrials, so they
+% behaviour (trials, score, choices, water, the hold, early withdrawals against the light's
+% pulses (lum.report.pulseLocking), reaction time, bias, P(left) by group, 50-trial blocks),
+% every runtime setting changed during the session, and the recordings (video frames,
+% barcode, analog stream). Numbers come from lum.report.sessionTrials, so they
 % match the summary plots.
 %
 % Arguments:
@@ -25,7 +26,8 @@ function [file, lines] = sessionLog(Data, dataFile, varargin)
 %
 % Returns the file written and its lines.
 %
-% See also lum.report.write, lum.report.sessionTrials, lum.report.summaryPlots
+% See also lum.report.write, lum.report.sessionTrials, lum.report.summaryPlots,
+% lum.report.pulseLocking
 
 p = inputParser;
 p.FunctionName = 'lum.report.sessionLog';
@@ -164,6 +166,7 @@ L{end+1} = sprintf('- Held on the first attempt on %d trials (%.0f%% of trials, 
                    sum(T.heldFirstAttempt), 100 * mean(T.heldFirstAttempt), ...
                    100 * sum(T.heldFirstAttempt) / max(1, sum(completed)), sum(T.attempts), ...
                    mean(T.attempts), sum(T.attempts) - sum(completed));
+L{end+1} = sprintf('- %s', pulseLockingText(lum.report.pulseLocking(T)));
 rt = T.reactionTime(chose);
 L{end+1} = sprintf('- Reaction time: median %.2f s (quartiles %.2f-%.2f s)', median(rt, 'omitnan'), ...
                    quantileOf(rt, 0.25), quantileOf(rt, 0.75));
@@ -375,6 +378,41 @@ if S.Task.MaxSameSide < 1
     text = 'any number of trials';
 else
     text = sprintf('%d', S.Task.MaxSameSide);
+end
+end
+
+
+function text = pulseLockingText(L)
+% Whether early withdrawals came at a fixed time after the light's pulses
+% (lum.report.pulseLocking): R and p overall and on each channel.
+if L.Light
+    subject = 'Early withdrawals and the light''s pulses';
+else
+    subject = 'Early withdrawals and the pulses the light would have had (no light: a control)';
+end
+if ~L.Measured
+    text = sprintf('%s: not measured, %s', subject, L.Reason);
+    return
+end
+names = 'AB';
+parts = {};
+for c = find([L.ByChannel.n] > 0)
+    parts{end+1} = sprintf('%s R %.3f, p %s (n=%d)', names(c), L.ByChannel(c).R, ...
+                           pValueText(L.ByChannel(c).P), L.ByChannel(c).n); %#ok<AGROW>
+end
+text = sprintf(['%s (%g Hz x %g ms): locking R %.3f over %d withdrawals, p %s against their ' ...
+                'times'' shape alone (R %.3f or more by chance in 5%%); %.0f ms after a pulse ' ...
+                'began on average; %s'], subject, L.Frequency, 1000 * L.PulseWidth, L.R, L.n, ...
+               pValueText(L.P), L.Threshold, 1000 * L.MeanPhase, strjoin(parts, '; '));
+end
+
+
+function text = pValueText(p)
+% A p-value as the plots and the log print it.
+if p < 0.001
+    text = '< 0.001';
+else
+    text = sprintf('%.3f', p);
 end
 end
 

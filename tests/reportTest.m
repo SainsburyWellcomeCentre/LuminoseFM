@@ -2,7 +2,8 @@ function tests = reportTest
 % reportTest covers the summary plots, log and trial lines a behaviour session writes.
 %
 % What a behaviour session writes for people to read as it ends: the summary plots
-% (lum.report.summaryPlots), the log (lum.report.sessionLog), the online figure replayed
+% (lum.report.summaryPlots), the log (lum.report.sessionLog), the locking of early
+% withdrawals to the light's pulses (lum.report.pulseLocking), the online figure replayed
 % from a saved file (lum.report.fromFile), and the runtime window's trial lines
 % (lum.trialStatus). No hardware: sessions are made up here, and files go to a temporary
 % folder laid out like a subject's.
@@ -111,7 +112,7 @@ verifyEmpty(testCase, report.Problems, strjoin(report.Problems, ' | '));
 names = cellfun(@fileNameOf, report.Plots, 'UniformOutput', false);
 expected = {'01_Outcomes', '02_Performance', '03_Psychometric', '04_Evidence', '05_BySide', ...
             '06_SideBias', '07_ReactionTime', '08_CentreHold', '09_HoldAttempts', '10_Engagement', ...
-            '11_PortActivity', '12_SessionTiming'};
+            '11_PortActivity', '12_SessionTiming', '13_PulseLocking'};
 for i = 1:numel(expected)
     verifyTrue(testCase, any(strcmp(names, sprintf('%s_01_SUBJ01_20260101_100000.png', expected{i}))), ...
                expected{i});
@@ -128,6 +129,8 @@ verifySubstring(testCase, text, 'Rewarded on');
 verifySubstring(testCase, text, '## Changed during the session');
 verifySubstring(testCase, text, 'Reward amount (uL) 3 -> 2', 'A runtime change is listed');
 verifyFalse(testCase, contains(text, 'Correct on'), 'Habituation is scored by the reward');
+verifySubstring(testCase, text, 'pulses the light would have had (no light: a control)', ...
+                'A session without light is measured against its carrier as a control');
 end
 
 function testALongSessionPagesItsOutcomes(testCase)
@@ -153,7 +156,7 @@ verifyEqual(testCase, after.datenum, info.datenum);
 [folder, name] = fileparts(dataFile);
 verifyEqual(testCase, report.OnlinePlots, fullfile(folder, [name '_plots.png']));
 verifyTrue(testCase, isfile(report.OnlinePlots));
-verifyNumElements(testCase, report.Plots, 12);
+verifyNumElements(testCase, report.Plots, 13);
 verifyTrue(testCase, isfile(report.Log));
 end
 
@@ -197,7 +200,95 @@ delete(cleanup);
 end
 
 
+%% Early withdrawals and the light's pulses
+
+function testWithdrawalsTiedToThePulsesAreFound(testCase)
+% Withdrawals 39 ms after a 20 Hz pulse, more of them late in the window as in LUMS0014's
+% sessions: locked, at that phase, on both channels.
+stream = RandStream('mt19937ar', 'Seed', 3);
+pulse = 1 + floor(6 * sqrt(rand(stream, 1, 600)));    % later pulses more often
+times = (pulse - 1) * 0.05 + 0.039 + 0.006 * randn(stream, 1, 600);
+times = times(times > 0.02 & times < 0.3);
+L = lum.report.pulseLocking(madeUpWithdrawals(times, 1, 20, 0.005), 'Surrogates', 400);
+verifyTrue(testCase, L.Measured);
+verifyTrue(testCase, L.Light);
+verifyLessThan(testCase, L.P, 0.01);
+verifyGreaterThan(testCase, L.R, L.Threshold);
+verifyEqual(testCase, L.MeanPhase, 0.039, 'AbsTol', 0.003);
+verifyEqual(testCase, [L.ByChannel.n], [ceil(numel(times) / 2), floor(numel(times) / 2)]);
+verifyLessThan(testCase, [L.ByChannel.P], 0.05);
+[~, best] = max(L.Spectrum.R);
+verifyEqual(testCase, L.Spectrum.Frequencies(best), 20, 'The carrier''s frequency stands out');
+again = lum.report.pulseLocking(madeUpWithdrawals(times, 1, 20, 0.005), 'Surrogates', 400);
+verifyEqual(testCase, again.P, L.P, 'The surrogates come from a private seeded stream');
+end
+
+function testTheWithdrawalTimesShapeAloneIsNotLocking(testCase)
+% Withdrawals rising smoothly towards the end of the window, with no pulse in them: a
+% Rayleigh test would call the shape locking; against the surrogates about 5% of such
+% sessions fall below p 0.05, as a test at 0.05 should (60 here; 6% in 200 when measured).
+stream = RandStream('mt19937ar', 'Seed', 4);
+p = zeros(1, 60);
+for r = 1:numel(p)
+    times = 0.02 + 0.28 * sqrt(rand(stream, 1, 800));
+    L = lum.report.pulseLocking(madeUpWithdrawals(times, 1, 20, 0.005), 'Surrogates', 200, ...
+                                'Frequencies', 20, 'Seed', r);
+    p(r) = L.P;
+end
+verifyLessThanOrEqual(testCase, mean(p < 0.05), 0.15);
+verifyGreaterThan(testCase, median(p), 0.25);
+end
+
+function testWithdrawalsOutsideTheLightAreLeftOut(testCase)
+% Before MinTime, after the light, completed holds and trials with the light off.
+T = madeUpWithdrawals([0.01 0.1 0.2 0.35], 1, 20, 0.005);
+T.attemptCompleted(3) = true;
+L = lum.report.pulseLocking(T, 'Surrogates', 50);
+verifyEqual(testCase, L.Time, 0.1, 'AbsTol', 1e-12);
+T.optoOn(:) = 0;
+T.optoOn(1) = 1;
+L = lum.report.pulseLocking(T, 'Surrogates', 50);
+verifyFalse(testCase, L.Measured, 'Only trial 1 had light, and its withdrawal came too early');
+verifySubstring(testCase, L.Reason, 'no early withdrawals');
+end
+
+function testASessionWithoutLightIsAControl(testCase)
+T = madeUpWithdrawals(linspace(0.03, 0.29, 50), 0, 20, 0.005);
+L = lum.report.pulseLocking(T, 'Surrogates', 50);
+verifyTrue(testCase, L.Measured);
+verifyFalse(testCase, L.Light);
+verifyEqual(testCase, L.n, 50);
+end
+
+function testConstantLightHasNoPulsesToLockTo(testCase)
+L = lum.report.pulseLocking(madeUpWithdrawals([0.1 0.2], 1, 0, 0.005), 'Surrogates', 50);
+verifyFalse(testCase, L.Measured);
+verifySubstring(testCase, L.Reason, 'constant light');
+T = madeUpWithdrawals([0.1 0.2], 1, 20, 0.005);
+T.S.Light.Carrier(2).Frequency = 10;
+L = lum.report.pulseLocking(T, 'Surrogates', 50);
+verifyFalse(testCase, L.Measured);
+verifySubstring(testCase, L.Reason, 'different carriers');
+end
+
+
 %% Helpers
+
+function T = madeUpWithdrawals(times, optoOn, frequency, pulseWidth)
+% The fields of lum.report.sessionTrials that lum.report.pulseLocking reads: one trial per
+% early withdrawal, alternating A only and B only, each lit for the whole 0.3 s window.
+n = numel(times);
+S = lum.defaultSettings;
+for c = 1:2
+    S.Light.Carrier(c).Frequency = frequency;
+    S.Light.Carrier(c).PulseWidth = pulseWidth;
+end
+stimulusSet = struct('Segments', [1 1 0 0.3; 2 2 0 0.3], 'SegmentStart', [1 2 3]);
+T = struct('S', S, 'stimulusSet', stimulusSet, 'optoOn', optoOn * ones(1, n), ...
+           'pattern', 2 - mod(1:n, 2), 'attemptTrial', 1:n, 'attemptTime', times, ...
+           'attemptCompleted', false(1, n));
+end
+
 
 function result = resultOf(outcome, choice, rewarded)
 result = struct('Outcome', outcome, 'Choice', choice, 'Rewarded', rewarded, 'HoldAttempts', 1, ...

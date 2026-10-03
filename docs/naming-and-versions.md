@@ -37,6 +37,7 @@ right — D8 in [`architecture.md`](architecture.md).
 | fixed hold | A hold of a set length from stimulus onset, used when automatic shaping does not grow the hold (*Hold without shaping* *Fixed*, `S.GUI.HoldLength` 2, `S.GUI.FixedHold`; runtime settings from 0.9.8, `S.Task.HoldLength` and `S.Task.FixedHold` before); the other choice, *Whole stimulus*, is the stimulus window plus the post-stimulus hold |
 | summary plots | A behaviour session's plots over the whole session, one image each, in `Session Plots` (`lum.report.summaryPlots`, D22) |
 | session log | A behaviour session's settings and behaviour in a short Markdown text, in `Session Logs` (`lum.report.sessionLog`, D22) |
+| pulse locking | How early withdrawals line up with the light's carrier pulses: each withdrawal's time since the last pulse began (its phase), and R, the length of the mean phase vector (0 spread evenly, 1 all at one phase), with its p against the withdrawal times' own shape (`lum.report.pulseLocking`, `13_PulseLocking`, the log). A sign the animal senses the pulses that needs no discrimination between groups; it does not say by which sense |
 | light clock | The global timer, as long as a trial's light from stimulus onset, that tells the trial when the light is over after a completed hold shorter than it; the trial waits for it in `WaitForLightEnd` (D21) |
 | session type | Behaviour, sleep or ePhys calibration; `Session.Type` is `'Behaviour'`, `'Sleep'` or `'EphysCalibration'` |
 | carrier | What PulsePal does on a channel while it is on (frequency, pulse width, voltage) |
@@ -83,6 +84,26 @@ Settings files are converted when loaded. Analysis code reading older **data** f
 names.
 
 Newest first. Each table puts the old behaviour or name on the left and the new on the right.
+
+### 0.9.12 → 0.9.13 — early withdrawals against the light's pulses, and reports that say what a session ran with
+
+LUMS0014 had no split between A and B after four punished sessions, and nothing had shown that it
+senses the light at all (`docs/learning-time-literature.md`, *Do the pulses reach the mouse?*).
+Its early withdrawals in the six sessions with light come at a fixed time after the 20 Hz carrier's
+pulses, more so in the later sessions, and not in the three habituation sessions without light. The
+measure is now part of every behaviour session's report.
+
+Redrawing the old sessions' logs with it showed that a report read an old session's settings through
+the settings file's default replacements: the logs of 2026-09-25 to -27 (0.9.5–0.9.7), drawn on
+2026-09-27, said *ITI 0 s* where the sessions ran 1 s, and a log redrawn now would have said
+*of 3000 trials* and *ITI 0.25 s* for every session before 0.9.11.
+
+| 0.9.12 | 0.9.13 |
+|---|---|
+| 12 summary plots | 13: `13_PulseLocking` (`lum.report.pulseLocking`): each early withdrawal made in the light, by its time into the light with the pulses behind; folded on the carrier's period, by channel, with R and p; and R at 5–50 Hz against what the withdrawal times' shape gives by chance. Constant light says *Not measured*. A session without light is measured against the pulses it would have had, as a control |
+| — | The log's *Behaviour* section has a line *Early withdrawals and the light's pulses*: R, p, the withdrawals measured, the mean time after a pulse, and each channel's R and p |
+| — | `lum.report.fromFile(dataFile, 'Plots', 13)` and `lum.report.summaryPlots(..., 'Plots', n)` draw only the plots numbered `n`, to add a new plot to sessions drawn before it existed. LUMS0014's nine sessions got `13_PulseLocking` and a new log this way on 2026-10-03 (their data files untouched) |
+| `lum.report.sessionTrials` merged `Session.Settings` like a settings file, so old defaults were replaced (ITI 1 s or 0 s → 0.25 s, 1000 trials → 3000, a 700 mA limit → 1000 mA) | `lum.mergeSettings(defaults, loaded, 'AsRun', true)`: renamed, reshaped and retired settings are converted, no old default replaced. The report reads every session's settings as it ran them. Settings files are merged as before |
 
 ### 0.9.11 → 0.9.12 — the console says when MATLAB can be closed
 

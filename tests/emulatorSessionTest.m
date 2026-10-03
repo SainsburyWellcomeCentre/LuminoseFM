@@ -208,7 +208,7 @@ function testTheSummaryPlotsAndLogAreWrittenAfterTheData(testCase)
 % depends on them.
 folder = testCase.TestData.dataFolder;
 plots = dir(fullfile(folder, 'Session Plots', '*_testSubject_LuminoseFM_test.png'));
-verifyNumElements(testCase, plots, 12, strjoin({plots.name}, ', '));
+verifyNumElements(testCase, plots, 13, strjoin({plots.name}, ', '));
 verifyTrue(testCase, any(strcmp({plots.name}, '01_Outcomes_01_testSubject_LuminoseFM_test.png')));
 logFile = fullfile(folder, 'Session Logs', 'testSubject_LuminoseFM_test_log.md');
 verifyTrue(testCase, isfile(logFile));

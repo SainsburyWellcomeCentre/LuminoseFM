@@ -16,6 +16,8 @@ function report = fromFile(dataFile, varargin)
 %
 % Options:
 %   'SummaryPlots'  true (default): 'Session Plots'
+%   'Plots'         The numbers (NN) of the summary plots to draw (default: all), e.g. 13 to
+%                   add a new plot without drawing the others again
 %   'Log'           true (default): 'Session Logs'
 %   'OnlinePlots'   false (default): true replaces <data file name>_plots.png with the
 %                   replayed figure
@@ -30,6 +32,7 @@ p.FunctionName = 'lum.report.fromFile';
 addParameter(p, 'SummaryPlots', true);
 addParameter(p, 'Log', true);
 addParameter(p, 'OnlinePlots', false);
+addParameter(p, 'Plots', [], @isnumeric);
 parse(p, varargin{:});
 
 timer = tic;
@@ -45,7 +48,7 @@ end
 
 if p.Results.SummaryPlots
     try
-        [report.Plots, problems] = lum.report.summaryPlots(Data, dataFile);
+        [report.Plots, problems] = lum.report.summaryPlots(Data, dataFile, 'Plots', p.Results.Plots);
         report.Problems = [report.Problems, problems];
     catch plotError
         report.Problems{end+1} = sprintf('summary plots: %s', plotError.message);

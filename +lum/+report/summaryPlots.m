@@ -36,6 +36,10 @@ function [files, problems] = summaryPlots(Data, dataFile, varargin)
 %                       accumulated over the session
 %   11_PortActivity     Pokes per minute at each port over the session
 %   12_SessionTiming    MATLAB's prepare, send, plot and save time per trial, and its memory
+%   13_PulseLocking     Early withdrawals against the light's carrier pulses: when they came
+%                       in the light, folded on the carrier's period, and the locking at each
+%                       frequency against the withdrawal times' shape alone
+%                       (lum.report.pulseLocking; a control in a session without light)
 %
 % A hold counts as completed however many early withdrawals came before it
 % (lum.holdMeasures): only 09_HoldAttempts tells a first attempt from a later one. The
@@ -56,18 +60,22 @@ function [files, problems] = summaryPlots(Data, dataFile, varargin)
 % Options:
 %   'Folder'      Where to write (default lum.report.folder(dataFile, 'Plots'))
 %   'Resolution'  Dots per inch of the images (default 150)
+%   'Plots'       The numbers (NN) of the plots to draw (default: all), e.g. 13 to add a new
+%                 plot to sessions drawn before it existed
 %
 % Returns:
 %   files     Full paths of the images written
 %   problems  One message per plot that could not be drawn; the others are still written.
 %             Never throws for a single plot.
 %
-% See also lum.report.write, lum.report.sessionTrials, lum.OnlinePlots, lum.holdMeasures
+% See also lum.report.write, lum.report.sessionTrials, lum.OnlinePlots, lum.holdMeasures,
+% lum.report.pulseLocking
 
 p = inputParser;
 p.FunctionName = 'lum.report.summaryPlots';
 addParameter(p, 'Folder', '');
 addParameter(p, 'Resolution', 150, @(x) isnumeric(x) && isscalar(x) && x > 0);
+addParameter(p, 'Plots', [], @isnumeric);
 parse(p, varargin{:});
 folder = char(p.Results.Folder);
 if isempty(folder)
@@ -107,7 +115,12 @@ plots = [plots; ...
     {9, 'HoldAttempts', 1, [1400 760], @(fig) drawHoldAttempts(fig, T, t)}; ...
     {10, 'Engagement', 1, [1400 800], @(fig) drawEngagement(fig, T, t)}; ...
     {11, 'PortActivity', 1, [1400 520], @(fig) drawPortActivity(fig, T, t)}; ...
-    {12, 'SessionTiming', 1, [1400 640], @(fig) drawSessionTiming(fig, Data, T, t)}];
+    {12, 'SessionTiming', 1, [1400 640], @(fig) drawSessionTiming(fig, Data, T, t)}; ...
+    {13, 'PulseLocking', 1, [1400 860], @(fig) drawPulseLocking(fig, T, t)}];
+
+if ~isempty(p.Results.Plots)
+    plots = plots(ismember([plots{:, 1}], p.Results.Plots), :);
+end
 
 % One invisible figure, cleared between plots: making a figure costs more than drawing in it.
 fig = figure('Visible', 'off', 'Color', t.PlotBackground, 'MenuBar', 'none', 'ToolBar', 'none', ...
@@ -659,7 +672,119 @@ ylabel(ax, 'Memory (GB)');
 end
 
 
+function drawPulseLocking(fig, T, t)
+% Early withdrawals against the light's carrier pulses (lum.report.pulseLocking): when they
+% came in the light, folded on the carrier's period, and the locking at each frequency.
+L = lum.report.pulseLocking(T);
+if ~L.Measured
+    ax = nexttile(tiledlayout(fig, 1, 1, 'Padding', 'compact'));
+    lum.gui.styleAxes(ax, 'Early withdrawals and the light''s pulses', t);
+    note(ax, 0.5, 0.5, sprintf('Not measured: %s', L.Reason), t, 'Units', 'normalized', ...
+         'HorizontalAlignment', 'center');
+    set(ax, 'XTick', [], 'YTick', []);
+    return
+end
+layout = tiledlayout(fig, 2, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
+heading = 'Early withdrawals during the light';
+intoLight = 'Time into the light (ms)';
+if ~L.Light
+    heading = 'Without light (a control): withdrawals';
+    intoLight = 'Time into the stimulus (ms)';
+end
+colours = [t.ChannelA; t.ChannelB];
+names = {'channel A', 'channel B'};
+channels = find([L.ByChannel.n] > 0);
+
+% When in the light each withdrawal came, with the pulses behind, across the top.
+ax = nexttile(layout, [1 2]);
+lum.gui.styleAxes(ax, heading, t);
+reach = L.Period * ceil(max(L.Time) / L.Period + 1e-9);
+edges = 0:0.005:reach;
+counts = zeros(2, numel(edges) - 1);
+for c = channels
+    counts(c, :) = histcounts(L.Time(L.Channel == c), edges);
+end
+top = niceCeiling(max(counts(:)), 5);
+pulses = pulseBands(ax, 1000 * (0:L.Period:reach - 1e-9), 1000 * L.PulseWidth, top, t);
+handles = pulses;
+labels = {sprintf('pulse (%g ms)', 1000 * L.PulseWidth)};
+for c = channels
+    handles(end+1) = stairs(ax, 1000 * edges, [counts(c, :) counts(c, end)], 'Color', ...
+                            colours(c, :), 'LineWidth', 1.8); %#ok<AGROW>
+    labels{end+1} = sprintf('%s (%d)', names{c}, L.ByChannel(c).n); %#ok<AGROW>
+end
+set(ax, 'XLim', 1000 * [0 reach], 'YLim', [0 top]);
+xlabel(ax, intoLight);
+ylabel(ax, 'Withdrawals per 5 ms');
+lum.gui.panelLegend(ax, handles, labels, t);
+
+% Folded on the period: the share of withdrawals at each time after a pulse began.
+ax = nexttile(layout);
+lum.gui.styleAxes(ax, sprintf('Folded on the %g Hz period: R %.3f, p %s', L.Frequency, L.R, ...
+                              pText(L.P)), t);
+bins = 10;
+edges = linspace(0, L.Period, bins + 1);
+shares = NaN(2, bins);
+for c = channels
+    shares(c, :) = histcounts(L.Phase(L.Channel == c), edges) / L.ByChannel(c).n;
+end
+top = max(0.2, 0.05 * ceil(max(shares(:)) / 0.05 + 0.5));
+pulses = pulseBands(ax, 0, 1000 * L.PulseWidth, top, t);
+line(ax, 1000 * [0 L.Period], [1 1] / bins, 'Color', t.SeriesSoft, 'LineStyle', '--', 'LineWidth', 1);
+handles = pulses;
+labels = {'pulse'};
+for c = channels
+    handles(end+1) = stairs(ax, 1000 * edges, [shares(c, :) shares(c, end)], 'Color', ...
+                            colours(c, :), 'LineWidth', 1.8); %#ok<AGROW>
+    labels{end+1} = sprintf('%s: R %.3f, p %s', names{c}(end), L.ByChannel(c).R, ...
+                            pText(L.ByChannel(c).P)); %#ok<AGROW>
+end
+handles(end+1) = line(ax, 1000 * [L.MeanPhase L.MeanPhase], [0 top], 'Color', t.Series, ...
+                      'LineWidth', 1.6);
+labels{end+1} = sprintf('mean %.0f ms', 1000 * L.MeanPhase);
+set(ax, 'XLim', 1000 * [0 L.Period], 'YLim', [0 top]);
+xlabel(ax, 'Time after a pulse began (ms)');
+ylabel(ax, 'Share of withdrawals');
+lum.gui.panelLegend(ax, handles, labels, t);
+
+% The locking at each frequency against what the withdrawal times' shape alone gives.
+ax = nexttile(layout);
+lum.gui.styleAxes(ax, sprintf('Locking by frequency, %d withdrawals', L.n), t);
+spectrum = L.Spectrum;
+expected = line(ax, spectrum.Frequencies, spectrum.Threshold, 'Color', t.SeriesSoft, ...
+                'LineStyle', '--', 'LineWidth', 1.6);
+measured = line(ax, spectrum.Frequencies, spectrum.R, 'Color', t.Series, 'LineWidth', 2, ...
+                'Marker', '.', 'MarkerSize', 12);
+top = niceCeiling(max([spectrum.R spectrum.Threshold L.R]), 0.05);
+carrier = line(ax, [L.Frequency L.Frequency], [0 top], 'Color', t.Muted, 'LineWidth', 1.4);
+set(ax, 'XLim', [min(spectrum.Frequencies) max(spectrum.Frequencies)], 'YLim', [0 top]);
+xlabel(ax, 'Frequency (Hz)');
+ylabel(ax, 'Locking R');
+lum.gui.panelLegend(ax, [measured, expected, carrier], ...
+                    {'withdrawals', '95% from their shape alone', 'carrier'}, t);
+end
+
+
 %% Helpers ----------------------------------------------------------------------
+
+function handle = pulseBands(ax, starts, width, top, t)
+% A pale band for each light pulse, starting at starts (ms), behind the data. Returns one
+% band, for the key.
+x = [starts; starts + width; starts + width; starts];
+y = repmat([0; 0; top; top], 1, numel(starts));
+bands = patch(ax, x, y, t.Faint, 'EdgeColor', 'none');
+handle = bands(1);
+end
+
+
+function words = pText(p)
+% A p-value as the plots and the log print it.
+if p < 0.001
+    words = '< 0.001';
+else
+    words = sprintf('%.3f', p);
+end
+end
 
 function handles = stackedBins(ax, edges, fractions, colours)
 % Stacked bars, one per bin from edges(b) to edges(b + 1) with a small gap either side, so

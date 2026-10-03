@@ -48,6 +48,7 @@ once it has passed.
 | [P11](#p11-the-light-playing-on-after-a-short-hold-095) | light at the fiber tips after a short hold (step 1 can run headless) | 0.9.5 |
 | [P12](#p12-what-096-changed-in-a-desktop-session-096) | the mouse-drawn crop, crops per session type, the carried hold, the memory after a desktop behaviour session | 0.9.6 |
 | [P13](#p13-the-hold-on-the-timing-panel-the-wrapped-header-and-the-summary-plots-098) | the runtime hold, the wrapped header, the teardown's plots on screen, the animal at the new timing (step 4's file checks passed 2026-09-27 and, for 0.9.11's upload, 2026-09-28) | 0.9.8, 0.9.11 |
+| [P14](#p14-light-or-sound-the-mouse-could-sense-without-the-bulb-0913) | the box dark, someone looking at the cables and implant and listening near the LED driver while each channel pulses | 0.9.13 |
 
 ### P4. Calibrate the 2-to-19 bundle (0.9.1)
 
@@ -200,6 +201,29 @@ The pieces are tested under the emulator; these need the desktop MATLAB and the 
    hurried by it (the drinking grace still ends each rewarded trial); the command window shows no
    *inter-trial dead time* box; the LED window reads *waiting to be sent between trials* after
    **Apply** until the current is sent.
+
+### P14. Light or sound the mouse could sense without the bulb (0.9.13)
+
+LUMS0014's early withdrawals lock to the 20 Hz light pulses (`docs/learning-time-literature.md`,
+*Do the pulses reach the mouse?*), which says the mouse senses them, not how. This check looks for
+the other ways. No animal; the cable connected to a dummy ferrule or a spare GRIN lens, placed where
+the implant would be.
+
+1. Room and box lights off, house light off. For leaks, hold the light on: `TestDoricLED('Currents',
+   [250 410 500 900], 'On', 5, 'Count', 2)` lights A, then B, then both, for 5 s at each current
+   (the session's currents are A 253 and B 496 mA at 8 mW/mm², A 409 and B 893 mA at 12). With eyes
+   dark-adapted for a few minutes, look from where the mouse's head would be at the ferrule and its
+   sleeve, the patch cords, the commutator and the driver's front panel, and note any blue and on
+   which channel at which current. B runs at about twice A's current for the same irradiance, so a
+   leak at the commutator or the cords would show more on B.
+2. For sound, the session's own pulses: start a behaviour session with light (Training, the
+   settings file as the animal runs it) and poke the centre port by hand. Each poke plays the 0.3 s
+   window of 20 Hz pulses on A or B. Listen close to the LED driver, the LED heads and the cable for
+   a tick or buzz, and record a minute with an ultrasonic-capable microphone if one is to hand (mice
+   hear up to about 80 kHz).
+3. Record each finding under *Done*, and in the literature document's section. A leak that the mouse
+   could see can be covered (black sleeve, opaque heat-shrink at the ferrule) before raising the
+   light.
 
 ## Done
 

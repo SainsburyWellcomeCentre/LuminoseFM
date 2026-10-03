@@ -33,7 +33,7 @@ before changing the stimulus path, the state graph, sleep blocks or the GUI. The
 | [`docs/sync-and-barcode.md`](docs/sync-and-barcode.md) | The sync TTL and the session barcode | anything on the sync line changes |
 | [`docs/naming-and-versions.md`](docs/naming-and-versions.md) | The glossary, and what changed in each version (newest first) | every release, and every rename |
 | [`docs/emulator.md`](docs/emulator.md) | What `Bpod('EMU')` does and does not reproduce | the emulator's behaviour or our reliance on it changes |
-| [`docs/learning-time-literature.md`](docs/learning-time-literature.md) | Published learning times for odour and optogenetic-OB discrimination, each linked to its paper; the estimate for LuminoseFM's Training stage; LUMS0014's sessions so far; the light a trial delivers, the tissue heating it causes, the published light for OSN-ChR2 perception, ChR2(H134R) desensitization, the carrier options | an animal first shows a group split or reaches criterion, or the training procedure, the light's intensity or its carrier changes |
+| [`docs/learning-time-literature.md`](docs/learning-time-literature.md) | Published learning times for odour and optogenetic-OB discrimination, each linked to its paper; the estimate for LuminoseFM's Training stage; LUMS0014's sessions so far, and whether it senses the light's pulses (pulse locking); the light a trial delivers, the tissue heating it causes, the published light for OSN-ChR2 perception, ChR2(H134R) desensitization, the carrier options and the one recommended | an animal first shows a group split or reaches criterion, its pulse locking changes, or the training procedure, the light's intensity or its carrier changes |
 | [`docs/rig-checks.md`](docs/rig-checks.md) | How to run a rig check, the checks waiting for the operator (*Pending*), and every result (*Done*) | a rig check runs, or a change needs one |
 | [`docs/validation-<date>.md`](docs/validation-2026-09-24.md) | A pre-deployment validation: inventory, results, fixes, open questions | a validation runs (a new file; old ones are records) |
 | [`docs/repository.md`](docs/repository.md) | The repository layout and what each test file covers | files or tests are added |
@@ -42,7 +42,7 @@ before changing the stimulus path, the state graph, sleep blocks or the GUI. The
 
 **Where things stand** is in the docs, not here: the last release's changes in
 `docs/naming-and-versions.md`, the checks waiting for someone at the rig in `docs/rig-checks.md`
-*Pending* (P4–P13 now; all need someone at the rig or a desktop MATLAB, except P11 step 1, which
+*Pending* (P4–P14 now; all need someone at the rig or a desktop MATLAB, except P11 step 1, which
 can run headless with permission; P13 step 4's file checks passed on 2026-09-27, and 0.9.11's
 upload and 0.25 s ITI on 2026-09-28). The operator works remotely at times: run a pending check the next
 time they say they are at the rig.
@@ -143,7 +143,7 @@ can be tested with no hardware. `docs/repository.md` has the full tree.
 | `hardware/TestSyncLine.m` | Drive the sync TTL outside a session, from states and from a global timer |
 | `hardware/TestHouseLight.m` | Switch the house light through PulsePal and check each switch reaches BNC input 1 |
 | `hardware/TestDoricLED.m` | Light A, then B, then both, through Bpod BNC → PulsePal → Doric driver, at one or more currents |
-| `+lum/defaultSettings.m`, `mergeSettings.m` | The two-tier settings struct; old settings files converted (renames, reshapes, retirements) |
+| `+lum/defaultSettings.m`, `mergeSettings.m` | The two-tier settings struct; old settings files converted (renames, reshapes, retirements, old defaults replaced; `'AsRun'` for a data file's settings: no default replaced) |
 | `+lum/validateSettings.m` | Everything that must hold before a session starts; returns the stimulus set |
 | `+lum/stageDefaults.m` | The session a training stage assumes: habituation is air and no light; shaping on in habituation and training |
 | `+lum/timerBudget.m` | Global timers left for light after the hold window, hold clock, light clock and timed components |
@@ -169,7 +169,7 @@ can be tested with no hardware. `docs/repository.md` has the full tree.
 | `+lum/fiberBundles.m`, `experimentChoices.m` | Bundle cables and spot counts; the Experiment tab's lists |
 | `+lum/mergeActions.m`, `timerMaskAction.m` | Output-action assembly (see [Gotchas](#bpod-and-firmware)) |
 | `+lum/launchSubject.m`, `trainingStageNote.m` | The subject the session was launched for; one line on what the stage does to rewards |
-| `+lum/+report/` | Summary plots and log (D22): `write` (the behaviour teardown's call; never throws), `summaryPlots` (12 plots, `09_HoldAttempts` the only one telling a first attempt from a later), `sessionLog`, `sessionTrials` (one pass over `SessionData`, hold measures included), `folder`, `fileTag`, `heading`, `replayOnlinePlots`, `fromFile` (a saved session, read only) |
+| `+lum/+report/` | Summary plots and log (D22): `write` (the behaviour teardown's call; never throws), `summaryPlots` (13 plots, `09_HoldAttempts` the only one telling a first attempt from a later; `'Plots'` draws some), `sessionLog`, `sessionTrials` (one pass over `SessionData`, hold measures included, settings as run), `pulseLocking` (early withdrawals against the carrier's pulses: R, a surrogate p, the phase), `folder`, `fileTag`, `heading`, `replayOnlinePlots`, `fromFile` (a saved session, read only) |
 | `+lum/+pattern/` | `generate` (families, groups, order, evidence, boundary) → `stimulusSet` (segments, budget) → `applyContingency` (P(left), reversal, checks, ceilings) → `patternAt`; `families`, `familyDefaults`, `typedPLeft`, `shortcuts`, `describeShortcuts`; `fromStates`, `canonicalise`, `check`, `validate`, `describe`; `withGeneratorDefaults`, `defaultPLeft`, `newSeed`, `prepareSeed` |
 | `+lum/+stim/` | Components: `OptoPattern`, `TimedOutput` → `PortLight`, `Air`; `Sound`; `CueTone`; `build`; `isTimed`, `timerCost` |
 | `+lum/+sync/` | Session barcode: `barcode` (kinds), `markerWidth`, `barcodeKinds`, `sleepMarkerWidth`, `barcodeValue`, `barcodeTime`, `decodeBarcode`, `barcodeStateMachine`; `fitToCameras` (widths the cameras can read) |
@@ -243,6 +243,7 @@ the bias target). Use these, and fix any code, label or doc that does not. The f
 | ePhys calibration | the third session type, `'EphysCalibration'` (`S.Ephys`, D18) | calibration session, ephys mode |
 | input-output curve, paired-pulse ratio | the two ePhys calibration protocols (`S.Ephys.InputOutput`, `S.Ephys.PairedPulse`) | IO sweep, PPR (in operator text) |
 | summary plots | a behaviour session's plots over the whole session, one image each, in `Session Plots` (`lum.report.summaryPlots`, D22) | report, figures |
+| pulse locking | how early withdrawals line up with the carrier's pulses: phase after the last pulse, R, p against the withdrawal times' own shape (`lum.report.pulseLocking`, `13_PulseLocking`) | phase locking (alone), entrainment |
 | session log | a behaviour session's settings and behaviour as Markdown, in `Session Logs` (`lum.report.sessionLog`, D22) | notes, summary |
 | centre | British spelling in identifiers too (`CentreHold`) | `Center` |
 
@@ -881,14 +882,18 @@ says. `docs/code-style.md` has the full convention; this is what every change mu
   topview twice). Engine 1.3.0 takes them out as it records (`Session.Cameras.EngineVersion`;
   `Summary.Cameras(k).TimestampCorrections` counts them, kept by `lum.dev.RealCameras`, and the
   session log names any); `spincam.io.readFrameLog` repairs older logs (`docs/python-analysis.md`).
-- **Summary plots and log (D22):** a behaviour session ends with `lum.report.write`: 12 images in
+- **Summary plots and log (D22):** a behaviour session ends with `lum.report.write`: 13 images in
   `...\Session Plots\` (`NN_<Plot>_PP_<subject>_<YYYYMMDD_HHMMSS>.png`: `01_Outcomes` …
-  `09_HoldAttempts` … `12_SessionTiming`, names and numbers unchanged since 0.9.8) and
+  `09_HoldAttempts` … `12_SessionTiming`, names and numbers unchanged since 0.9.8, and
+  `13_PulseLocking` from 0.9.13; a new plot takes the next number) and
   `...\Session Logs\<data file name>_log.md`, drawn from `BpodSystem.Data` alone
   (`lum.report.sessionTrials`); nothing in the data file refers to them.
   `lum.report.fromFile(dataFile)` does the same for a saved session and **only reads** it
   (rescoring pre-0.9.6 files in memory); `'OnlinePlots', true` also replaces `_plots.png` with the
-  current `lum.OnlinePlots` replayed trial by trial. **Never write a `.mat` from `lum.report`.** Sleep and ePhys sessions write neither yet.
+  current `lum.OnlinePlots` replayed trial by trial, and `'Plots', n` draws only plot `n` (how a new
+  plot reaches an animal's earlier sessions). The report reads `Session.Settings` through
+  `lum.mergeSettings(..., 'AsRun', true)`: a default replaced in a settings file must not change what
+  a log says an old session ran with. **Never write a `.mat` from `lum.report`.** Sleep and ePhys sessions write neither yet.
 - **Unrecorded trials at the end.** A session ended with the End button (or on an error) can have
   trial pulses on the sync recordings after the last recorded trial: the trial it cut short
   (`nTrials` + 1, every version) and, from 0.9.11, the queued trial the halt let start
@@ -1171,7 +1176,10 @@ Each has already cost time and is guarded in code; don't undo them.
   each time), and passes on a rerun. It is a race in DoricLED's teardown (its polling timer and a
   blocking request share the `Pending`/`Results` maps): DoricLED's, not ours; note it, do not change
   DoricLED from here. `windowsTest/testTheTrialTimelineStaysInsideItsAxes` failed once the same day
-  (a label's `Extent` read before the invisible figure's layout) and passed on the rerun.
+  (a label's `Extent` read before the invisible figure's layout) and passed on the rerun, and
+  again on 2026-10-03 in a full run, with `animalSessionTest/testExperimentOutcomesFollowTheAnimal`
+  (the experiment session's first trial unscored: the scripted mouse missed it); both passed on
+  the rerun.
 - The Chameleon3 quantizes `AcquisitionFrameRate`, and writing a read-back value lands one step higher
   (100.058 → 100.12). `CameraSetup` takes a frame rate back from SpinCam's viewer only when it differs
   by more than 0.2 Hz, rounded to 0.1 Hz.

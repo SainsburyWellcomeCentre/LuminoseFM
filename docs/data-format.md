@@ -77,13 +77,18 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
   `Session Logs`, beside `Session Data` (`lum.report.folder`). Both are drawn from `SessionData`
   alone (`lum.report.sessionTrials`); the data file does not record them and does not depend on
   them. Plots are named `NN_<Plot>_PP_<subject>_<YYYYMMDD_HHMMSS>.png` (`lum.report.fileTag`): `NN`
-  the kind (`01_Outcomes` … `12_SessionTiming`, README §12), `PP` the page. The log is Markdown. For a
+  the kind (`01_Outcomes` … `13_PulseLocking`, README §12), `PP` the page. The log is Markdown. Both
+  read `Session.Settings` as the session ran them (`lum.mergeSettings` `'AsRun'`, 0.9.13: renamed
+  settings converted, no old default replaced; before, a redrawn log of a session before 0.9.11 said
+  the new ITI and trial count, and those of LUMS0014's 2026-09-25 to -27 said *ITI 0 s* for the 1 s
+  they ran, until redrawn on 2026-10-03). For a
   session recorded before, or to draw one again, `lum.report.fromFile(dataFile)` reads the data file
-  (never writes it) and writes both; `'OnlinePlots', true` also replaces `_plots.png` with the
+  (never writes it) and writes both (`'Plots', n` draws only the plots numbered `n`); `'OnlinePlots', true` also replaces `_plots.png` with the
   online figure replayed trial by trial by the current `lum.OnlinePlots`
   (`lum.report.replayOnlinePlots`; its header's clock is the trial's session time). Files before
   0.9.6 are rescored in memory first. LUMS0014's sessions of 2026-09-25 to -27 were redrawn this way
-  on 2026-09-27 (their `.mat`, `_ANLG.dat` and videos untouched).
+  on 2026-09-27, and all nine to 2026-10-03 got `13_PulseLocking` and a new log on 2026-10-03
+  (their `.mat`, `_ANLG.dat` and videos untouched).
 - Reading the data in Python, and the HDF5 layout planned for it: [`python-analysis.md`](python-analysis.md).
 
 ---

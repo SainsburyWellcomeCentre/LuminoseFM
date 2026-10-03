@@ -570,6 +570,28 @@ typed.Session.MaxTrials = 1000;                % Typed from 0.9.11 on
 verifyEqual(testCase, lum.mergeSettings(lum.defaultSettings, typed).Session.MaxTrials, 1000);
 end
 
+function testSettingsAsRunKeepTheirOldDefaults(testCase)
+% A data file's Session.Settings say what the session ran with: read for a report
+% (lum.report.sessionTrials), a 0.9.10 session's 0 s ITI and 1000 trials stay, and its
+% renamed settings are still converted.
+old = lum.defaultSettings;
+old.Session = rmfield(old.Session, 'SettingsVersion');
+old.GUI.ITI = 0;
+old.Session.MaxTrials = 1000;
+old.Doric.MaxCurrentmA = [700 700];
+old.Doric = rmfield(old.Doric, 'CalibrationCurrentsmA');
+old.GUI = rmfield(old.GUI, {'HoldLength', 'FixedHold'});
+old.Task.HoldLength = 'Fixed';
+[S, added] = lum.mergeSettings(lum.defaultSettings, old, 'AsRun', true);
+verifyEqual(testCase, S.GUI.ITI, 0);
+verifyEqual(testCase, S.Session.MaxTrials, 1000);
+verifyEqual(testCase, S.Doric.MaxCurrentmA, [700 700]);
+verifyFalse(testCase, any(contains(added, 'old default')), strjoin(added, ' | '));
+verifyEqual(testCase, S.GUI.HoldLength, 2, 'A moved setting is still converted');
+verifyEqual(testCase, lum.mergeSettings(lum.defaultSettings, old).GUI.ITI, 0.25, ...
+            'A settings file still takes the new default');
+end
+
 function testTheSettingsSayWhichReleaseWroteThem(testCase)
 % Always this release once merged, whatever the file said: what the next release's
 % migrations read.

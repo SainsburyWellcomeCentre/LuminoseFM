@@ -9,8 +9,9 @@ function T = sessionTrials(Data)
 %
 % Returns a struct:
 %   .n                Trials recorded
-%   .S                The settings the session started with, brought up to date
-%                     (lum.mergeSettings), so older files read like new ones
+%   .S                The settings the session started with, in the current layout
+%                     (lum.mergeSettings 'AsRun': renamed and reshaped settings converted,
+%                     values as the session ran them), so older files read like new ones
 %   .stimulusSet      Session.StimulusSet
 %   .subject, .name   The subject, and the data file's name when Data.Info has it
 %   .bothSidesPay     1 x n: habituation, where both side ports pay and trials are scored by
@@ -44,7 +45,7 @@ function T = sessionTrials(Data)
 n = Data.nTrials;
 T = struct();
 T.n = n;
-T.S = lum.mergeSettings(lum.defaultSettings, Data.Session.Settings);
+T.S = lum.mergeSettings(lum.defaultSettings, Data.Session.Settings, 'AsRun', true);
 T.stimulusSet = Data.Session.StimulusSet;
 T.subject = '';
 if isfield(Data.Session, 'Subject')

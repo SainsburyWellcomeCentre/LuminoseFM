@@ -1069,17 +1069,27 @@ few trials.
   name puts one kind of plot from every session together, by date: `01_Outcomes`,
   `02_Performance`, `03_Psychometric`, `04_Evidence`, `05_BySide`, `06_SideBias`,
   `07_ReactionTime`, `08_CentreHold`, `09_HoldAttempts`, `10_Engagement`, `11_PortActivity`,
-  `12_SessionTiming`. `PP` is the page: 01, unless the outcomes run over more than 400 trials.
+  `12_SessionTiming`, `13_PulseLocking`. `PP` is the page: 01, unless the outcomes run over more
+  than 400 trials.
   About 0.5 MB a session. `08_CentreHold` is the time in the port on each trial's last hold
   (completed or not) with the hold asked for and the step backs, and how long the completed holds
   lasted. `09_HoldAttempts` is the one plot that tells a first attempt from a later one: in bins
   of trials, the share held on the first attempt, held after early withdrawals, not completed and
   with no hold started; the attempts each trial took; and the first-attempt rate by the hold
-  asked for.
+  asked for. `13_PulseLocking` (0.9.13) asks whether the animal senses the light, without asking
+  it to tell A from B: an animal that senses the carrier's pulses tends to leave the centre port
+  at a fixed time after one. It shows each early withdrawal made in the light by its time into the
+  light, with the pulses drawn behind; the same folded on the carrier's period (at 20 Hz, 0–50 ms
+  after a pulse began), with R (0 for withdrawals spread evenly, 1 for all at one time after a
+  pulse) and p; and R at 5–50 Hz against the dashed line chance reaches. A peak at the carrier's
+  frequency above that line, and a time after a pulse that stays the same from session to session,
+  are the signs. It cannot say through which sense (`docs/learning-time-literature.md`). Constant
+  light has no pulses and says *Not measured*; a session without light is drawn against the pulses
+  it would have had, as a control.
 - **Session Logs** (0.9.8, behaviour sessions) holds `<data file name>_log.md`, a plain-text
   summary for the lab notebook: when and how the session ran, the animal, the settings
-  that shape a trial, how the animal did (score, choices, water, the hold, reaction time, side
-  bias, 50-trial blocks), what was changed during the session, and the recordings.
+  that shape a trial, how the animal did (score, choices, water, the hold, early withdrawals
+  against the light's pulses, reaction time, side bias, 50-trial blocks), what was changed during the session, and the recordings.
 - **Ending a session takes a few seconds longer** (0.9.8): once the data are saved, the video
   stopped and the rig released, the session draws the summary plots and writes the log, about
   0.3 s a plot (4–8 s in all). The console says *writing its summary plots and log* while it does,
