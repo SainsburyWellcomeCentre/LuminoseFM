@@ -215,9 +215,14 @@ verifyTrue(testCase, L.Light);
 verifyLessThan(testCase, L.P, 0.01);
 verifyGreaterThan(testCase, L.R, L.Threshold);
 verifyEqual(testCase, L.MeanPhase, 0.039, 'AbsTol', 0.003);
+verifyLessThan(testCase, L.ExcessP, 0.01, 'Locked beyond the shape');
+verifyGreaterThan(testCase, L.Excess, L.ExcessThreshold);
+verifyEqual(testCase, L.ExcessPhase, 0.039, 'AbsTol', 0.005, 'Pointing at the locked time');
 verifyEqual(testCase, [L.ByChannel.n], [ceil(numel(times) / 2), floor(numel(times) / 2)]);
 verifyLessThan(testCase, [L.ByChannel.P], 0.05);
-[~, best] = max(L.Spectrum.R);
+verifyLessThan(testCase, [L.ByChannel.ExcessP], 0.05);
+verifyEqual(testCase, L.Spectrum.Frequencies(1), 10, 'The spectrum starts at 10 Hz');
+[~, best] = max(L.Spectrum.Excess - L.Spectrum.ExcessThreshold);
 verifyEqual(testCase, L.Spectrum.Frequencies(best), 20, 'The carrier''s frequency stands out');
 again = lum.report.pulseLocking(madeUpWithdrawals(times, 1, 20, 0.005), 'Surrogates', 400);
 verifyEqual(testCase, again.P, L.P, 'The surrogates come from a private seeded stream');
@@ -226,17 +231,37 @@ end
 function testTheWithdrawalTimesShapeAloneIsNotLocking(testCase)
 % Withdrawals rising smoothly towards the end of the window, with no pulse in them: a
 % Rayleigh test would call the shape locking; against the surrogates about 5% of such
-% sessions fall below p 0.05, as a test at 0.05 should (60 here; 6% in 200 when measured).
+% sessions fall below p 0.05, as a test at 0.05 should (60 here; 6% in 200 when measured),
+% and so does the locking beyond the shape.
 stream = RandStream('mt19937ar', 'Seed', 4);
-p = zeros(1, 60);
+[p, excessP] = deal(zeros(1, 60));
 for r = 1:numel(p)
     times = 0.02 + 0.28 * sqrt(rand(stream, 1, 800));
     L = lum.report.pulseLocking(madeUpWithdrawals(times, 1, 20, 0.005), 'Surrogates', 200, ...
                                 'Frequencies', 20, 'Seed', r);
     p(r) = L.P;
+    excessP(r) = L.ExcessP;
 end
 verifyLessThanOrEqual(testCase, mean(p < 0.05), 0.15);
 verifyGreaterThan(testCase, median(p), 0.25);
+verifyLessThanOrEqual(testCase, mean(excessP < 0.05), 0.15);
+verifyGreaterThan(testCase, median(excessP), 0.25);
+end
+
+function testTheShapeAloneHasAPhaseOfItsOwn(testCase)
+% Withdrawals rising towards the end of the window point at some time after a pulse with no
+% pulse in them (LUMS0014: about 36 ms, light or no light), so the observed mean vector is
+% mostly the shape's, and the share the shape puts in each phase bin is not flat.
+stream = RandStream('mt19937ar', 'Seed', 5);
+times = 0.02 + 0.28 * sqrt(rand(stream, 1, 3000));
+L = lum.report.pulseLocking(madeUpWithdrawals(times, 1, 20, 0.005), 'Surrogates', 400, ...
+                            'Frequencies', 20);
+verifyGreaterThan(testCase, L.Shape, 0.02);
+verifyEqual(testCase, L.MeanPhase, L.ShapePhase, 'AbsTol', 0.005);
+verifyLessThan(testCase, L.Excess, L.ExcessThreshold);
+verifyEqual(testCase, sum(L.ShapeShare), 1, 'AbsTol', 1e-9);
+verifySize(testCase, L.ShapeShare, [1 10]);
+verifyGreaterThan(testCase, max(L.ShapeShare) - min(L.ShapeShare), 0.01);
 end
 
 function testWithdrawalsOutsideTheLightAreLeftOut(testCase)

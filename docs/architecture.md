@@ -1293,6 +1293,17 @@ from a private seeded stream, so a session always reports the same p. Sessions w
 measured against the pulses they would have had, as a control. It needs separate pulses: constant
 light is not measured. The plot and a log line report it; nothing is stored.
 
+**Locking beyond the shape (0.9.14).** The shape gives the mean vector a direction as well as a
+length: in LUMS0014's sessions about 0.05 at 36 ms after a 20 Hz pulse began, light or no light, so
+the mean time after a pulse that 0.9.13 reported was mostly the shape's. The surrogates' mean vector
+is the shape's; the report now leads with the observed vector minus it (its length, the time it
+points to, and how often a surrogate lies as far from the shape's vector in any direction), and
+keeps R with its own p. The spectrum starts at 10 Hz: below it the half-period smoothing blurs the
+shape itself and every frequency passes. The limit that remains is the design's, not the
+statistic's: the pulses start at the poke, so a feature of the withdrawal times narrower than about
+a period (habituation's quick withdrawals 30–70 ms after the poke) passes for locking. Only a change
+of carrier frequency between sessions separates the two; the habituation sessions are not a control
+for this test.
 **Reports read the settings as run (0.9.13).** `lum.report.sessionTrials` merges
 `Session.Settings` with `lum.mergeSettings(..., 'AsRun', true)`: renamed, reshaped and retired
 settings are converted so old files read like new ones, but no old default is replaced, since a
@@ -1494,7 +1505,7 @@ MATLAB, power-cycle the state machine and PulsePal).
 ### Summary plots and log
 `+lum/+report/` (D22): `write` (the behaviour teardown's call), `summaryPlots`, `sessionLog`,
 `sessionTrials` (the one pass over `SessionData` both read, its settings as run),
-`pulseLocking` (early withdrawals against the light's pulses), `folder`, `fileTag`, `heading`,
+`pulseLocking` (early withdrawals against the light's pulses, beyond their times' shape), `folder`, `fileTag`, `heading`,
 `replayOnlinePlots` and `fromFile` (a saved session, read only). `lum.trialStatus` is the runtime
 window's trial lines. `lum.holdMeasures` is what all of them, and the online figure, say about a
 trial's hold. `lum.gui.styleAxes` and `lum.gui.panelLegend` give every plot panel the theme's look.

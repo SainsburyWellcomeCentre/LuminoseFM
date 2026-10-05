@@ -87,7 +87,8 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
   online figure replayed trial by trial by the current `lum.OnlinePlots`
   (`lum.report.replayOnlinePlots`; its header's clock is the trial's session time). Files before
   0.9.6 are rescored in memory first. LUMS0014's sessions of 2026-09-25 to -27 were redrawn this way
-  on 2026-09-27, and all nine to 2026-10-03 got `13_PulseLocking` and a new log on 2026-10-03
+  on 2026-09-27, and all nine to 2026-10-03 got `13_PulseLocking` and a new log on 2026-10-03; all ten to
+  2026-10-04 got both again on 2026-10-04 with 0.9.14's locking beyond the withdrawal times' shape
   (their `.mat`, `_ANLG.dat` and videos untouched).
 - Reading the data in Python, and the HDF5 layout planned for it: [`python-analysis.md`](python-analysis.md).
 
@@ -474,8 +475,12 @@ Bpod writes them straight to this binary file as they arrive — a whole session
 to keep growing in `BpodSystem.Data` and rewrite at every save. Bpod opens it when the launch
 manager starts a session on a state machine with a Flex channel configured as an analog input, and
 the samples start with the session's first state machine (the barcode): every session on this rig
-has one, and no emulated session does. A session cancelled in its setup dialog leaves an empty
-`_ANLG.dat` and no `.mat`; it can be deleted. At teardown `lum.dev.Flex.mergeAnalogData`
+has one, and no emulated session does. A launch cancelled in a setup dialog deletes its empty
+`_ANLG.dat` (`lum.dev.Flex.discardEmptyAnalogFile`, 0.9.6), but one can still be left: the operator
+opened the setup dialog to look and cancelled it on 2026-10-03, and
+`LUMS0014_LuminoseFM_20261003_142915_ANLG.dat` (0 bytes, no `.mat`) stayed; the cause was not
+found. An `_ANLG.dat` with no `.mat` of the same name is a launch in which no session ran: it holds
+nothing, and anything listing sessions must start from the `.mat` files and skip it. At teardown `lum.dev.Flex.mergeAnalogData`
 closes it and reads it into `SessionData.Analog` (in volts, realigned — below), so **for analysis
 the `.mat` is enough**. Keep the `.dat` all the same: it is the raw copy, and the only copy of the
 airflow when a session never reaches its teardown (MATLAB or the computer failing). It is about

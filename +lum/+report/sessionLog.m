@@ -383,8 +383,9 @@ end
 
 
 function text = pulseLockingText(L)
-% Whether early withdrawals came at a fixed time after the light's pulses
-% (lum.report.pulseLocking): R and p overall and on each channel.
+% How early withdrawals line up with the light's pulses (lum.report.pulseLocking): the locking
+% beyond the withdrawal times' shape, where it points, and its p, overall and on each channel;
+% then R with its own p, and what the shape alone gives.
 if L.Light
     subject = 'Early withdrawals and the light''s pulses';
 else
@@ -397,13 +398,15 @@ end
 names = 'AB';
 parts = {};
 for c = find([L.ByChannel.n] > 0)
-    parts{end+1} = sprintf('%s R %.3f, p %s (n=%d)', names(c), L.ByChannel(c).R, ...
-                           pValueText(L.ByChannel(c).P), L.ByChannel(c).n); %#ok<AGROW>
+    parts{end+1} = sprintf('%s %.3f, p %s (n=%d)', names(c), L.ByChannel(c).Excess, ...
+                           pValueText(L.ByChannel(c).ExcessP), L.ByChannel(c).n); %#ok<AGROW>
 end
-text = sprintf(['%s (%g Hz x %g ms): locking R %.3f over %d withdrawals, p %s against their ' ...
-                'times'' shape alone (R %.3f or more by chance in 5%%); %.0f ms after a pulse ' ...
-                'began on average; %s'], subject, L.Frequency, 1000 * L.PulseWidth, L.R, L.n, ...
-               pValueText(L.P), L.Threshold, 1000 * L.MeanPhase, strjoin(parts, '; '));
+text = sprintf(['%s (%g Hz x %g ms): locking beyond their times'' shape %.3f over %d ' ...
+                'withdrawals, p %s (%.3f or more by chance in 5%%), at %.0f ms after a pulse ' ...
+                'began; %s. R %.3f in all (p %s), of which their shape alone gives %.3f at ' ...
+                '%.0f ms'], subject, L.Frequency, 1000 * L.PulseWidth, L.Excess, L.n, ...
+               pValueText(L.ExcessP), L.ExcessThreshold, 1000 * L.ExcessPhase, ...
+               strjoin(parts, '; '), L.R, pValueText(L.P), L.Shape, 1000 * L.ShapePhase);
 end
 
 

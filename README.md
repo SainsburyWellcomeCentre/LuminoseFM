@@ -1060,6 +1060,10 @@ few trials.
   session ends. It is written only when a Flex channel is an
   analog input — not in the emulator. The launch manager creates it before the protocol starts;
   a session cancelled in a setup dialog deletes its empty one (up to 0.9.5 it was left behind).
+  Not always: opening the setup dialog to look and cancelling it left an empty
+  `LUMS0014_LuminoseFM_20261003_142915_ANLG.dat` on 2026-10-03, cause not found. An empty
+  `_ANLG.dat` with no `.mat` of the same name is such a launch: no session ran, and it can be
+  deleted or left.
   Details in [`docs/data-format.md`](docs/data-format.md).
 - **`_plots.png`** is the online figure as it looked when the session ended.
 - **Session Plots** (0.9.8, behaviour sessions) holds the session's summary plots for you and
@@ -1080,16 +1084,23 @@ few trials.
   it to tell A from B: an animal that senses the carrier's pulses tends to leave the centre port
   at a fixed time after one. It shows each early withdrawal made in the light by its time into the
   light, with the pulses drawn behind; the same folded on the carrier's period (at 20 Hz, 0–50 ms
-  after a pulse began), with R (0 for withdrawals spread evenly, 1 for all at one time after a
-  pulse) and p; and R at 5–50 Hz against the dashed line chance reaches. A peak at the carrier's
-  frequency above that line, and a time after a pulse that stays the same from session to session,
-  are the signs. It cannot say through which sense (`docs/learning-time-literature.md`). Constant
-  light has no pulses and says *Not measured*; a session without light is drawn against the pulses
-  it would have had, as a control.
+  after a pulse began), by channel, beside the dashed share the withdrawal times' own shape would
+  put there; and, at 10–50 Hz, the locking beyond that shape against the dashed line chance
+  reaches. The shape matters because most withdrawals come late in the window, and that alone
+  points the mean time after a pulse near 36 ms at 20 Hz, light or no light. So the title and the
+  log give the locking *beyond their shape* (0 to 2; 0 when the shape explains everything), the
+  time after a pulse it points to (the vertical line), and its p (0.9.14). A peak at the carrier's
+  frequency above the dashed line is the sign. The pulses start at the poke, so anything the animal
+  does at a fixed time after the poke, narrower than a period, looks the same: habituation's quick
+  withdrawals 30–70 ms after the poke do, without light. Only a session at another carrier
+  frequency tells them apart (`docs/learning-time-literature.md`, which also says why it cannot
+  name the sense). Constant light has no pulses and says *Not measured*; a session without light
+  is drawn against the pulses it would have had.
 - **Session Logs** (0.9.8, behaviour sessions) holds `<data file name>_log.md`, a plain-text
   summary for the lab notebook: when and how the session ran, the animal, the settings
   that shape a trial, how the animal did (score, choices, water, the hold, early withdrawals
-  against the light's pulses, reaction time, side bias, 50-trial blocks), what was changed during the session, and the recordings.
+  against the light's pulses (the locking beyond their shape, where it points and its p, then R and
+  its p), reaction time, side bias, 50-trial blocks), what was changed during the session, and the recordings.
 - **Ending a session takes a few seconds longer** (0.9.8): once the data are saved, the video
   stopped and the rig released, the session draws the summary plots and writes the log, about
   0.3 s a plot (4–8 s in all). The console says *writing its summary plots and log* while it does,

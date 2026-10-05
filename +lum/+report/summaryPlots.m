@@ -37,9 +37,10 @@ function [files, problems] = summaryPlots(Data, dataFile, varargin)
 %   11_PortActivity     Pokes per minute at each port over the session
 %   12_SessionTiming    MATLAB's prepare, send, plot and save time per trial, and its memory
 %   13_PulseLocking     Early withdrawals against the light's carrier pulses: when they came
-%                       in the light, folded on the carrier's period, and the locking at each
-%                       frequency against the withdrawal times' shape alone
-%                       (lum.report.pulseLocking; a control in a session without light)
+%                       in the light; folded on the carrier's period, beside what the
+%                       withdrawal times' shape alone gives; and the locking beyond that shape
+%                       at each frequency from 10 Hz (lum.report.pulseLocking; a control in a
+%                       session without light)
 %
 % A hold counts as completed however many early withdrawals came before it
 % (lum.holdMeasures): only 09_HoldAttempts tells a first attempt from a later one. The
@@ -674,7 +675,8 @@ end
 
 function drawPulseLocking(fig, T, t)
 % Early withdrawals against the light's carrier pulses (lum.report.pulseLocking): when they
-% came in the light, folded on the carrier's period, and the locking at each frequency.
+% came in the light, folded on the carrier's period beside their shape alone, and the locking
+% beyond that shape at each frequency.
 L = lum.report.pulseLocking(T);
 if ~L.Measured
     ax = nexttile(tiledlayout(fig, 1, 1, 'Padding', 'compact'));
@@ -718,50 +720,53 @@ xlabel(ax, intoLight);
 ylabel(ax, 'Withdrawals per 5 ms');
 lum.gui.panelLegend(ax, handles, labels, t);
 
-% Folded on the period: the share of withdrawals at each time after a pulse began.
+% Folded on the period: the share of withdrawals at each time after a pulse began, against the
+% share the withdrawal times' shape alone puts there; the locking is the difference.
 ax = nexttile(layout);
-lum.gui.styleAxes(ax, sprintf('Folded on the %g Hz period: R %.3f, p %s', L.Frequency, L.R, ...
-                              pText(L.P)), t);
+lum.gui.styleAxes(ax, sprintf('Folded on the %g Hz period: beyond their shape %.3f, p %s', ...
+                              L.Frequency, L.Excess, pText(L.ExcessP)), t);
 bins = 10;
 edges = linspace(0, L.Period, bins + 1);
 shares = NaN(2, bins);
 for c = channels
     shares(c, :) = histcounts(L.Phase(L.Channel == c), edges) / L.ByChannel(c).n;
 end
-top = max(0.2, 0.05 * ceil(max(shares(:)) / 0.05 + 0.5));
+top = max(0.2, 0.05 * ceil(max([shares(:); L.ShapeShare(:)]) / 0.05 + 0.5));
 pulses = pulseBands(ax, 0, 1000 * L.PulseWidth, top, t);
-line(ax, 1000 * [0 L.Period], [1 1] / bins, 'Color', t.SeriesSoft, 'LineStyle', '--', 'LineWidth', 1);
-handles = pulses;
-labels = {'pulse'};
+shape = stairs(ax, 1000 * L.ShapeEdges, [L.ShapeShare L.ShapeShare(end)], 'Color', ...
+               t.SeriesSoft, 'LineStyle', '--', 'LineWidth', 1.6);
+handles = [pulses shape];
+labels = {'pulse', 'shape alone'};
 for c = channels
     handles(end+1) = stairs(ax, 1000 * edges, [shares(c, :) shares(c, end)], 'Color', ...
                             colours(c, :), 'LineWidth', 1.8); %#ok<AGROW>
-    labels{end+1} = sprintf('%s: R %.3f, p %s', names{c}(end), L.ByChannel(c).R, ...
-                            pText(L.ByChannel(c).P)); %#ok<AGROW>
+    labels{end+1} = sprintf('%s %.3f, p %s', names{c}(end), L.ByChannel(c).Excess, ...
+                            pText(L.ByChannel(c).ExcessP)); %#ok<AGROW>
 end
-handles(end+1) = line(ax, 1000 * [L.MeanPhase L.MeanPhase], [0 top], 'Color', t.Series, ...
+handles(end+1) = line(ax, 1000 * [L.ExcessPhase L.ExcessPhase], [0 top], 'Color', t.Series, ...
                       'LineWidth', 1.6);
-labels{end+1} = sprintf('mean %.0f ms', 1000 * L.MeanPhase);
+labels{end+1} = sprintf('beyond it: %.0f ms', 1000 * L.ExcessPhase);
 set(ax, 'XLim', 1000 * [0 L.Period], 'YLim', [0 top]);
 xlabel(ax, 'Time after a pulse began (ms)');
 ylabel(ax, 'Share of withdrawals');
 lum.gui.panelLegend(ax, handles, labels, t);
 
-% The locking at each frequency against what the withdrawal times' shape alone gives.
+% The locking beyond the withdrawal times' shape at each frequency, against how far chance
+% takes it.
 ax = nexttile(layout);
-lum.gui.styleAxes(ax, sprintf('Locking by frequency, %d withdrawals', L.n), t);
+lum.gui.styleAxes(ax, sprintf('Beyond their shape by frequency, %d withdrawals', L.n), t);
 spectrum = L.Spectrum;
-expected = line(ax, spectrum.Frequencies, spectrum.Threshold, 'Color', t.SeriesSoft, ...
+expected = line(ax, spectrum.Frequencies, spectrum.ExcessThreshold, 'Color', t.SeriesSoft, ...
                 'LineStyle', '--', 'LineWidth', 1.6);
-measured = line(ax, spectrum.Frequencies, spectrum.R, 'Color', t.Series, 'LineWidth', 2, ...
+measured = line(ax, spectrum.Frequencies, spectrum.Excess, 'Color', t.Series, 'LineWidth', 2, ...
                 'Marker', '.', 'MarkerSize', 12);
-top = niceCeiling(max([spectrum.R spectrum.Threshold L.R]), 0.05);
+top = niceCeiling(max([spectrum.Excess spectrum.ExcessThreshold L.Excess]), 0.05);
 carrier = line(ax, [L.Frequency L.Frequency], [0 top], 'Color', t.Muted, 'LineWidth', 1.4);
 set(ax, 'XLim', [min(spectrum.Frequencies) max(spectrum.Frequencies)], 'YLim', [0 top]);
 xlabel(ax, 'Frequency (Hz)');
-ylabel(ax, 'Locking R');
+ylabel(ax, 'Locking beyond the shape');
 lum.gui.panelLegend(ax, [measured, expected, carrier], ...
-                    {'withdrawals', '95% from their shape alone', 'carrier'}, t);
+                    {'withdrawals', '95% by chance', 'carrier'}, t);
 end
 
 

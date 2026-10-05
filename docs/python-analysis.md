@@ -24,7 +24,7 @@ Per subject: `<data root>\<subject>\LuminoseFM\`, with `<name>` = `<subject>_Lum
 | File | Folder | Format | Size (LUMS0014, 87 min) | Needed for analysis |
 |---|---|---|---|---|
 | `<name>.mat` | Session Data | MATLAB v7 (v5 container, zlib), one variable `SessionData` | 21 MB | Yes: everything below that is not video or raw analog |
-| `<name>_ANLG.dat` | Session Data | Raw Flex analog stream, `uint16` little-endian | 21 MB | No: the `.mat` holds it as `SessionData.Analog`; keep as the raw copy |
+| `<name>_ANLG.dat` | Session Data | Raw Flex analog stream, `uint16` little-endian | 21 MB | No: the `.mat` holds it as `SessionData.Analog`; keep as the raw copy. One with no `.mat` of the same name is a cancelled launch (empty; below) |
 | `<name>_plots.png` | Session Data | The online figure at the end | 0.1 MB | No |
 | `<name>_memory.csv` | Session Data | MATLAB's memory after a desktop session (diagnostic) | 5 kB | No |
 | `<view>_<name>.avi` | Session Videos | MJPEG AVI (OpenDML), `Mono8` pixels stored as YCbCr 4:2:0 | 22 GB (side), 7 GB (top) | For pose; never copied into HDF5 |
@@ -38,6 +38,12 @@ Per subject: `<data root>\<subject>\LuminoseFM\`, with `<name>` = `<subject>_Lum
 `<view>` is `topview` (camera 24226887) or `sideview` (24226657) on this rig since 0.9.6; before
 it, default-named videos are swapped (data-format.md, *Reading older files*): identify cameras by
 serial (`CameraID` in the frame log), never by file name.
+
+**Find sessions by their `.mat`.** The launch manager creates `<name>_ANLG.dat` before the protocol
+runs. A launch cancelled in a setup dialog should delete it, but one can be left: an empty
+`LUMS0014_LuminoseFM_20261003_142915_ANLG.dat`, from the operator opening the setup dialog to look
+and cancelling it, has no `.mat`, video, plots or log beside it. List sessions from `Session
+Data/*.mat`, never from `_ANLG.dat`, and skip an `_ANLG.dat` without its `.mat`; `index.py` (section 6) should report such files rather than fail on them.
 
 Neuropixels data are written on another computer (SpikeGLX or Open Ephys); they share nothing
 with these files but the sync line (section 4).
@@ -331,7 +337,7 @@ luminose/
   h5.py            write/read the layout of section 5, versioned
   checks.py        the audits in section 8
   plots/           the summary plots, drawn from an h5 file
-  index.py         the subject and project tables
+  index.py         the subject and project tables (sessions listed from their .mat files)
 ```
 
 The raw Flex analog file, should the `.mat` lack it, is `uint16` samples interleaved as
@@ -400,6 +406,8 @@ record in the HDF5 file (`/checks`, one row per check with its value and pass/fa
   `Timing.devices` above its ITI's remaining time (an ITI below 0.25 s); the camera hardware clock
   has no step (engine 1.3.0), or none left once the 128 s ones are removed
 - `StoppedReason` is empty, and the session's settings are as the log says
+- every `_ANLG.dat` in Session Data has its `.mat` (one without is a cancelled launch: reported, not
+  read as a session)
 
 ## 9. Numbers from one session, for testing a reader
 

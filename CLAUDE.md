@@ -169,7 +169,7 @@ can be tested with no hardware. `docs/repository.md` has the full tree.
 | `+lum/fiberBundles.m`, `experimentChoices.m` | Bundle cables and spot counts; the Experiment tab's lists |
 | `+lum/mergeActions.m`, `timerMaskAction.m` | Output-action assembly (see [Gotchas](#bpod-and-firmware)) |
 | `+lum/launchSubject.m`, `trainingStageNote.m` | The subject the session was launched for; one line on what the stage does to rewards |
-| `+lum/+report/` | Summary plots and log (D22): `write` (the behaviour teardown's call; never throws), `summaryPlots` (13 plots, `09_HoldAttempts` the only one telling a first attempt from a later; `'Plots'` draws some), `sessionLog`, `sessionTrials` (one pass over `SessionData`, hold measures included, settings as run), `pulseLocking` (early withdrawals against the carrier's pulses: R, a surrogate p, the phase), `folder`, `fileTag`, `heading`, `replayOnlinePlots`, `fromFile` (a saved session, read only) |
+| `+lum/+report/` | Summary plots and log (D22): `write` (the behaviour teardown's call; never throws), `summaryPlots` (13 plots, `09_HoldAttempts` the only one telling a first attempt from a later; `'Plots'` draws some), `sessionLog`, `sessionTrials` (one pass over `SessionData`, hold measures included, settings as run), `pulseLocking` (early withdrawals against the carrier's pulses: the locking beyond the withdrawal times' shape, the time it points to and its surrogate p; R and its p; spectrum from 10 Hz), `folder`, `fileTag`, `heading`, `replayOnlinePlots`, `fromFile` (a saved session, read only) |
 | `+lum/+pattern/` | `generate` (families, groups, order, evidence, boundary) → `stimulusSet` (segments, budget) → `applyContingency` (P(left), reversal, checks, ceilings) → `patternAt`; `families`, `familyDefaults`, `typedPLeft`, `shortcuts`, `describeShortcuts`; `fromStates`, `canonicalise`, `check`, `validate`, `describe`; `withGeneratorDefaults`, `defaultPLeft`, `newSeed`, `prepareSeed` |
 | `+lum/+stim/` | Components: `OptoPattern`, `TimedOutput` → `PortLight`, `Air`; `Sound`; `CueTone`; `build`; `isTimed`, `timerCost` |
 | `+lum/+sync/` | Session barcode: `barcode` (kinds), `markerWidth`, `barcodeKinds`, `sleepMarkerWidth`, `barcodeValue`, `barcodeTime`, `decodeBarcode`, `barcodeStateMachine`; `fitToCameras` (widths the cameras can read) |
@@ -243,7 +243,7 @@ the bias target). Use these, and fix any code, label or doc that does not. The f
 | ePhys calibration | the third session type, `'EphysCalibration'` (`S.Ephys`, D18) | calibration session, ephys mode |
 | input-output curve, paired-pulse ratio | the two ePhys calibration protocols (`S.Ephys.InputOutput`, `S.Ephys.PairedPulse`) | IO sweep, PPR (in operator text) |
 | summary plots | a behaviour session's plots over the whole session, one image each, in `Session Plots` (`lum.report.summaryPlots`, D22) | report, figures |
-| pulse locking | how early withdrawals line up with the carrier's pulses: phase after the last pulse, R, p against the withdrawal times' own shape (`lum.report.pulseLocking`, `13_PulseLocking`) | phase locking (alone), entrainment |
+| pulse locking | how early withdrawals line up with the carrier's pulses: phase after the last pulse, R, and the locking beyond the withdrawal times' own shape with the time it points to and its p (`lum.report.pulseLocking`, `13_PulseLocking`) | phase locking (alone), entrainment; mean time after a pulse as evidence (the shape alone gives ~36 ms at 20 Hz) |
 | session log | a behaviour session's settings and behaviour as Markdown, in `Session Logs` (`lum.report.sessionLog`, D22) | notes, summary |
 | centre | British spelling in identifiers too (`CentreHold`) | `Center` |
 
@@ -288,9 +288,14 @@ Each rule below is guarded in code; the decision behind it (D*n*) is in `docs/ar
   the operator's, `Parts.devices` per device from `lum.dev.open`'s `devices.openSeconds`; printed as
   the first trial or block starts). The object is cleared before the loop: no `lum.*` object may
   outlive `RunProtocol('Stop')`.
-- **A cancelled launch leaves no files.** The launch manager opens `<data file>_ANLG.dat` before the
-  protocol runs; every "setup cancelled" path calls `lum.dev.Flex.discardEmptyAnalogFile` (closes
-  the handle, deletes the file while it is empty).
+- **A cancelled launch should leave no files.** The launch manager opens `<data file>_ANLG.dat`
+  before the protocol runs; every "setup cancelled" path calls `lum.dev.Flex.discardEmptyAnalogFile`
+  (closes the handle, deletes the file while it is empty). One was still left on 2026-10-03
+  (`LUMS0014_LuminoseFM_20261003_142915_ANLG.dat`, 0 bytes: the operator opened the setup dialog to
+  look and cancelled it; cause not found), and the operator does this at times. An empty
+  `_ANLG.dat` with no `.mat` of the same name is such a launch: in an audit, note it, do not delete
+  it (the data folder is read-only) and do not treat it as a session; anything listing sessions
+  starts from the `.mat` files.
 - **A failed session is torn down, not abandoned.** The trial loop is wrapped in a `try`: on an
   error the completed trials are saved, the analog stream merged, the windows closed, the devices
   released and `RunProtocol('Stop')` called (which flushes the serial link), and only then is the
@@ -831,7 +836,8 @@ says. `docs/code-style.md` has the full convention; this is what every change mu
 - **Session file:** `D:\luminoseData\<subject>\LuminoseFM\Session Data\<subject>_LuminoseFM_<YYYYMMDD_HHMMSS>.mat`,
   one variable `SessionData` (= `BpodSystem.Data`), written by `SaveBpodSessionData` (a full
   overwrite each call). Beside it: `_ANLG.dat` (Bpod's raw Flex analog stream, merged at teardown),
-  `_plots.png` (D16), and after a desktop session `_memory.csv`.
+  `_plots.png` (D16), and after a desktop session `_memory.csv`. An empty `_ANLG.dat` with no
+  `.mat` is a cancelled launch, not a session (*A cancelled launch should leave no files*).
 - **Settings file:** `...\LuminoseFM\Session Settings\<name>.mat`, per subject, chosen in the launch
   manager. It holds the *last* session's settings: written on Start and again at teardown (D16).
   `lum.mergeSettings` converts old files (renames, reshapes, retirements, old defaults).
@@ -891,7 +897,10 @@ says. `docs/code-style.md` has the full convention; this is what every change mu
   `lum.report.fromFile(dataFile)` does the same for a saved session and **only reads** it
   (rescoring pre-0.9.6 files in memory); `'OnlinePlots', true` also replaces `_plots.png` with the
   current `lum.OnlinePlots` replayed trial by trial, and `'Plots', n` draws only plot `n` (how a new
-  plot reaches an animal's earlier sessions). The report reads `Session.Settings` through
+  plot reaches an animal's earlier sessions). `13_PulseLocking` and the log's locking line lead
+  with the locking beyond the withdrawal times' shape (0.9.14); never read the mean time after a
+  pulse as a fixed delay, and never take habituation sessions as its control: their quick
+  withdrawals after the poke pass for locking (`docs/learning-time-literature.md`). The report reads `Session.Settings` through
   `lum.mergeSettings(..., 'AsRun', true)`: a default replaced in a settings file must not change what
   a log says an old session ran with. **Never write a `.mat` from `lum.report`.** Sleep and ePhys sessions write neither yet.
 - **Unrecorded trials at the end.** A session ended with the End button (or on an error) can have
@@ -1179,7 +1188,9 @@ Each has already cost time and is guarded in code; don't undo them.
   (a label's `Extent` read before the invisible figure's layout) and passed on the rerun, and
   again on 2026-10-03 in a full run, with `animalSessionTest/testExperimentOutcomesFollowTheAnimal`
   (the experiment session's first trial unscored: the scripted mouse missed it); both passed on
-  the rerun.
+  the rerun. On 2026-10-04 the timeline and `testNoSessionWarnedOrFailed` failed together in a full
+  run, and `testHabituationOutcomesFollowTheAnimal` once on the rerun of its file (the same
+  scripted-mouse miss); each passed on the next run.
 - The Chameleon3 quantizes `AcquisitionFrameRate`, and writing a read-back value lands one step higher
   (100.058 → 100.12). `CameraSetup` takes a frame rate back from SpinCam's viewer only when it differs
   by more than 0.2 Hz, rounded to 0.1 Hz.

@@ -78,6 +78,7 @@ choosing left or right with a wheel.
 | 2026-10-01 | Training, a wrong choice ends the trial | on, window 0.3 s | 559 | 44% | 54% / 64% |
 | 2026-10-02 | Training, a wrong choice ends the trial | on, window 0.3 s | 733 | 47% | 58% / 62% |
 | 2026-10-03 | Training, a wrong choice ends the trial | on, window 0.3 s | 471 | 49% | 58% / 59% |
+| 2026-10-04 | Training, a wrong choice ends the trial | on, window 0.3 s, 12 mW/mm², 20 Hz × 20 ms | 458 | 50% | 50% / 51% |
 
 The procedure took 3 days, in line with the 2–7 days of pretraining above. LUMS0014 now does 350
 to 730 trials a session and completes nearly every hold. There is no sign yet that the light
@@ -131,6 +132,22 @@ withdrawals came a median 231 ms after stimulus onset (quartiles 185–262 ms). 
 mW/mm² on each channel, as on every training day (A 253 mA of the 1000 mA limit, orange cable, up
 to 21.9 mW/mm²; B 496 mA, blue cable, up to 12.9 mW/mm²), delivered as six 5 ms pulses at 20 Hz.
 
+On 2026-10-04 (day 5) the light changed and nothing else (*Raising the light*): 12 mW/mm² on each
+channel (A 409 mA, B 893 mA) instead of 8, and 20 ms pulses at 20 Hz instead of 5 ms, so a
+completed hold gave six pulses, 120 ms of light, instead of 30 ms: about six times the light a
+trial. The choices did not follow it: P(left | A) 50%, P(left | B) 51%, and the stimulus weight
++0.02 ± 0.10 (p = 0.90). The left bias of the four days before went (left on 50% of choices; bias
+correction aimed left on 169 trials and right on 189). The mouse chose the side that had paid last
+on 56% of trials (stayed after 41% of rewards, changed side after 70% of errors). In the port the
+session looked like 10-03: early withdrawals ended 50% of attempts (49%), a median 233 ms after
+stimulus onset (231 ms), and the median reaction time was 0.40 s. A and B trials did not differ,
+though B's LED ran at 2.2 times A's current: a withdrawal ended 52% of attempts on A trials and 48%
+on B; holds completed on the first attempt were 51% and 60% (p ≈ 0.05, one test of several). The
+one change was at the start: early withdrawals ended 56% of attempts in the first 50 trials,
+against 18–38% at the start of each of the five sessions before, and 40–49% after trial 100. That
+may be the new light being noticed, or one day's variation; a single session cannot tell. Counted as
+the first day of a new start for a first split.
+
 ### Do the pulses reach the mouse?
 
 Measured 2026-10-03, when four punished sessions had shown no split and nothing had shown that
@@ -156,35 +173,57 @@ at 0.05 should.
 | The last three with light | 1,303 | 0.118 | 0.0045 | 38 ms |
 | Three habituation sessions, air and no light (holds of 0.3 s or more) | 1,006 | 0.047 | 0.95 | — |
 
-Each session, as its log and `13_PulseLocking` give it (`lum.report.pulseLocking`, over each
-session's whole light: 0.5 s on 09-28, and the 1 s window that would have been lit in habituation):
+Each session, as its log and `13_PulseLocking` give it (`lum.report.pulseLocking`, 0.9.14, all
+redrawn on 2026-10-04; over each session's whole light: 0.5 s on 09-28, and the 1 s window that
+would have been lit in habituation). *Shape alone* is the mean vector of withdrawal times drawn
+from the shape (the surrogates), *beyond the shape* the observed mean vector minus it, with the time
+after a pulse began that it points to and its p against the surrogates' spread in every direction:
 
-| Session | Light | Withdrawals | R | p | Mean time after a pulse began |
-|---|---|---|---|---|---|
-| 2026-09-25 | no | 146 | 0.185 | 0.047 | 11 ms |
-| 2026-09-26 | no | 624 | 0.056 | 0.53 | 34 ms |
-| 2026-09-27 | no | 726 | 0.052 | 0.51 | 45 ms |
-| 2026-09-28 | yes | 621 | 0.013 | 0.95 | 48 ms |
-| 2026-09-29 | yes | 351 | 0.076 | 0.31 | 43 ms |
-| 2026-09-30 | yes | 307 | 0.099 | 0.25 | 36 ms |
-| 2026-10-01 | yes | 337 | 0.081 | 0.35 | 38 ms |
-| 2026-10-02 | yes | 535 | 0.124 | 0.033 | 37 ms |
-| 2026-10-03 | yes | 431 | 0.142 | 0.021 | 39 ms |
+| Session | Light | Withdrawals | R (p) | Shape alone | Beyond the shape | p |
+|---|---|---|---|---|---|---|
+| 2026-09-25 | no | 146 | 0.185 (0.047) | 0.073 at 32 ms | 0.250 at 10 ms | < 0.001 |
+| 2026-09-26 | no | 624 | 0.056 (0.53) | 0.050 at 32 ms | 0.015 at 42 ms | 0.87 |
+| 2026-09-27 | no | 726 | 0.052 (0.51) | 0.047 at 32 ms | 0.071 at 0 ms | 0.028 |
+| 2026-09-28 | yes | 621 | 0.013 (0.95) | 0.038 at 33 ms | 0.044 at 6 ms | 0.30 |
+| 2026-09-29 | yes | 351 | 0.076 (0.31) | 0.042 at 35 ms | 0.068 at 48 ms | 0.19 |
+| 2026-09-30 | yes | 307 | 0.099 (0.25) | 0.060 at 36 ms | 0.039 at 37 ms | 0.63 |
+| 2026-10-01 | yes | 337 | 0.081 (0.35) | 0.055 at 37 ms | 0.027 at 39 ms | 0.76 |
+| 2026-10-02 | yes | 535 | 0.124 (0.033) | 0.066 at 37 ms | 0.058 at 37 ms | 0.16 |
+| 2026-10-03 | yes | 431 | 0.142 (0.021) | 0.069 at 37 ms | 0.081 at 42 ms | 0.063 |
+| 2026-10-04 | yes, 20 ms pulses at 12 mW/mm² | 434 | 0.108 (0.17) | 0.070 at 37 ms | 0.067 at 47 ms | 0.15 |
 
 - **20 Hz stands out.** Pooled over the light sessions it is the strongest frequency from 10 to
   40 Hz; neither 10 nor 40 Hz exceeds the shape's surrogates.
-- **The locking grew over training**, from none on the first day with light to p 0.02–0.03 in
-  each of the last two sessions alone, and the mean time after a pulse stayed at 36–43 ms from the
-  second day with light on. The one habituation session below 0.05 (09-25, 146 withdrawals, at
-  11 ms) is the one in twenty a test at 0.05 gives by chance.
+- **The mean time after a pulse is mostly the shape's** (found 2026-10-04). The shape alone points
+  32–37 ms after a pulse began in every session, light or not, with a length of 0.04–0.07: most of
+  the observed R. That the mean time after a pulse (the 2026-10-03 logs' 36–48 ms) stayed the same
+  from session to session is therefore no evidence of a fixed delay after a pulse; the logs and plot
+  13 now give the part beyond the shape instead.
+- **Beyond the shape, no single session with light reaches p 0.05** (10-03 comes closest, 0.063).
+  Pooled, with surrogates drawn session by session, it is 0.064 at 40 ms over 10-02 and 10-03
+  (p 0.018) and 0.036 at 43 ms over the six sessions with 5 ms pulses (p 0.036).
+- **The habituation sessions are not a control for it.** Two of the three show locking beyond their
+  shape without any light (09-25 at 10 ms, 09-27 at 0 ms). Their withdrawals come in a sharp peak
+  30–70 ms after the poke, and a feature narrower than about a period passes for locking: the
+  surrogates are smoothed over half a period, which takes it out. Simulated withdrawals with such a
+  peak and no pulses show locking beyond the shape in 80% of sets (R alone in 7%); withdrawals
+  rising smoothly to the end of the window, as in the sessions with light, in 5–8%.
 - **A and B trials lock alike** (difference in R p 0.69, the same phase), though B's LED runs at
   about twice A's current (496 against 253 mA) for the same irradiance at the tips.
 - **Nothing else differs between A and B in the port**: the chance of an attempt ending in an early
   withdrawal 0.46 against 0.51 (p 0.054, mostly from the first session with light), the median
   withdrawal time, and holds completed on the first attempt.
 
-So LUMS0014 very probably senses the pulses: a withdrawal tends to come about 39 ms (or 89, 139 ms
-…) after a pulse began. This does not say through which sense. Light on the bulb, blue light
+So whether LUMS0014 senses the pulses is open. R passed the shape's surrogates on 10-02 and 10-03,
+and the locking beyond the shape does so only pooled over sessions. Because the pulses start at the
+poke (latency 0), anything the mouse does at a fixed time after the poke, narrower than a period,
+gives the same result without the pulses, as habituation shows. **A session at another carrier
+frequency separates the two**: for example 15 Hz × 20 ms at 12 mW/mm² (a 67 ms period, five pulses
+and 100 ms of light in the 0.3 s window, against six and 120 ms at 20 Hz). Locking that moves to
+15 Hz comes from the pulses; locking that stays at 20 Hz, or a peak in the folded plot that does not
+move with the period, comes from the poke.
+
+If it does sense them, this does not say through which sense. Light on the bulb, blue light
 escaping at the implant and seen, and a sound from the LED driver or the LED switching would all
 give it. That A and B lock alike weakly argues against what scales with LED current (driver noise,
 light leaking at the commutator or the patch cords), since B runs at twice A's current, but it
@@ -193,9 +232,19 @@ test has little power for that difference. The rig check *P14* (`docs/rig-checks
 listens for both; a session with the cable connected and the light blocked from the bulb would
 settle it. Nor is it discrimination: the choices still do not tell A from B.
 
+**2026-10-04, 20 ms pulses at 12 mW/mm².** R did not rise: 0.108 (bootstrap 95% interval
+0.05–0.18), against 0.124 and 0.142 on the two days before; the difference from those two pooled is
+0.02 (−0.06 to 0.10). Beyond the shape it is 0.067 at 47 ms (p 0.15), against 0.058 and 0.081.
+One session cannot show a change smaller than about 0.08 either way, so this session says only that
+the locking did not jump. If the mouse responded at a fixed delay after a pulse began, the phase
+would stay at about 40 ms; at a fixed delay after a pulse ended it would move by the 15 ms the pulse
+grew, to about 55 ms. 10-04's 47 ms sits between the two and does not decide.
+
 Every behaviour session now reports it: a line in the log's *Behaviour* section and the summary plot
-`13_PulseLocking`. Watch R and the mean time after a pulse from session to session. A carrier
-without separate pulses (constant light, or one pulse a window) leaves nothing to lock to.
+`13_PulseLocking`, leading (from 0.9.14) with the locking beyond the shape, the time it points to
+and its p, then R with its own p. Watch both from session to session, and pool sessions before
+reading much into one. A carrier without separate pulses (constant light, or one pulse a window)
+leaves nothing to lock to.
 
 ## Estimate for LuminoseFM
 
@@ -425,7 +474,9 @@ Three steps come close to Chong's light: 12 mW/mm² with 20 Hz × 20 ms pulses (
 per trial, pulses still separate), constant light (3× at 12 mW/mm², 2× at 8), or one 80 ms pulse a
 window (Chong's time course, 0.8× at 12).
 
-**Recommended (2026-10-03): 20 Hz × 20 ms at 12 mW/mm².** Its 30 ms gaps (1.7 τ off) keep each
+**Recommended (2026-10-03): 20 Hz × 20 ms at 12 mW/mm².** Run from 2026-10-04 (its first session:
+no split, no rise in the locking; *LUMS0014 so far*, *Do the pulses reach the mouse?*, which also
+says why a session at 15 Hz would tell pulse locking from a reaction to the poke). Its 30 ms gaps (1.7 τ off) keep each
 pulse a separate event, so the pulse locking above (*Do the pulses reach the mouse?*) can still be
 measured in every session. If R rises with four times the light per pulse, the stronger light
 reached the mouse, and that shows within a session or two rather than the week or more a first

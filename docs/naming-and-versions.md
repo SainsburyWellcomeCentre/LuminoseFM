@@ -37,7 +37,7 @@ right — D8 in [`architecture.md`](architecture.md).
 | fixed hold | A hold of a set length from stimulus onset, used when automatic shaping does not grow the hold (*Hold without shaping* *Fixed*, `S.GUI.HoldLength` 2, `S.GUI.FixedHold`; runtime settings from 0.9.8, `S.Task.HoldLength` and `S.Task.FixedHold` before); the other choice, *Whole stimulus*, is the stimulus window plus the post-stimulus hold |
 | summary plots | A behaviour session's plots over the whole session, one image each, in `Session Plots` (`lum.report.summaryPlots`, D22) |
 | session log | A behaviour session's settings and behaviour in a short Markdown text, in `Session Logs` (`lum.report.sessionLog`, D22) |
-| pulse locking | How early withdrawals line up with the light's carrier pulses: each withdrawal's time since the last pulse began (its phase), and R, the length of the mean phase vector (0 spread evenly, 1 all at one phase), with its p against the withdrawal times' own shape (`lum.report.pulseLocking`, `13_PulseLocking`, the log). A sign the animal senses the pulses that needs no discrimination between groups; it does not say by which sense |
+| pulse locking | How early withdrawals line up with the light's carrier pulses: each withdrawal's time since the last pulse began (its phase); R, the length of the mean phase vector (0 spread evenly, 1 all at one phase); and, from 0.9.14, the locking *beyond the shape*: the mean vector minus the one the withdrawal times' own shape gives, its length, the time after a pulse it points to, and its p (`lum.report.pulseLocking`, `13_PulseLocking`, the log). A sign the animal senses the pulses that needs no discrimination between groups; it does not say by which sense, and a reaction to the poke narrower than a period looks the same |
 | light clock | The global timer, as long as a trial's light from stimulus onset, that tells the trial when the light is over after a completed hold shorter than it; the trial waits for it in `WaitForLightEnd` (D21) |
 | session type | Behaviour, sleep or ePhys calibration; `Session.Type` is `'Behaviour'`, `'Sleep'` or `'EphysCalibration'` |
 | carrier | What PulsePal does on a channel while it is on (frequency, pulse width, voltage) |
@@ -84,6 +84,31 @@ Settings files are converted when loaded. Analysis code reading older **data** f
 names.
 
 Newest first. Each table puts the old behaviour or name on the left and the new on the right.
+
+### 0.9.13 → 0.9.14 — pulse locking beyond the withdrawal times' shape
+
+The audit of LUMS0014's session of 2026-10-04 (the first at 20 Hz × 20 ms, 12 mW/mm²) found that
+withdrawal times drawn from the shape alone point about 36 ms after a 20 Hz pulse began in every
+session, light or not: the mean time after a pulse that 0.9.13 reported, and that
+`docs/learning-time-literature.md` read as a fixed delay after a pulse, was mostly the shape's.
+LUMS0014's ten sessions got a new `13_PulseLocking` and log on 2026-10-04 (data files untouched;
+earlier logs in that day's agent scratchpad).
+
+| 0.9.13 | 0.9.14 |
+|---|---|
+| `lum.report.pulseLocking`: R, P, MeanPhase, Threshold; spectrum of R at 5–50 Hz | Adds `Excess`, `ExcessPhase`, `ExcessP`, `ExcessThreshold` (the observed mean vector minus the surrogates' mean vector, the shape's, tested against the surrogates' spread in every direction), `Shape`, `ShapePhase`, `ShapeEdges`, `ShapeShare`; the same per channel; `Spectrum.Excess`, `Spectrum.ExcessThreshold`. Spectrum from 10 Hz (`'Frequencies'` 10:50): below it the half-period smoothing blurs the shape and every frequency passed. R, P, MeanPhase, Threshold kept |
+| `13_PulseLocking`: folded share against a flat line, title and key R and p, vertical line at the mean time after a pulse; R by frequency | Folded share against the share the shape alone gives (dashed); title and key the locking beyond the shape and its p; vertical line at the time it points to; the locking beyond the shape by frequency, 10–50 Hz |
+| Log: *locking R … p … ; N ms after a pulse began on average; A R, p; B R, p* | *locking beyond their times' shape … p … at N ms after a pulse began; A …, p; B …, p. R … (p …), of which their shape alone gives … at … ms* |
+
+A limit found with it, not removed: the pulses start at the poke, so a feature of the withdrawal
+times narrower than about a period passes for locking. Habituation's quick withdrawals (30–70 ms
+after the poke) do, without light (two of LUMS0014's three habituation sessions; 80% of simulated
+pulse-free sets with such a peak, against 5–8% for the smooth rise of the sessions with light).
+
+Not a code change: an empty `_ANLG.dat` with no `.mat` can still be left by a launch cancelled in
+the setup dialog (`LUMS0014_LuminoseFM_20261003_142915_ANLG.dat`, the operator looking at the
+dialog; cause not found). It is documented (README, `data-format.md`, `python-analysis.md`) as a
+launch in which no session ran.
 
 ### 0.9.12 → 0.9.13 — early withdrawals against the light's pulses, and reports that say what a session ran with
 
