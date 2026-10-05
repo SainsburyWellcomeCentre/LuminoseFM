@@ -22,14 +22,17 @@ classdef SessionRunner < handle
     %
     % With a trial manager, the prepare window opens as the trial starts
     % (lum.triggerStates) and the next state machine really is uploaded while the
-    % current one runs. In
+    % current one runs. Two waits fit inside the window when the next trial needs them:
+    % awaitState('ITI') before a device command (the light is over then), and
+    % awaitChoice(states) before a trial that context correction sets from the running
+    % trial's choice (lum.BiasCorrection.readsRunningChoice). In
     % emulator mode the same calls run the trial to completion first, so the
     % session is sequential - slower between trials, but identical in what it
     % produces. Mode says which is in use, and is recorded in the data file so a
     % session's timing can be interpreted correctly afterwards. The decision is D3 in
     % docs/architecture.md.
     %
-    % See also BpodTrialManager, lum.dev.open, lum.triggerStates
+    % See also BpodTrialManager, lum.dev.open, lum.triggerStates, lum.BiasCorrection
 
     properties (SetAccess = private)
         Mode           % 'trialmanager' or 'blocking'
@@ -111,6 +114,44 @@ classdef SessionRunner < handle
             while BpodSystem.Status.BeingUsed == 1 && BpodSystem.Status.InStateMatrix == 1 ...
                     && ~strcmp(BpodSystem.Status.CurrentStateName, name)
                 pause(0.001);
+            end
+        end
+
+        function state = awaitChoice(obj, states)
+            % awaitChoice(states) blocks until the running trial reaches one of the named
+            % states, or ends, and returns the state ('' when it ended without one).
+            %
+            % For context correction (lum.BiasCorrection.readsRunningChoice), which prepares
+            % the next trial once the running one's choice is known. With a trial manager it
+            % polls BpodSystem.Status.CurrentStateName, as awaitState does; that name is
+            % written once per batch of events BpodTrialManager processes (about 10 ms), so a
+            % short state can pass unseen, and the list holds the states after it too. In
+            % blocking mode the trial has already run: the earliest of the states it
+            % entered, from its held raw events, exactly.
+            global BpodSystem %#ok<GVMIS> % Bpod's own session object
+            state = '';
+            if strcmp(obj.Mode, 'trialmanager')
+                while BpodSystem.Status.BeingUsed == 1 && BpodSystem.Status.InStateMatrix == 1 ...
+                        && ~any(strcmp(BpodSystem.Status.CurrentStateName, states))
+                    pause(0.001);
+                end
+                if any(strcmp(BpodSystem.Status.CurrentStateName, states))
+                    state = BpodSystem.Status.CurrentStateName;
+                end
+                return
+            end
+            if isempty(obj.pendingRaw) || ~isfield(obj.pendingRaw, 'States')
+                return
+            end
+            % RunStateMachine's raw events list the states visited, in order, as indices into
+            % the state machine's StateNames.
+            visited = obj.pendingRaw.States;
+            names = BpodSystem.StateMatrix.StateNames;
+            for i = 1:numel(visited)
+                if visited(i) >= 1 && visited(i) <= numel(names) && any(strcmp(names{visited(i)}, states))
+                    state = names{visited(i)};
+                    return
+                end
             end
         end
 

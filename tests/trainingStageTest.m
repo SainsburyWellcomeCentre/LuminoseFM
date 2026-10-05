@@ -81,6 +81,42 @@ for stage = 1:3
 end
 end
 
+function testExperimentAndHabituationSwitchStrategyCorrectionOff(testCase)
+% Every part on, then each stage chosen: habituation and experiment switch every part off,
+% experiment bias correction and the run limit too; training leaves them alone.
+S = lum.defaultSettings;
+S.GUI.SidePokeBeforeChoice = 2;
+S.GUI.BiasCorrectFor = 3;
+S.GUI.BiasRewardFloor = 40;
+S.GUI.TrialOrder = 2;
+for stage = [1 3]
+    [after, changed] = lum.stageDefaults(S, stage);
+    verifyEqual(testCase, [after.GUI.SidePokeBeforeChoice, after.GUI.BiasCorrectFor, ...
+                           after.GUI.BiasRewardFloor, after.GUI.TrialOrder], [1 1 0 1], ...
+                sprintf('Stage %d', stage));
+    verifyTrue(testCase, any(strcmp(changed, 'strategy correction off')));
+end
+after = lum.stageDefaults(S, 3);
+verifyEqual(testCase, after.GUI.BiasCorrection, 0, 'No bias correction in an experiment');
+verifyEqual(testCase, after.Task.MaxSameSide, 0, 'No run limit in an experiment');
+after = lum.stageDefaults(S, 1);
+verifyEqual(testCase, after.GUI.BiasCorrection, S.GUI.BiasCorrection, 'Habituation keeps the strength');
+verifyEqual(testCase, after.Task.MaxSameSide, S.Task.MaxSameSide);
+after = lum.stageDefaults(S, 2);
+verifyEqual(testCase, after.GUI, S.GUI, 'Training leaves every runtime setting as it was');
+end
+
+function testAnExperimentMayRunStrategyCorrection(testCase)
+% Not refused, unlike automatic shaping: an experiment may want blocks on purpose.
+rig = RigConfig;
+S = lum.stageDefaults(lum.defaultSettings, 3);
+S.Task.TrainingStage = 3;
+S.Session.MaxTrials = 20;
+S.GUI.TrialOrder = 2;
+S.GUI.SidePokeBeforeChoice = 3;
+verifyWarningFree(testCase, @() lum.validateSettings(S, rig));
+end
+
 function testAnOutOfRangeStageDoesNotThrow(testCase)
 S = lum.defaultSettings;
 S.Task.TrainingStage = 9;

@@ -201,6 +201,35 @@ if ~(S.GUI.HoldWindow > firstHold)
           'trial could be completed. Lengthen the hold window.'], S.GUI.HoldWindow, firstHold);
 end
 
+%% Strategy correction (D23): every part is a runtime setting, so only what no trial could run
+menus = {'BiasCorrectFor', numel(lum.BiasCorrection.Modes); 'TrialOrder', numel(lum.Blocks.Orders); ...
+         'SidePokeBeforeChoice', 3};
+for i = 1:size(menus, 1)
+    value = S.GUI.(menus{i, 1});
+    if ~(isscalar(value) && any(value == 1:menus{i, 2}))
+        fail('badStrategySetting', '%s must be one of its %d choices.', ...
+             S.GUIMeta.(menus{i, 1}).Label, menus{i, 2});
+    end
+end
+if ~(S.GUI.BlockMin <= S.GUI.BlockMax)
+    fail('blockLengths', ['The shortest block (%g trials) is longer than the longest (%g). '...
+                          'Make the shortest no longer than the longest.'], ...
+         S.GUI.BlockMin, S.GUI.BlockMax);
+end
+if S.GUI.BiasCorrectFor > 1 && ~lum.BiasCorrection.isAvailable(S)
+    notes{end+1} = sprintf(['Bias correction for %s needs incorrect choices punished (Punish '...
+                            'on): while they are retried it corrects for side bias.'], ...
+                           lower(lum.BiasCorrection.Modes{S.GUI.BiasCorrectFor}));
+end
+contextNote = lum.BiasCorrection.timingNote(S);
+if ~isempty(contextNote)
+    notes{end+1} = contextNote;
+end
+if S.Task.TrainingStage == 1 && (lum.Blocks.isOn(S) || lum.BiasCorrection.activeMode(S) > 1)
+    notes{end+1} = ['Habituation pays both side ports, so blocks and context correction '...
+                    'change which side is scored correct and nothing the animal earns.'];
+end
+
 %% Sync
 switch S.Sync.Mode
     case lum.SyncMode.FixedWidth

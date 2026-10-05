@@ -11,6 +11,14 @@ function [S, changed] = stageDefaults(S, stage)
 % component. Training and Experiment deliver the light pattern and leave the cue as it
 % is.
 %
+% Strategy correction (D23) follows it as well: Habituation and Experiment switch every part
+% off - side pokes before the response ignored, bias correction for side bias without a
+% reward floor, a random trial order - since habituation pays both sides and an experiment
+% asks every animal for the same trial; Experiment also switches bias correction (strength
+% 0) and the run limit (S.Task.MaxSameSide 0) off, which make the side predictable from the
+% trials before. Training leaves them as they are. An Experiment session may still switch
+% any of them on: nothing refuses it, and each trial records what applied.
+%
 % Automatic shaping follows the stage too: Habituation and Training switch it on, so the
 % centre hold is grown from S.GUI.HoldStart as the animal learns (lum.HoldShaping) - in
 % habituation, together with the centre reward (S.GUI.CentreRewardAmount), from a hold
@@ -91,6 +99,40 @@ if isscalar(stage) && ismember(stage, 1:3)
         S.Task.AutoShaping = wantShaping;
         changed{end+1} = describe('automatic shaping', wantShaping);
     end
+end
+
+% Strategy correction: off in habituation and in an experiment, as it was in training.
+if isequal(stage, 1) || isequal(stage, 3)
+    [S, changed] = strategyOff(S, changed, isequal(stage, 3));
+end
+
+
+function [S, changed] = strategyOff(S, changed, experiment)
+% Every strategy correction part off; in an experiment, bias correction and the run limit too.
+if ~isfield(S, 'GUI')
+    return
+end
+off = {'SidePokeBeforeChoice', 1; 'BiasCorrectFor', 1; 'BiasRewardFloor', 0; 'TrialOrder', 1};
+wasOn = false;
+for i = 1:size(off, 1)
+    if isfield(S.GUI, off{i, 1}) && ~isequal(S.GUI.(off{i, 1}), off{i, 2})
+        S.GUI.(off{i, 1}) = off{i, 2};
+        wasOn = true;
+    end
+end
+if wasOn
+    changed{end+1} = 'strategy correction off';
+end
+if ~experiment
+    return
+end
+if isfield(S.GUI, 'BiasCorrection') && S.GUI.BiasCorrection ~= 0
+    S.GUI.BiasCorrection = 0;
+    changed{end+1} = 'bias correction off';
+end
+if S.Task.MaxSameSide ~= 0
+    S.Task.MaxSameSide = 0;
+    changed{end+1} = 'the run limit off';
 end
 
 

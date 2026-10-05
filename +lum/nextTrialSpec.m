@@ -1,17 +1,22 @@
-function [spec, queue] = nextTrialSpec(S, stimulusSet, queue, history, trialNumber)
+function [spec, queue] = nextTrialSpec(S, stimulusSet, queue, history, trialNumber, varargin)
 % lum.nextTrialSpec decides what the next trial will be.
 %
 % The stimulus set fixes a balanced, shuffled order of patterns for the session
 % (lum.pattern.generate); the queue is that order as it stands. Normally the next
-% trial simply takes the next pattern in the queue. Two policies may reorder it,
+% trial simply takes the next pattern in the queue. Three policies may reorder it,
 % by swapping the next pattern with a later one, so that every group is still
-% delivered as often as the generator balanced it:
+% delivered as often as the generator balanced it. In order of precedence:
 %
-%   Bias correction  When the animal favours one side, a side is drawn biased
-%                    towards the one it avoids (strength S.GUI.BiasCorrection over
-%                    the animal's last S.GUI.BiasWindow choices; trials with no choice
-%                    are skipped) and the next pattern that can pay it is brought
-%                    forward, from anywhere in the rest of the session's order.
+%   Blocks           With S.GUI.TrialOrder 'Blocks', the paying side is held for a
+%                    block of trials, then changes (lum.Blocks); the next pattern that
+%                    leans to the block's side is brought forward, and neither policy
+%                    below acts.
+%   Bias correction  When the animal leans to one side, a side is drawn biased
+%                    towards the other (strength S.GUI.BiasCorrection; the lean read over
+%                    the animal's last S.GUI.BiasWindow choices, or with S.GUI.BiasCorrectFor
+%                    those in the same context, and the strength eased by the reward
+%                    floor: lum.BiasCorrection.target) and a later pattern that can pay
+%                    it is brought forward, from anywhere in the rest of the order.
 %   Run limit        After S.Task.MaxSameSide trials rewarded on one side (the trial
 %                    still running counted, history.preparedSide), the next
 %                    trial must be rewarded on the other, unless bias correction is
@@ -23,7 +28,10 @@ function [spec, queue] = nextTrialSpec(S, stimulusSet, queue, history, trialNumb
 % A swap searches the rest of the queue (at most the session's MaxTrials, a vectorised
 % test), so bias correction keeps its target for as long as the session holds trials
 % that pay the side it asks for; up to 0.9.3 it looked 50 trials ahead and faded once
-% those were used up.
+% those were used up. Its partner is drawn at random from every later pattern that can
+% serve (from 0.10.0): up to 0.9.14 it was the first, so the patterns it displaced
+% bunched just ahead and came back as a run of one side once the correction eased
+% (LUMS0014, 2026-10-01: 101 trials at target 0.5, 83% paying left).
 %
 % Arguments:
 %   S            Settings struct
@@ -32,6 +40,10 @@ function [spec, queue] = nextTrialSpec(S, stimulusSet, queue, history, trialNumb
 %   history      Struct from lum.newHistory, holding completed trials
 %   trialNumber  The trial being generated
 %
+% Options:
+%   'SwapPartner'  'random' (default) or 'first': the swap takes the first later pattern
+%                  that can serve, as up to 0.9.14 (for the regression test against it)
+%
 % Returns the queue, possibly with two entries swapped, and a spec struct:
 %   .TrialNumber      Trial index
 %   .PatternIndex     Index into the stimulus set's patterns
@@ -39,7 +51,14 @@ function [spec, queue] = nextTrialSpec(S, stimulusSet, queue, history, trialNumb
 %   .CorrectSide      1 = Left, 2 = Right; the side scored as correct
 %   .RewardedSides    Sides whose valve will open. Both, during habituation.
 %   .TrainingStage    Stage index, copied so the trial record is self-contained
-%   .BiasTargetPLeft  The p(left) bias correction aimed for; 0.5 when inactive
+%   .BiasTargetPLeft  The p(left) bias correction aimed for; 0.5 when inactive; in
+%                     blocks, the block's side as 1 (left) or 0 (right)
+%   .BiasContext      The context bias correction read the lean in
+%                     (lum.BiasCorrection): 1 side bias, 2-7 a context, 0 none; NaN when
+%                     bias correction did not act (strength 0, or blocks)
+%   .Block            The block this trial is in (lum.Blocks); 0 in a random order
+%   .BlockSide        That block's side, 1 left or 2 right; NaN in a random order
+%   .BlockStart, .BlockLength  Its first trial and drawn length (lum.Blocks.notePrepared)
 %   .OptoOn           True if the light pattern is delivered on this trial
 %   .SoundOn          True if sounds are played
 %   .SyncMode         Sync mode this trial used, indexing S.Sync.ModeNames
@@ -63,49 +82,63 @@ function [spec, queue] = nextTrialSpec(S, stimulusSet, queue, history, trialNumb
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
-% See also lum.pattern.stimulusSet, lum.newHistory, lum.buildTrialSM, lum.scoreTrial
+% See also lum.pattern.stimulusSet, lum.newHistory, lum.buildTrialSM, lum.scoreTrial,
+%          lum.BiasCorrection, lum.Blocks
 
 if trialNumber > numel(queue)
     error('lum:nextTrialSpec:queueExhausted', ...
           'Trial %d is past the end of the %d-trial stimulus order.', trialNumber, numel(queue));
 end
+randomPartner = true;
+if numel(varargin) >= 2 && strcmpi(varargin{1}, 'SwapPartner')
+    randomPartner = ~strcmpi(varargin{2}, 'first');
+end
 pLeftOf = stimulusSet.PatternPLeft;
 
-%% Bias correction: the p(left) that would compensate the animal's recent choices
+%% Blocks: the side the block holds, ahead of everything below
+block = lum.Blocks.next(S, history, trialNumber, queue, pLeftOf);
 pLeftTarget = 0.5;
-if S.GUI.BiasCorrection > 0
-    recent = recentChoices(history, S.GUI.BiasWindow);
-    if numel(recent) >= 3
-        fractionLeft = mean(recent == 1);
-        % A strength of 1 fully compensates: an animal choosing left on every
-        % recent trial gets p(left) pushed down, and vice versa.
-        pLeftTarget = 0.5 + S.GUI.BiasCorrection * (0.5 - fractionLeft);
-        pLeftTarget = min(max(pLeftTarget, 0.1), 0.9);  % Never starve one side entirely
+biasContext = NaN;
+forcedSide = [];
+if block.Block > 0
+    wantedSide = block.Side;
+    pLeftTarget = double(block.Side == 1);
+    serves = @(pLeft) lum.Blocks.canUse(pLeft, block.Side);
+else
+    %% Bias correction: the p(left) that would compensate the animal's recent choices
+    if S.GUI.BiasCorrection > 0
+        [pLeftTarget, biasContext] = lum.BiasCorrection.target(S, history, trialNumber);
     end
-end
-favouredSide = [];   % The side bias correction pushes towards, if any
-if pLeftTarget < 0.5
-    favouredSide = 2;
-elseif pLeftTarget > 0.5
-    favouredSide = 1;
+    favouredSide = [];   % The side bias correction pushes towards, if any
+    if pLeftTarget < 0.5
+        favouredSide = 2;
+    elseif pLeftTarget > 0.5
+        favouredSide = 1;
+    end
+
+    %% The side the next trial should pay, if any policy asks for one
+    % Bias correction takes precedence over the run limit: a run on the side it is pushing
+    % towards may go past MaxSameSide, and the side is drawn by the correction instead.
+    forcedSide = sideForcedByRunLimit(S, history);
+    if ~isempty(forcedSide) && isequal(forcedSide, 3 - favouredSide)
+        forcedSide = [];
+    end
+    wantedSide = forcedSide;
+    if isempty(wantedSide) && ~isempty(favouredSide)
+        wantedSide = 1 + (rand >= pLeftTarget);
+    end
+    serves = @(pLeft) canPay(pLeft, wantedSide);
 end
 
-%% The side the next trial should pay, if any policy asks for one
-% Bias correction takes precedence over the run limit: a run on the side it is pushing
-% towards may go past MaxSameSide, and the side is drawn by the correction instead.
-forcedSide = sideForcedByRunLimit(S, history);
-if ~isempty(forcedSide) && isequal(forcedSide, 3 - favouredSide)
-    forcedSide = [];
-end
-wantedSide = forcedSide;
-if isempty(wantedSide) && ~isempty(favouredSide)
-    wantedSide = 1 + (rand >= pLeftTarget);
-end
-
-if ~isempty(wantedSide) && ~canPay(pLeftOf(queue(trialNumber)), wantedSide)
+if ~isempty(wantedSide) && ~serves(pLeftOf(queue(trialNumber)))
     ahead = trialNumber + 1:numel(queue);
-    swapWith = ahead(find(canPay(pLeftOf(queue(ahead)), wantedSide), 1));
-    if ~isempty(swapWith)
+    candidates = ahead(serves(pLeftOf(queue(ahead))));
+    if ~isempty(candidates)
+        if randomPartner
+            swapWith = candidates(1 + floor(rand * numel(candidates)));
+        else
+            swapWith = candidates(1);
+        end
         queue([trialNumber swapWith]) = queue([swapWith trialNumber]);
     end
 end
@@ -126,6 +159,11 @@ spec.StimulusGroup = stimulusSet.PatternGroup(patternIndex);
 spec.CorrectSide = correctSide;
 spec.TrainingStage = S.Task.TrainingStage;
 spec.BiasTargetPLeft = pLeftTarget;
+spec.BiasContext = biasContext;
+spec.Block = block.Block;
+spec.BlockSide = block.Side;
+spec.BlockStart = block.Start;
+spec.BlockLength = block.Length;
 
 % Habituation rewards either side, so the animal learns that the side ports pay
 % before it has to learn which one. Later stages reward only the correct side.
@@ -185,16 +223,6 @@ switch S.Sync.Mode
               'S.Sync.Mode is %g; it must index S.Sync.ModeNames (1 to %d).', ...
               S.Sync.Mode, numel(S.Sync.ModeNames));
 end
-
-
-function recent = recentChoices(history, window)
-% The animal's last `window` choices, skipping trials with no choice.
-recent = [];
-if history.nTrials == 0 || window < 1
-    return
-end
-choices = history.choice(1:history.nTrials);
-recent = choices(find(~isnan(choices), floor(window), 'last'));
 
 
 function side = sideForcedByRunLimit(S, history)

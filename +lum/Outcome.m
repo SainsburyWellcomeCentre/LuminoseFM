@@ -24,6 +24,10 @@ classdef Outcome
         HoldNotCompleted  = 6   % The stimulus started at least once, but every hold broke
                                 % and the hold window ran out (state NoInitiation after
                                 % CentreHold). Added in 0.3, with restarting holds.
+        SidePokeBeforeChoice = 7  % A side port was poked before the response window, with
+                                % S.GUI.SidePokeBeforeChoice 'End trial': the trial ended
+                                % there, unrewarded (state SidePokeBeforeChoice). Added in
+                                % 0.10.0, with strategy correction.
     end
 
     methods (Static)
@@ -40,7 +44,8 @@ classdef Outcome
         function names = allNames()
             % allNames() lists every outcome name, ordered by code.
             names = {'NoInitiation', 'EarlyWithdrawal', 'NoResponse', ...
-                     'Correct', 'Incorrect', 'CorrectNoReward', 'HoldNotCompleted'};
+                     'Correct', 'Incorrect', 'CorrectNoReward', 'HoldNotCompleted', ...
+                     'SidePokeBeforeChoice'};
         end
     end
 end

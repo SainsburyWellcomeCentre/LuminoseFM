@@ -54,7 +54,13 @@ Three modes (`S.Sync.Mode`, `lum.SyncMode`), and every one of them drives the li
   asked to poke, and goes low when it pokes the centre port, so its own edges mark the events.
   A trial with no poke drops it in `NoInitiation` when the hold window runs out. With a 0 s
   ITI the next trial raises it again 0.1 ms later, so with video `NoInitiation` lasts two frames
-  (20 ms at 100 Hz) and the cameras always see it low (0.9.8), whatever the ITI.
+  (20 ms at 100 Hz) and the cameras always see it low (0.9.8), whatever the ITI. The line is
+  high in every visit to `WaitForCentrePoke`, so a trial can have more than one rising edge: after
+  an early withdrawal with *Restart stimulus*, and from 0.10.0 after a side poke before the
+  response with *Delay* (the line is low in `SidePokeDelay` and rises as the wait resumes; it is
+  low in `SidePokeBeforeChoice` too, and the trial then ends). Count a trial's start as the first
+  rising edge after the trial before ended, or align by `Data.TrialStartTimestamp`; a delay under
+  two frames may not reach the cameras.
 
 In a pulsed mode the pulse **is** the trial's first state: `TrialStart` drives the line high and
 lasts the pulse's width, and `WaitForCentrePoke` drives it low as the cue comes on. The cue

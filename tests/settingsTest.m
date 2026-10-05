@@ -744,3 +744,39 @@ end
 function S = unknownSessionType(S)
 S.Session.Type = 'Nap';
 end
+
+function testStrategyCorrectionIsOffByDefaultOnItsOwnTab(testCase)
+% Every part off, so a new settings file runs a session as 0.9.14 did; the Bias panel on the
+% Strategy tab with the parts' panels.
+S = lum.defaultSettings;
+verifyEqual(testCase, [S.GUI.SidePokeBeforeChoice, S.GUI.BiasCorrectFor, S.GUI.BiasRewardFloor, ...
+                       S.GUI.TrialOrder], [1 1 0 1]);
+verifyEqual(testCase, S.GUITabs.Strategy, {'Bias', 'Blocks', 'SidePokes'});
+verifyEqual(testCase, S.GUITabs.Task, {'Punishment', 'Shaping'});
+verifyEqual(testCase, S.GUIPanels.Bias(1:2), {'BiasCorrection', 'BiasWindow'}, 'Names kept');
+fields = lum.gui.runtimeFields(S);
+strategy = fields(strcmp({fields.Tab}, 'Strategy'));
+verifyEqual(testCase, sort({strategy.Name}), sort({'BiasCorrection', 'BiasWindow', ...
+    'BiasCorrectFor', 'BiasRewardFloor', 'BiasRewardWindow', 'TrialOrder', 'BlockMin', ...
+    'BlockMax', 'BlockSwitchAfterCorrect', 'SidePokeBeforeChoice', 'SidePokeDelay'}));
+verifyTrue(testCase, all(~cellfun(@isempty, {strategy.Help})), 'Every setting has its help');
+verifyEqual(testCase, S.GUIMeta.BiasRewardFloor.Limits, [0 50]);
+end
+
+function testAnOldSettingsFileGetsStrategyCorrectionOff(testCase)
+% A 0.9.14 file has none of the settings: they come from the defaults, and the old Bias
+% panel's place is taken from the defaults' declarations.
+loaded = lum.defaultSettings;
+loaded.GUI = rmfield(loaded.GUI, {'BiasCorrectFor', 'BiasRewardFloor', 'BiasRewardWindow', ...
+    'TrialOrder', 'BlockMin', 'BlockMax', 'BlockSwitchAfterCorrect', 'SidePokeBeforeChoice', ...
+    'SidePokeDelay'});
+loaded.GUITabs = struct('Trial', {{'Reward'}}, 'Task', {{'Punishment', 'Bias', 'Shaping'}});
+loaded.GUI.BiasCorrection = 0.7;
+for asRun = [false true]
+    S = lum.mergeSettings(lum.defaultSettings, loaded, 'AsRun', asRun);
+    verifyEqual(testCase, S.GUI.BiasCorrection, 0.7);
+    verifyEqual(testCase, [S.GUI.SidePokeBeforeChoice, S.GUI.BiasCorrectFor, S.GUI.TrialOrder], [1 1 1]);
+    verifyEqual(testCase, S.GUITabs, lum.defaultSettings().GUITabs);
+end
+verifySubstring(testCase, lum.describeStrategy(S), 'side pokes before the response ignored');
+end

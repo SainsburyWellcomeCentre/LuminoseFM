@@ -33,6 +33,10 @@ classdef RuntimeWindow < handle
     % An ITI typed below lum.minimumITI in a session with light is kept, and a warning
     % dialog (Tag 'LuminoseShortITI') says what it does to the time between trials.
     %
+    % Correct for (S.GUI.BiasCorrectFor) is greyed out while incorrect choices are retried
+    % (Punish on None or Early withdrawal), in both forms: context correction then corrects
+    % for side bias (lum.BiasCorrection.activeMode).
+    %
     % See also lum.gui.runtimeFields, lum.defaultSettings, BpodParameterGUI
 
     properties (SetAccess = private)
@@ -65,6 +69,7 @@ classdef RuntimeWindow < handle
                 BpodParameterGUI('init', S);
                 lum.gui.relabelParameterGUI(S);
                 obj.Figure = BpodSystem.ProtocolFigures.ParameterGUI;
+                greyCompact(S);
                 return
             end
 
@@ -80,6 +85,7 @@ classdef RuntimeWindow < handle
             % sync(S) exchanges values with the window: see the class help.
             if strcmp(obj.Mode, 'Compact')
                 S = BpodParameterGUI('sync', S);
+                greyCompact(S);
                 return
             end
             if isempty(obj.Figure) || ~isvalid(obj.Figure)
@@ -121,6 +127,7 @@ classdef RuntimeWindow < handle
                 end
                 obj.lastValues{i} = S.GUI.(field.Name);
             end
+            obj.updateEnables();
         end
 
         function showStatus(obj, text)
@@ -233,9 +240,33 @@ classdef RuntimeWindow < handle
                     top = top - panelHeight - panelGap;
                 end
             end
+            obj.updateEnables();
             obj.help = lum.gui.HelpLine(obj.Figure, helpText, ...
                                         'Point at a parameter to see what it does.');
             obj.help.registerTooltips();
+        end
+
+        function updateEnables(obj)
+            % Grey out what the other settings shown make unused: Correct for, while
+            % incorrect choices are retried.
+            correctFor = find(strcmp({obj.fields.Name}, 'BiasCorrectFor'), 1);
+            if isempty(correctFor) || ~isgraphics(obj.controls(correctFor))
+                return
+            end
+            gui = struct();
+            for name = {'PunishCondition', 'PunishType', 'PunishTimeout'}
+                i = find(strcmp({obj.fields.Name}, name{1}), 1);
+                if isempty(i)
+                    return
+                end
+                if strcmp(obj.fields(i).Style, 'numeric')
+                    gui.(name{1}) = str2double(get(obj.controls(i), 'String'));
+                else
+                    gui.(name{1}) = get(obj.controls(i), 'Value');
+                end
+            end
+            available = lum.BiasCorrection.isAvailable(struct('GUI', gui));
+            set(obj.controls(correctFor), 'Enable', char(lum.gui.Form.onOff(available)));
         end
 
         function control = makeControl(obj, parent, i, position, t)
@@ -252,8 +283,10 @@ classdef RuntimeWindow < handle
                     control = uicontrol(parent, 'Style', 'checkbox', 'Value', field.Value, ...
                                         'String', '', common{:});
                 case 'dropdown'
+                    % A choice can grey another out at once (updateEnables)
                     control = uicontrol(parent, 'Style', 'popupmenu', 'String', field.Items, ...
-                                        'Value', field.Value, common{:});
+                                        'Value', field.Value, common{:}, ...
+                                        'Callback', @(~, ~) obj.updateEnables());
                 case 'text'
                     control = uicontrol(parent, 'Style', 'edit', 'String', field.Value, common{:});
                 otherwise
@@ -289,6 +322,22 @@ classdef RuntimeWindow < handle
             end
         end
     end
+end
+
+
+function greyCompact(S)
+% In Bpod's compact window, grey out Correct for while incorrect choices are retried. Does
+% nothing where the handles are not where this version of BpodParameterGUI puts them.
+global BpodSystem %#ok<GVMIS> % Bpod's own session object
+try
+    index = find(strcmp(BpodSystem.GUIData.ParameterGUI.ParamNames, 'BiasCorrectFor'), 1);
+    if ~isempty(index)
+        set(BpodSystem.GUIHandles.ParameterGUI.Params(index), 'Enable', ...
+            char(lum.gui.Form.onOff(lum.BiasCorrection.isAvailable(S))));
+    end
+catch
+    % A layout of BpodParameterGUI's other than 1.9's: the menu stays as it is
+end
 end
 
 

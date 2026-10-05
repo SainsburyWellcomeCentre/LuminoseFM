@@ -1,7 +1,7 @@
 # LuminoseFM — Architecture
 
-Design record for the LuminoseFM protocol. Status: **implemented** (version 0.9.8); decisions
-D1–D22 confirmed. Update this file whenever the architecture changes.
+Design record for the LuminoseFM protocol. Status: **implemented** (version 0.10.0); decisions
+D1–D23 confirmed. Update this file whenever the architecture changes.
 
 Each decision gives what was decided, why, and what follows from it. After them: where each part
 lives in the code, the Bpod constraints that shaped it, and the questions still open.
@@ -19,6 +19,7 @@ lives in the code, the Bpod constraints that shaped it, and the questions still 
 | [D9](#d9--stimulus-components-timed-within-the-hold) | Timed stimulus components | [D20](#d20--a-stimulus-family-is-a-question-with-its-own-contingency-and-its-shortcuts-measured) | Stimulus families as questions |
 | [D10](#d10--a-broken-hold-restarts-the-stimulus-within-a-hold-window) | Restarting holds, the hold window | [D21](#d21--the-light-plays-to-its-end-after-a-completed-hold) | The light plays to its end |
 | [D11](#d11--two-session-types-behaviour-and-sleep) | Behaviour and sleep sessions | [D22](#d22--a-behaviour-session-leaves-summary-plots-and-a-log-drawn-from-its-saved-data) | Summary plots and log |
+| | | [D23](#d23--strategy-correction-levers-against-side-port-habits) | Strategy correction |
 
 ---
 
@@ -212,6 +213,11 @@ and keeps the *observable* behaviour identical. The mode is recorded in
   pulse follows the cut-short trial's on every sync recording (LUMS0014 2026-09-29: 374 pulses, 372
   trials). Not fixed yet (open questions); analysis discards everything after the last recorded
   trial (`data-format.md`, *Video*; `python-analysis.md` §4).
+- **After the choice (0.10.0, D23).** Context correction reads trial *n*'s choice to set trial
+  *n+1*'s target, so with *Correct for* *Last choice* or *Last choice and reward* the loop syncs
+  the runtime settings as the window opens, then waits for trial *n*'s choice
+  (`lum.SessionRunner.awaitChoice`) before building and uploading trial *n+1*. Every other setting
+  keeps the window where it is, and the two parts run back to back.
 - In the emulator the same calls run the trial to completion first.
 - `lum.dev.open` is the only place that reads `BpodSystem.EmulatorMode`.
 
@@ -1356,6 +1362,148 @@ line, which the console announces.
 
 ---
 
+### D23 — Strategy correction: levers against side-port habits
+
+**Context.** LUMS0014 alternated between the side ports on every visit, scored or not: its
+choice was the port opposite the side port it poked last on 96–98% of choices in every training
+session, and with free side pokes allowed between trials its choices looked random from one to
+the next (repeating 49–50% after a reward or an error). The habit earned 50%, the same as any
+other way of choosing in a random order, so nothing pushed the animal off it; bias correction
+and the run limit act on the trial order and could not touch it (`learning-time-literature.md`,
+*Side-port alternation*; the audit of 2026-10-05).
+
+**Decision.** One feature, *strategy correction*, with four parts, all runtime settings on one
+Strategy tab, all off by default so a session runs as 0.9.14 did:
+
+| Part | What it does | Acts on | Code |
+|---|---|---|---|
+| Habit measures | reports each session's habits in the log and `14_Habits` | nothing | `lum.report.habits` |
+| Side pokes before the response | a side poke while the trial waits for a centre poke delays or ends it | the state graph | `lum.buildTrialSM` |
+| Context correction | bias correction reads the lean in the trial's context, with a reward floor | the trial order | `lum.BiasCorrection` |
+| Blocks | the paying side held for blocks of trials | the trial order | `lum.Blocks` |
+
+**Side pokes before the response.** `S.GUI.SidePokeBeforeChoice`: *Ignore* (the default),
+*Delay* (`SidePokeDelay`, `S.GUI.SidePokeDelay` s with the cue off and centre pokes ignored, then
+`WaitForCentrePoke` again; the hold window runs on) or *End trial* (`SidePokeBeforeChoice`, then
+`WaitForLightEnd`, unrewarded: outcome 7, with an early withdrawal's punishment when those are
+punished, since both answer before the response window). Both states exist in every trial and are
+unreachable under *Ignore*. A trial ended by a side poke in its first half second can be shorter
+than the loop's work while it runs (the trial before's plot and the next one's preparation), so
+the next trial may start a few ms late with the dead time warning (P15: 3.1 ms once in 15 trials),
+as after a quick early withdrawal under *End trial*; a punishment timeout covers it. It acts from
+trial start, not only between attempts: the drinking
+grace and the ITI mean a side poke then is a new visit, not drinking that went on. Trial *k*+1
+is chosen before its own free pokes happen, so no trial-order policy could react to them; this
+part comes first in the order of use because it makes them cost something, after which the habit
+shows in the choices, where context correction can see it.
+
+**Context correction.** `S.GUI.BiasCorrectFor`: *Side bias* (today's: one context), *Last choice*
+(after a left, after a right), *Last choice and reward* (after a rewarded or an unrewarded left or
+right). The target keeps today's form, 0.5 + s × (0.5 − f), within 0.1–0.9, with f the share of
+left choices among the last *Bias window* choices made in the same context (fewer than 3: side
+bias). A lean d = f − 0.5 then costs a habit 2 s d² below chance, whatever the context, and an
+animal that follows the stimulus nothing: which side a pattern pays never changes. The contexts
+(`Data.BiasContext`) are codes 1 (side bias), 2–3 (after left, right), 4–7 (after rewarded left,
+unrewarded left, rewarded right, unrewarded right), 0 none, NaN not acted.
+
+**The reward floor.** `S.GUI.BiasRewardFloor` F (0–50%): with r the share of the animal's last
+`BiasRewardWindow` choices rewarded, the strength used is s × min(1, max(0, (r − F) / (0.5 − F))):
+full at 50% (what a habit earns uncorrected), none at F or below, a straight line between. The
+first form, s × r / F, never switched the correction off, so a persistent habit settled where its
+payoff produced its reward share, r\* = 0.5 / (1 + c / F) with c = 2 s d², below the floor it was
+meant to hold (33% for LUMS0014's habit at F = 40%, s = 0.5). Ramping to none at F lets a habit
+earn 50% again below F, so r settles between F and 50%:
+
+$$
+r^{\ast} = \frac{0.5 + c F / w}{1 + c / w}, \qquad w = 0.5 - F
+$$
+
+about 43% for LUMS0014's habit at F = 40% (the operator chose F in 0–50% with the ramp to 50%,
+2026-10-05, over a fixed width beside it). It applies to every context, side bias included.
+
+**Preparing after the choice.** Trial *k*+1 is prepared as trial *k* starts (D3), before *k*'s
+choice. A context from *k* needs it, so with a context mode (and a strength above 0, in a random
+order: `lum.BiasCorrection.readsRunningChoice`) the loop splits the preparation: the runtime
+settings as before (`syncTrial`), then `lum.SessionRunner.awaitChoice`, which watches
+`Status.CurrentStateName` until trial *k* reaches a state after its choice
+(`lum.BiasCorrection.PostChoiceStates`), and the build and upload (`buildNextTrial`). The state
+read gives the choice (`choiceFromState`): the reward states and the drinking states (a short
+state can pass inside one of `BpodTrialManager`'s 10 ms batches) say the side and the reward,
+`IncorrectChoice` the other side, `NoResponse`, `NoInitiation` and `SidePokeBeforeChoice` none, and
+anything later no context. In the emulator the trial has already run, and the first such state in
+its raw events is read, exactly. On 2026-10-03 to 10-05 a rewarded choice left at least 0.6 s
+(median 2.5–3.4 s), an incorrect one the timeout and ITI, and preparation took 7–11 ms (median)
+but up to 0.55 s on 1% of trials: with timeout + ITI under 0.75 s a slow preparation starts the
+next trial late, with the dead time warning, and validation notes it. `Data.Timing.sync`, `.spec`,
+`.build` and `.awaitChoice` time the parts; on the rig (P15, 2026-10-05) the state machine's build
+was the slow part, up to 238 ms. A 0 s `IncorrectChoice` passed inside one of the trial manager's
+batches unseen (12 of 30 contexts read as none on the rig), so while choices are read a punished
+incorrect choice lasts at least 50 ms (`lum.BiasCorrection.ReadableState`, in `lum.buildTrialSM`);
+`DrinkingGrace` and `WithdrewBeforeReward` also give the side outside habituation, where only the
+paying side leads to them. After the fix every context read live equalled the file's, at 0 s and
+1 s timeouts, with every gap between trials 0.1 ms.
+
+**Retries hide the first choice.** With an unpunished incorrect choice (`PunishCondition` *None*
+or *Early withdrawal*) the wrong poke passes through `RetryResponse`, which lasts no time, and the
+animal is then rewarded at the correct port: the live state says *rewarded*, the scored choice
+was wrong. Context correction is then unavailable: *Correct for* is greyed out in the setup
+dialog and both runtime windows, and side bias is used (`lum.BiasCorrection.activeMode`; the
+operator's choice, 2026-10-05, over refusing the session).
+
+**Blocks.** `S.GUI.TrialOrder` *Blocks*: each block's length is drawn evenly from `BlockMin` to
+`BlockMax` (15–25), or with `BlockSwitchAfterCorrect` N it ends once it has run `BlockMin` and the
+last N choices in it were correct (or at `BlockMax`); the next block takes the other side. A block
+takes patterns leaning to its side or to neither, through the same swap; the trial's side is still
+drawn from its own P(left). What each way of choosing earns in blocks of mean 20: win-stay about
+95%, alternating or one side 50%, following the stimulus 100%. The first trial after a switch
+tells them apart: about 0%, 50% and well above 50%. Block length counts trials prepared, the
+criterion trials recorded, so a block ends one trial after it is met.
+
+**Precedence.** Blocks, then bias correction (with its context and floor), then the run limit; the
+side poke lever is independent of the order. Blocks and bias correction decide only which side the
+next trial should pay, and the swap brings forward a pattern that can pay it: the contingency, the
+group balance over the whole order and the state graph's names do not change.
+
+**The swap's partner (0.10.0).** Up to 0.9.14 the swap took the first later pattern that could pay
+the wanted side, so the patterns it displaced bunched just ahead and came back as a run of one side
+once the correction eased (LUMS0014 2026-10-01: 101 trials at target 0.5, 83% paying left). The
+partner is now drawn at random from every later pattern that can serve (the operator's choice,
+2026-10-05). `strategyTest` replays sessions through 0.9.14's `nextTrialSpec`
+(`tests/legacyNextTrialSpec.m`) and the current one with `'SwapPartner', 'first'`, with every
+strategy setting at its default, and requires identical specs: that, and the random partner, are
+the only changes to a default session's trials.
+
+**Stages.** Choosing *Habituation* or *Experiment* in the setup dialog switches every part off;
+*Experiment* also sets bias correction's strength and the run limit (`S.Task.MaxSameSide`) to 0,
+since both make the side predictable from the trials before (the operator's choice, 2026-10-05).
+*Training* leaves them. An Experiment session may switch any part on: nothing refuses it, the log's
+*Strategy correction* line says what ran, and every trial records what applied.
+
+**What it does to analysis.** Any rule that sets the paying side from what came before makes the
+stimulus predictable from the history: bias correction and the run limit a little, context
+correction more, blocks completely. So:
+
+- each trial records `BiasTargetPLeft`, `BiasContext`, `Block` and `BlockSide`;
+- in a session that ran blocks, the psychometric and evidence panels (online and summary) and the
+  log's *By group* use only trials outside blocks and each block's first trial, and say so; the
+  performance panels shade the blocks; `15_BlockSwitches` and the log's block line are that
+  session's measure of the light;
+- context correction's plots stay as bias correction's always were; a stimulus weight is fitted
+  with the history terms and the context (`python-analysis.md`).
+
+**Consequences.**
+
+- Nothing grows in the trial loop: a vectorised count over the trials so far (as bias correction
+  already made), a mean over the floor's window, a few scalars of block state in the history, and
+  four per-trial series of 8 bytes. `awaitChoice` waits; it does no work.
+- Outcome 7 `SidePokeBeforeChoice`, the series `SidePokeDelays`, `BiasContext`, `Block`,
+  `BlockSide`, and `Data.Timing.sync`, `.spec`, `.build`, `.awaitChoice` are new in the data format;
+  files without them read as before (`data-format.md`, *Reading older files*).
+- With task-event sync the line drops in the two new states and rises again as the wait resumes,
+  as after an early withdrawal (`sync-and-barcode.md`).
+
+---
+
 ## What is built, and where
 
 ### Rig config, device shims, preflight
@@ -1394,6 +1542,8 @@ CentreHold        → EarlyWithdrawal (no grace) | HoldBreak ⇄ CentreHoldResum
 HoldBreak         → EarlyWithdrawal            (grace ran out)
 EarlyWithdrawal   → WaitForCentrePoke          (Restart stimulus) | WaitForLightEnd (End trial)
 WaitForCentrePoke → NoInitiation               → WaitForLightEnd   (hold window over)
+WaitForCentrePoke → SidePokeDelay              → WaitForCentrePoke (side poke, Delay; D23)
+WaitForCentrePoke → SidePokeBeforeChoice       → WaitForLightEnd   (side poke, End trial; D23)
 WaitForCentreExit → NoResponse                 → WaitForLightEnd
 *RewardDelay      → WithdrewBeforeReward       → WaitForLightEnd
 ```
@@ -1427,8 +1577,10 @@ moment the hold ends, whatever the animal intended. So:
 
 Around it:
 
-- `+lum/nextTrialSpec.m` — pure: the queue, run limit and bias correction by swapping,
-  contingency, stage, sync width, hold and grace.
+- `+lum/nextTrialSpec.m` — pure: the queue; blocks, bias correction and the run limit by
+  swapping (D23), contingency, stage, sync width, hold and grace.
+- `+lum/BiasCorrection.m`, `+lum/Blocks.m` — pure: context correction and its reward floor, and
+  blocks (D23). `+lum/describeStrategy.m` — the strategy correction in one line.
 - `+lum/HoldShaping.m` — pure: automatic shaping's active mode, the next hold and grace and when
   the hold steps back (D6), break modes (D10).
 - `+lum/triggerStates.m` — pure: where the next trial may be prepared (D3, D10).
@@ -1505,7 +1657,8 @@ MATLAB, power-cycle the state machine and PulsePal).
 ### Summary plots and log
 `+lum/+report/` (D22): `write` (the behaviour teardown's call), `summaryPlots`, `sessionLog`,
 `sessionTrials` (the one pass over `SessionData` both read, its settings as run),
-`pulseLocking` (early withdrawals against the light's pulses, beyond their times' shape), `folder`, `fileTag`, `heading`,
+`pulseLocking` (early withdrawals against the light's pulses, beyond their times' shape),
+`habits` (side-port habits and block switches, D23), `folder`, `fileTag`, `heading`,
 `replayOnlinePlots` and `fromFile` (a saved session, read only). `lum.trialStatus` is the runtime
 window's trial lines. `lum.holdMeasures` is what all of them, and the online figure, say about a
 trial's hold. `lum.gui.styleAxes` and `lum.gui.panelLegend` give every plot panel the theme's look.
@@ -1628,6 +1781,10 @@ Questions answered on the rig move to [`rig-checks.md`](rig-checks.md) (*Done*),
   flush. A session that ends on an error can release a queued trial the same way (its teardown's
   single `RunProtocol('Stop')`), so the fix belongs where both paths leave the loop. Until then the
   data docs say to detect and discard it.
+- Rig check P15 part 2 on an animal: how often a preparation after the choice starts the next
+  trial late at LUMS0014's 1 s timeout (D23; `Data.Timing.awaitChoice`, `.spec`, `.build`).
+- Whether blocks should shorten automatically, under automatic shaping, once the first trial after
+  a switch is reliably correct (D23: by hand from day to day for now).
 - Bias correction reorders a balanced order (D5), so its long-run effect is bounded by the
   set's own side proportion. If sustained correction is needed, the alternative is to let it
   draw outside the balance and record the imbalance.

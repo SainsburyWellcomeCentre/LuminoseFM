@@ -79,6 +79,7 @@ choosing left or right with a wheel.
 | 2026-10-02 | Training, a wrong choice ends the trial | on, window 0.3 s | 733 | 47% | 58% / 62% |
 | 2026-10-03 | Training, a wrong choice ends the trial | on, window 0.3 s | 471 | 49% | 58% / 59% |
 | 2026-10-04 | Training, a wrong choice ends the trial | on, window 0.3 s, 12 mW/mm², 20 Hz × 20 ms | 458 | 50% | 50% / 51% |
+| 2026-10-05 | Training, a wrong choice ends the trial, 1 s timeout | on, window 0.3 s, 12 mW/mm², 20 Hz × 20 ms | 600 | 47% | 66% / 66% |
 
 The procedure took 3 days, in line with the 2–7 days of pretraining above. LUMS0014 now does 350
 to 730 trials a session and completes nearly every hold. There is no sign yet that the light
@@ -148,6 +149,55 @@ against 18–38% at the start of each of the five sessions before, and 40–49% 
 may be the new light being noticed, or one day's variation; a single session cannot tell. Counted as
 the first day of a new start for a first split.
 
+On 2026-10-05 (day 6) a wrong choice also cost a 1 s timeout (`PunishTimeout` 0 → 1 s; the light
+as on 10-04). Again no split: P(left | A) 66%, P(left | B) 66%, the stimulus weight −0.08 ± 0.22.
+The left bias came back (66% of choices, while bias correction made the left side pay on 41% of
+trials), and the last trial no longer showed in the choice: the mouse repeated its last choice on
+49% of trials after a reward and 50% after an error (it changed side after 63–75% of errors on the
+five punished days before). In the port it held better than on 10-03 and 10-04: early withdrawals
+ended 36% of attempts (49–50%), and 67% of holds were completed on the first attempt. Its choices
+are explained instead by the alternation below. 3,327 punished trials so far, with no split.
+
+### Side-port alternation
+
+Found 2026-10-05. LUMS0014 alternates between the side ports on every visit, scored or not: its
+choice is the port opposite the side port it poked last on 96–98% of trials in every training
+session, and 90–95% in the three habituation sessions. A side poke outside the response window
+costs nothing and pays nothing. On 10-05, 355 of 595 choices had one between the trial's start and
+the response window: before the first centre poke on 164, between hold attempts on 142, both on
+49. 213 trials began with a side poke, and on 82% of them it was at the port opposite the previous
+trial's choice. The choice went opposite the last such poke on 97%. A logistic fit of the choice with the stimulus, the last choice, the last
+choice × its reward, the bias correction's target and the last side port visited gives that last
+term a weight of −3.2 ± 0.23 and the stimulus −0.08 ± 0.22.
+
+| Session | Choice opposite the last side poke | After a centre poke, the next side poke is the other side |
+|---|---|---|
+| 2026-09-25 to 09-27 (habituation) | 90%, 94%, 95% | 56%, 76%, 88% |
+| 2026-09-28 to 10-04 (training) | 96–98% | 89–96% |
+| 2026-10-05 | 98% | 96% |
+
+So the choice is set by which side port the mouse visited last, and the stimulus has little room
+to show. The habit pays half the time, because which side pays is random: the visit before the
+choice was on the wrong side on 48% of trials, choices after such a visit were correct on 48%,
+those without on 45%, and runs of correct trials were no longer than in the same choices shuffled
+(longest 8, against 7.9). Through the choices alone the habit looks like a choice-to-choice
+pattern that changes with what happens between choices: alternation of choices when no side poke
+comes between them, and repetition when one does. The lose-shift of 09-30 to 10-04 is consistent
+with it, and so is 10-05's 50% once a 1 s timeout gave the mouse time for a side poke in between
+(34 of 314 timeouts had one). The trial order offers nothing against it (`S.Task.MaxSameSide`,
+bias correction): a habit that ignores the stimulus scores 50% on any random order.
+
+**Levers (0.10.0, built 2026-10-05).** Strategy correction (README §3, D23) gives three: a side poke
+before the response can delay or end the trial; context correction makes a habit read in the
+choice before pay less (an alternator about 25% at strength 0.5, about 43% with a 40% floor), while
+following the light still earns every correct choice; blocks make staying on the side that paid
+earn about 95% and test the light on each block's first trial. Every session's log now has a
+*Habits* line with the measures in the table above (`lum.report.habits`; `14_Habits` can be drawn
+for the earlier sessions with `lum.report.fromFile(..., 'Plots', 14)`). The order of use for
+LUMS0014 is in `plan-habit-levers.md`: *Delay* 1 s first, then context correction, blocks last. No
+session has run a lever yet; record each here with its *Habits* line, and for blocks the first
+trial after a switch rather than % correct.
+
 ### Do the pulses reach the mouse?
 
 Measured 2026-10-03, when four punished sessions had shown no split and nothing had shown that
@@ -191,6 +241,7 @@ after a pulse began that it points to and its p against the surrogates' spread i
 | 2026-10-02 | yes | 535 | 0.124 (0.033) | 0.066 at 37 ms | 0.058 at 37 ms | 0.16 |
 | 2026-10-03 | yes | 431 | 0.142 (0.021) | 0.069 at 37 ms | 0.081 at 42 ms | 0.063 |
 | 2026-10-04 | yes, 20 ms pulses at 12 mW/mm² | 434 | 0.108 (0.17) | 0.070 at 37 ms | 0.067 at 47 ms | 0.15 |
+| 2026-10-05 | yes, 20 ms pulses at 12 mW/mm² | 306 | 0.108 (0.32) | 0.078 at 36 ms | 0.030 at 38 ms | 0.76 |
 
 - **20 Hz stands out.** Pooled over the light sessions it is the strongest frequency from 10 to
   40 Hz; neither 10 nor 40 Hz exceeds the shape's surrogates.
@@ -228,9 +279,9 @@ escaping at the implant and seen, and a sound from the LED driver or the LED swi
 give it. That A and B lock alike weakly argues against what scales with LED current (driver noise,
 light leaking at the commutator or the patch cords), since B runs at twice A's current, but it
 does not rule out light escaping at the implant, which follows the irradiance at the tips; and the
-test has little power for that difference. The rig check *P14* (`docs/rig-checks.md`) looks and
-listens for both; a session with the cable connected and the light blocked from the bulb would
-settle it. Nor is it discrimination: the choices still do not tell A from B.
+test has little power for that difference. The rig check *P14* (`docs/rig-checks.md`, *Done*,
+2026-10-05) found neither: no blue light escaping from the cables, commutator or ferrule, and no
+sound from the LED driver. That leaves the bulb, if the locking is real. Nor is it discrimination: the choices still do not tell A from B.
 
 **2026-10-04, 20 ms pulses at 12 mW/mm².** R did not rise: 0.108 (bootstrap 95% interval
 0.05–0.18), against 0.124 and 0.142 on the two days before; the difference from those two pooled is
@@ -239,6 +290,14 @@ One session cannot show a change smaller than about 0.08 either way, so this ses
 the locking did not jump. If the mouse responded at a fixed delay after a pulse began, the phase
 would stay at about 40 ms; at a fixed delay after a pulse ended it would move by the 15 ms the pulse
 grew, to about 55 ms. 10-04's 47 ms sits between the two and does not decide.
+
+**2026-10-05, the same light.** Nothing beyond the shape over the session (0.030, p 0.76). The log
+gives channel A's withdrawals 0.195 beyond their shape (p 0.003, n 136) and B's 0.105 (p 0.16, n
+170), pointing 36 and 10 ms after a pulse began; their sum is what cancels. One channel in one
+session is one of 22 such tests over the 11 sessions, and the habituation sessions, with no light,
+gave A's would-be pulses p 0.007 (09-25) and 0.005 (09-27). A's direction also moves from session
+to session (23–49 ms over the six punished sessions, 1 ms on 09-29). Not a sign of perception on
+its own; A beyond the shape is one more thing to watch.
 
 Every behaviour session now reports it: a line in the log's *Behaviour* section and the summary plot
 `13_PulseLocking`, leading (from 0.9.14) with the locking beyond the shape, the time it points to
@@ -489,4 +548,4 @@ the *Light* column of the table above. If the stronger light changes nothing, a 
 against no light tests perception directly. More light also makes it likelier that the mouse sees
 blue light escaping at the implant: that cannot tell A from B, since both are equal, but it matters
 in a light-against-dark test, and it would raise the pulse locking without the bulb's help (rig
-check *P14*).
+check *P14* found none at 12 mW/mm², 2026-10-05).

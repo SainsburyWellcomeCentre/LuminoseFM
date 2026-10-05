@@ -40,6 +40,16 @@ function history = newHistory(capacity)
 %                  the next is prepared, which automatic shaping grows from and the run
 %                  limit counts (lum.HoldShaping.notePrepared); 0, NaN, NaN, NaN before
 %                  the first
+%   .runningTrial, .runningChoice, .runningRewarded  The running trial's choice and reward
+%                  as read live, before it is recorded, for context correction's next
+%                  context (lum.BiasCorrection.noteChoice); 0, NaN, NaN before any
+%   .preparedBlock The block of the trial last prepared; 0 in a random order (lum.Blocks)
+%   .blockIndex, .blockSide, .blockStart, .blockLength  The last block's number, side,
+%                  first trial and drawn length (lum.Blocks.notePrepared); 0, NaN, NaN, NaN
+%                  before any
+%   .runBlock, .blockCorrectRun  Correct choices in a row, among the recorded trials of
+%                  block runBlock (lum.updateHistory); what Switch after correct in a row
+%                  reads
 %
 % This is a pure function: no hardware, no globals, unit-testable offline.
 %
@@ -54,4 +64,7 @@ history = struct('capacity', capacity, 'nTrials', 0, ...
                  'earlyWithdrawals', blank, 'centreRewarded', blank, ...
                  'responseRetries', blank, 'centreHoldTime', blank, 'withdrawalsAtHold', 0, ...
                  'centreRewardAgainFrom', 0, 'preparedTrial', 0, 'preparedHold', NaN, ...
-                 'preparedGrace', NaN, 'preparedSide', NaN);
+                 'preparedGrace', NaN, 'preparedSide', NaN, 'runningTrial', 0, ...
+                 'runningChoice', NaN, 'runningRewarded', NaN, 'preparedBlock', 0, ...
+                 'blockIndex', 0, 'blockSide', NaN, 'blockStart', NaN, 'blockLength', NaN, ...
+                 'runBlock', 0, 'blockCorrectRun', 0);

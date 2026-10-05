@@ -182,8 +182,9 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
 `StimulusGroup`, `PatternIndex`, `CorrectSide`, `Choice`, `Correct`, `Rewarded`, `Outcome`,
 `ReactionTime`, `OptoOn`, `SoundOn`, `HouseLight`, `SyncMode`, `SyncPulseWidth`, `BiasTargetPLeft`,
 `TrainingStage`, `HoldDuration`, `HoldGrace`, `HoldBreaks`, `HoldAttempts`, `EarlyWithdrawals`,
-`CameraTime`, `LEDCurrentA`, `LEDCurrentB`, `CentreReward`, `ResponseRetries` and `CentreHoldTime`,
-plus `TrialSettings` (the runtime parameters only, `S.GUI` as trial *k* was prepared: the values it
+`CameraTime`, `LEDCurrentA`, `LEDCurrentB`, `CentreReward`, `ResponseRetries`, `CentreHoldTime`,
+`BiasContext`, `Block`, `BlockSide` and `SidePokeDelays` (the last four from 0.10.0), plus
+`TrialSettings` (the runtime parameters only, `S.GUI` as trial *k* was prepared: the values it
 ran with) and `OutcomeNames` for decoding `Outcome`.
 
 Outcome codes are never renumbered. `HoldAttempts` counts how many times the stimulus started on
@@ -236,6 +237,25 @@ same all session), or automatic shaping's growing hold. The drinking after a sid
 trial's states: `DrinkingLeft`/`DrinkingRight` from the valve closing to the animal leaving the port,
 and `DrinkingGrace`, `TrialSettings{k}.DrinkingGrace` long, one row per time it ran (a side poke
 within it goes back to drinking and starts it again).
+
+**Strategy correction (0.10.0, D23).** What applied to each trial:
+
+| Series | What it holds |
+|--------|---------------|
+| `BiasTargetPLeft` | The P(left) the order aimed for: bias correction's target (0.5 when it did not act), or in a block the block's side as 1 (left) or 0 (right) |
+| `BiasContext` | The context bias correction read the animal's lean in (`TrialSettings{k}.BiasCorrectFor`): 1 side bias; 2 after a left choice, 3 after a right; 4 after a rewarded left, 5 an unrewarded left, 6 a rewarded right, 7 an unrewarded right; 0 none (the first trial, no choice on the trial before, or its choice not read in time: corrected for side bias); NaN when bias correction did not act (strength 0, or blocks). Codes are never renumbered |
+| `Block` | The block the trial was in, numbered from 1 (`TrialSettings{k}.TrialOrder` *Blocks*); 0 in a random order. A trial's place in its block is the count since `Block` last changed |
+| `BlockSide` | That block's side, 1 left or 2 right; NaN in a random order. With patterns of P(left) between 0 and 1 a trial in a block can still pay the other side (`CorrectSide`): its side is drawn from its own P(left) |
+| `SidePokeDelays` | Side pokes that delayed the trial while it waited for a centre poke (visits to `SidePokeDelay`, *Side poke before the response* *Delay*) |
+
+Outcome 7, `SidePokeBeforeChoice`, is a trial ended by a side poke while it waited for a centre
+poke (*End trial*): no choice, `Rewarded` 0, state `SidePokeBeforeChoice` then `WaitForLightEnd`.
+With a context mode the next trial was prepared after the running one's choice: `BiasContext`
+above 1, and `Timing.awaitChoice` the seconds the loop waited for it; a punished incorrect choice
+then lasted at least 50 ms (`IncorrectChoice`), whatever `TrialSettings{k}.PunishTimeout` says, so
+the loop could see it. In a session that ran blocks
+the side a trial paid inside a block was set by the block, not drawn: measure the light from each
+block's first trial and the trials outside blocks (*Sessions with strategy correction* below).
 
 **The light after the hold (0.9.5).** A completed hold does not stop the light: the pattern plays
 to its end (its last segment's onset plus duration, from `CentreHold`'s last entry) while the animal
@@ -296,7 +316,26 @@ when the ITI covered that time (`TrialSettings{k}.ITI`, 0.25 s by default, `lum.
 late by the rest when it did not; and
 `memoryGB` (0.9.6), the memory MATLAB was using, in GB, on every trial with a save
 (`Settings.Session.SaveEveryNTrials`) and on the last trial as the session ended, NaN on the others
-and off Windows.
+and off Windows. From 0.10.0 `prepare` is the sum of its parts: `sync` (the runtime window and the
+centre reward asked for again), `spec` (`lum.nextTrialSpec` and the valve times) and `build` (the
+state machine); `awaitChoice` is the time the loop waited for trial *k*'s choice before preparing
+trial *k*+1 (context correction, D23), 0 otherwise, and not part of `prepare`. All four are 0 on
+the last trial.
+
+### Sessions with strategy correction
+
+Which measures compare across sessions depends on what set each trial's side (D23):
+
+| Measure | Random order | Context correction | Blocks |
+|---|---|---|---|
+| % correct, performance | the light, and a habit's 50% | the light, a habit pushed below 50% | mostly win-stay: about 95% without the light |
+| Psychometric, P(left) by group | the light | the light, correlated with `BiasContext` | only from `Block == 0` trials and each block's first trial |
+| Stimulus weight (logistic fit) | with the history terms | with the history terms and `BiasContext` | only from each block's first trial |
+| First trial after a switch | – | – | the light alone |
+| Pulse locking, hold, reaction time, water | unaffected | unaffected | unaffected (by group: compare within a block position) |
+
+`Settings.Task.MaxSameSide` and `GUI.BiasCorrection` make the side predictable a little in every
+session that uses them; choosing the Experiment stage switches both off from 0.10.0.
 
 ---
 
@@ -523,6 +562,14 @@ the null device shims swallowed is recorded in `Data.Session.DeviceLog`. See
 ---
 
 ## Reading older files
+
+- **Sessions before 0.10.0** have no `BiasContext`, `Block`, `BlockSide` or `SidePokeDelays`, no
+  outcome 7, no `Timing.sync`, `.spec`, `.build` or `.awaitChoice`, and none of the strategy
+  settings in `TrialSettings`: they ran a random order, ignored side pokes before the response and
+  corrected bias for side bias alone. `lum.report.sessionTrials` reads them as `Block` 0,
+  `BlockSide` NaN, `SidePokeDelays` 0 and `BiasContext` NaN. Their bias correction
+  and run limit swapped with the first later pattern that could pay the wanted side, so the patterns
+  it displaced came back in a run once it eased (D23); from 0.10.0 with one drawn at random.
 
 - **Sessions before 0.9.11** stopped from the console have at most one trial pulse after the last
   recorded trial (the trial the End button cut short), not two (*Video*, *Unrecorded trials at the

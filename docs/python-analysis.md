@@ -67,8 +67,13 @@ sd = raw["SessionData"]          # nested dicts, numpy arrays and lists
   `Step`, `Block`, and every menu setting in `TrialSettings` (an index into
   `Session.Settings.GUIMeta.<name>.String`). Keep them 1-based in the HDF5 file, and say so in an
   attribute, or convert all of them in one place; never some.
-- **Outcome codes** are `Outcome` 0–6 with names `SessionData.OutcomeNames` (0-based: `Outcome` 0 is
-  `OutcomeNames[0]`). They are never renumbered.
+- **Outcome codes** are `Outcome` 0–7 with names `SessionData.OutcomeNames` (0-based: `Outcome` 0 is
+  `OutcomeNames[0]`); 7, `SidePokeBeforeChoice`, from 0.10.0. They are never renumbered.
+- **Strategy correction (0.10.0)** adds `BiasContext` (codes 0–7, NaN where bias correction did
+  not act: decode with the table in `data-format.md`, *One value per trial*), `Block` (0 in a random
+  order, else the block's number, from 1: not an index), `BlockSide` (1 left, 2 right, NaN) and
+  `SidePokeDelays` (a count). A file without them is a random order with side pokes ignored: fill
+  `Block` 0, `BlockSide` NaN, `SidePokeDelays` 0, `BiasContext` NaN.
 - **NaN means absent** (no choice, no video, a trial with no reaction time). Logical values may
   arrive as `uint8` or `bool`.
 - **One field holds a MATLAB `string` object**, `Session.DoricLED.Device.Package.Stats.Command`,
@@ -258,6 +263,9 @@ A layout to start from (groups in bold; arrows name the LuminoseFM source):
                                      early_withdrawals, centre_hold_time, centre_reward, response_retries,
                                      bias_target_p_left, opto_on, sound_on, house_light, training_stage,
                                      sync_mode, sync_pulse_width, led_current_a, led_current_b, camera_time,
+                                     bias_context, block, block_side, side_poke_delays (0.10.0; filled as
+                                     §2 says for older files), block_position (derived: 1 on a block's first
+                                     trial), for_stimulus (derived: block == 0 or block_position == 1),
                                      reward_amount (from TrialSettings), t_stimulus_onset (last CentreHold entry)
 /behaviour/runtime_settings          table, one row per trial <- TrialSettings (one column per runtime setting)
 /behaviour/states                    table: trial, state (code), visit, t_start, t_end (t_bpod)
@@ -266,7 +274,8 @@ A layout to start from (groups in bold; arrows name the LuminoseFM source):
                                      (Port1In..Port3Out, BNC1High/Low, GlobalTimer<i>_Start/_End, Condition<i>)
 /behaviour/light                     table: trial, segment, channel, t_on, t_off (t_bpod), current_mA,
                                      irradiance_mW_mm2  <- GlobalTimer<i>_Start/_End with the pattern's segments
-/behaviour/timing                    table <- SessionData.Timing (prepare, send, plot, save, memoryGB)
+/behaviour/timing                    table <- SessionData.Timing (prepare, send, devices, plot, save, memoryGB;
+                                     sync, spec, build, await_choice from 0.10.0)
 
 /sleep/sync_pulses                   table <- SyncPulses (onset, width, block)          (sleep and ePhys)
 /sleep/light_segments                table <- LightSegments (onset, duration, channel, step, epoch, block, current_mA)
@@ -365,6 +374,7 @@ full list.
 
 | Before | What to do |
 |---|---|
+| 0.10.0 | No `BiasContext`, `Block`, `BlockSide`, `SidePokeDelays`, outcome 7 or `Timing.sync`/`spec`/`build`/`awaitChoice`: fill as §2 says. Bias correction and the run limit swapped with the first later pattern that could pay the wanted side (from 0.10.0 a random one), so displaced patterns bunched just ahead: a stretch after the correction eased can lean to one side (LUMS0014 2026-10-01: 101 trials, 83% paying left) |
 | 0.9.11 | At most one unrecorded trial pulse after the last trial (two from 0.9.11, §4). No `Timing.devices`. From 0.9.8, a session with light has a 0.01–0.35 s gap between every trial's end and the next one's start (`TrialStartTimestamp(k+1) - TrialEndTimestamp(k)`) with no state machine running: pokes then are not in `RawEvents`. The ITI was 0 s by default (0.25 s from 0.9.11). Video from SpinCam engine 1.2.0 or earlier may have 128 s steps in `HardwareTimestamp_us` (§3) |
 | 0.9.8 | `Settings.Task.HoldLength` / `FixedHold` are `Settings.GUI.HoldLength` (index: 1 whole stimulus, 2 fixed) / `GUI.FixedHold` from 0.9.8, and per trial in `TrialSettings`. A session with light always reserves the light clock from 0.9.8. Same-side runs could reach `MaxSameSide` + 1. The version string has no commit on the rig |
 | 0.9.7 | Sleep and ePhys sessions stopped mid-block have no `StoppedBlock` |
@@ -406,6 +416,26 @@ record in the HDF5 file (`/checks`, one row per check with its value and pass/fa
   `Timing.devices` above its ITI's remaining time (an ITI below 0.25 s); the camera hardware clock
   has no step (engine 1.3.0), or none left once the 128 s ones are removed
 - `StoppedReason` is empty, and the session's settings are as the log says
+- from 0.10.0, with *Correct for* a context (`TrialSettings[k].BiasCorrectFor` 2 or 3, incorrect
+  choices punished, strength above 0, random order): `BiasContext[k]` equals the context of trial
+  *k*-1's `Choice` and `Rewarded` (codes in `data-format.md`), except 0 where the choice was not
+  read in time; with blocks, `CorrectSide` equals `BlockSide` on every trial of a pure-channel set,
+  and block lengths lie within `BlockMin`–`BlockMax` (except the last, and one cut short by the end
+  of the order)
+
+### Analysing a session with strategy correction
+
+Blocks and context correction set the paying side from what came before (`data-format.md`,
+*Sessions with strategy correction*). For a stimulus weight, fit the choice with the history terms
+the audits use (the last choice, its reward, the last side poked) and, with context correction,
+the context, from the per-trial series: `BiasContext` is the context the order used. In a session
+that ran blocks fit only `for_stimulus` trials (outside blocks, and each block's first trial), and
+report the first trial after a switch (`block_position == 1` with a block before it) as the
+session's measure of the light: correct on about 0% for win-stay, 50% for alternation, above 50%
+for an animal that uses the stimulus. The side-port habits, computed as `lum.report.habits` does:
+gather every `Port1In`/`Port3In` of the session on the Bpod clock (`TrialStartTimestamp[k] + t`),
+sorted; a trial's choice poke is the first side poke at or after its first `WaitForResponse` entry;
+the last side poke is the one just before it.
 - every `_ANLG.dat` in Session Data has its `.mat` (one without is a cancelled launch: reported, not
   read as a session)
 

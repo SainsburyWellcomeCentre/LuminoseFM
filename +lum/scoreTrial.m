@@ -33,6 +33,8 @@ function result = scoreTrial(trialEvents, spec, rig)
 %                  (CentreReward), else 0
 %   .ResponseRetries  Unpunished wrong choices the animal was let retry after (visits
 %                  to RetryResponse); 0 when incorrect choices are punished
+%   .SidePokeDelays  Side pokes before the response window that delayed the trial
+%                  (visits to SidePokeDelay, S.GUI.SidePokeBeforeChoice 'Delay'); 0 otherwise
 %   .CentreHoldTime  Seconds from the poke that began the trial's last hold (or
 %                  latency) to the animal first leaving the centre port after it;
 %                  NaN if the stimulus never started or the animal never left
@@ -53,7 +55,7 @@ result = struct('Outcome', lum.Outcome.NoResponse, 'Choice', NaN, ...
                 'Correct', NaN, 'Rewarded', 0, 'ReactionTime', NaN, 'HoldBreaks', 0, ...
                 'HoldAttempts', 0, 'EarlyWithdrawals', 0, 'CentreRewarded', 0, ...
                 'ResponseRetries', 0, 'CentreHoldTime', NaN, 'HoldCompleted', 0, ...
-                'HeldFirstAttempt', 0);
+                'HeldFirstAttempt', 0, 'SidePokeDelays', 0);
 
 %% Which side was poked, and how quickly
 % Only a poke inside the response window is a choice: the one that ended its first visit.
@@ -84,13 +86,18 @@ result.HoldCompleted = measures.Completed;
 result.HeldFirstAttempt = measures.FirstAttempt;
 result.CentreRewarded = double(visited(states, 'CentreReward'));
 result.ResponseRetries = nVisits(states, 'RetryResponse');
+result.SidePokeDelays = nVisits(states, 'SidePokeDelay');
 result.CentreHoldTime = centreHoldTime(states, events, rig);
 
 %% Outcome, in the order the trial could have ended
 % An EarlyWithdrawal visit ends the trial only if the hold was never completed
 % afterwards: when a break restarts the stimulus, the same trial can pass through
-% EarlyWithdrawal and still go on to a choice.
-if visited(states, 'NoInitiation')
+% EarlyWithdrawal and still go on to a choice. A side poke before the response window that
+% ended the trial (SidePokeBeforeChoice) leaves it from WaitForCentrePoke, so it never
+% shares a trial with NoInitiation or a choice.
+if visited(states, 'SidePokeBeforeChoice')
+    result.Outcome = lum.Outcome.SidePokeBeforeChoice;
+elseif visited(states, 'NoInitiation')
     if result.HoldAttempts > 0
         result.Outcome = lum.Outcome.HoldNotCompleted;
     else

@@ -23,7 +23,7 @@ means. The rig, the data format and the design live in [`docs/`](docs):
 | look up a word, or what changed between versions | [`docs/naming-and-versions.md`](docs/naming-and-versions.md) |
 | run everything with no hardware attached | [`docs/emulator.md`](docs/emulator.md) |
 | know what has been checked on the rig, and what still needs someone there | [`docs/rig-checks.md`](docs/rig-checks.md), and the pre-deployment report [`docs/validation-2026-09-24.md`](docs/validation-2026-09-24.md) |
-| change the code: design decisions D1–D22 and where each lives | [`docs/architecture.md`](docs/architecture.md), [`docs/repository.md`](docs/repository.md) (layout and tests) |
+| change the code: design decisions D1–D23 and where each lives | [`docs/architecture.md`](docs/architecture.md), [`docs/repository.md`](docs/repository.md) (layout and tests) |
 | look up any function or class at the MATLAB prompt, or write comments and help text | §15 below, and [`docs/code-style.md`](docs/code-style.md) |
 
 Coding agents start from [`CLAUDE.md`](CLAUDE.md) (also `AGENTS.md`).
@@ -283,11 +283,11 @@ plots count centre water apart from side water. It is ignored in Training and Ex
 Choosing a stage also sets the session up the way that stage is normally run, the moment it is
 chosen:
 
-| Stage | Light pattern | Stimulus air | Centre light cue | Automatic shaping |
-|-------|---------------|--------------|------------------|-------------------|
-| Habituation | **off** | **on**, for the whole stimulus window | **on** | **on** |
-| Training | on | off | as it was (on by default) | **on** |
-| Experiment | on | off | as it was (on by default) | **off** |
+| Stage | Light pattern | Stimulus air | Centre light cue | Automatic shaping | Strategy correction |
+|-------|---------------|--------------|------------------|-------------------|---------------------|
+| Habituation | **off** | **on**, for the whole stimulus window | **on** | **on** | **off** |
+| Training | on | off | as it was (on by default) | **on** | as it was |
+| Experiment | on | off | as it was (on by default) | **off** | **off**, with bias correction and *Max same side in a row* at 0 |
 
 A habituation trial with the defaults:
 1. The centre light comes on at trial start and stays on through the hold.
@@ -305,7 +305,8 @@ will be later, and carries nothing to discriminate. Habituation and Training sha
 from the animal's performance — in habituation from a hold short enough to earn the centre reward
 on the first visits; an experiment asks every animal for the same trial. These are defaults, not
 a lock — untick or tick anything afterwards and the session runs as you leave it — with one
-exception: **an Experiment session cannot start with automatic shaping on.**
+exception: **an Experiment session cannot start with automatic shaping on.** Strategy correction
+(below) may be switched on in an experiment; the log then says which parts ran.
 
 ### Reversing the contingency
 
@@ -366,6 +367,92 @@ or the fixed hold. The
 shaping parameters are tuned during the session from the runtime window. The hold each trial
 required, its grace, the number of forgiven breaks and the number of early withdrawals are
 recorded per trial. Later, automatic shaping will also choose easier or harder trial types.
+
+### Strategy correction: levers against habits
+
+A mouse can earn half its rewards with a habit that ignores the light: alternating between the side
+ports, staying on one, repeating what was rewarded. In a random order every such habit earns 50%,
+so nothing pushes it off. LUMS0014 alternated on every visit, its choice opposite the side port it
+had poked last on 96–98% of choices (2026-09-28 to 10-05), with a free side poke between most
+trials. **Strategy correction** (0.10.0) is three levers against habits, and a measure of them.
+Every lever is a runtime setting on the runtime window's **Strategy** tab (and the setup dialog's
+Runtime tab), **off by default**, switched off by choosing *Habituation* or *Experiment*, and can
+be changed during the session (from the next trial prepared). Change one thing at a time, as for
+the light, so a change in behaviour can be put down to it.
+
+**The habits, every session.** The session log's *Habits* line and the summary plot `14_Habits`
+say how often the animal chose the port opposite the last side port it poked, went to the other
+side after a centre poke, alternated its choices (against what its side bias alone would give),
+repeated its last choice after a reward and after an error, and poked a side port before the
+response window (before the first centre poke, or between hold attempts). Judge every lever from
+this line, not from % correct.
+
+**1. Side pokes before the response** (*Side pokes* panel). A side poke while the trial waits for
+a centre poke (from trial start, and after an early withdrawal) cost nothing before 0.10.0, and set
+the habit's next side. `Side poke before the response`:
+
+| Setting | What a side poke does | Cost to the animal |
+|---|---|---|
+| *Ignore* (default) | nothing | none |
+| *Delay* | the cue goes off and centre pokes are ignored for `Side poke delay` (1 s), then the trial waits for a centre poke again; the hold window keeps running | time |
+| *End trial* | the trial ends unrewarded (outcome *side poke before the response*), with the early withdrawal's punishment if early withdrawals are punished | the trial |
+
+A trial ended by a side poke within half a second of its start can make the next one start a few
+ms late (one *dead time* warning in the console); a punishment timeout for early withdrawals
+avoids it. Start with *Delay*. Nothing in it makes the habit pay less, so % correct should stay near 50%; it
+has done its job when side pokes before the response fall from about 0.6 a trial to under 0.1 (the
+*Habits* line), after which the habit shows in the choices themselves. *End trial* is the harder
+version. If the animal is rewarded on fewer than 40% of trials, or runs far fewer, shorten the delay
+or go back.
+
+**2. Context correction** (*Bias* panel). Bias correction normally reads the animal's lean over all
+its recent choices. `Correct for` reads it in the trial's **context** instead:
+
+| `Correct for` | Reads the lean | Counters |
+|---|---|---|
+| *Side bias* (default) | over the last `Bias window` choices, as before 0.10.0 | a side bias |
+| *Last choice* | after a left choice, and after a right one, apart | alternating, staying on one side, side bias |
+| *Last choice and reward* | after a rewarded and an unrewarded left or right choice | also win-stay and lose-shift |
+
+In each context the next trial pays left with chance 0.5 + strength × (0.5 − *f*), *f* the share of
+left choices there, as plain bias correction does. A habit is then right less often than chance (an
+animal that alternates strictly, at strength 0.5: about 25%), while an animal that follows the
+light is still rewarded on every correct choice: which side each light pays never changes, only the
+order. `Reward floor (%)` keeps the habit's reward from falling too far: with the animal's share of
+rewarded choices (over the last `Reward floor window`, 50 choices) at the floor or below, no
+correction; at 50% or more, full strength; in between, in proportion. A strong habit then settles a
+little above the floor (LUMS0014's at 40%: about 43%); a lower floor pushes harder. 0 is no floor.
+Context correction needs incorrect choices **punished** (*Punish on* *Incorrect choice* or *Both*):
+while they are retried, `Correct for` is greyed out and side bias is used, because the first choice
+of a retried trial cannot be read in time. It also prepares each trial once the trial before has
+chosen: with less than 0.75 s of timeout and ITI after an incorrect choice, a slow preparation can
+start the next trial late (the setup dialog's note, and a console warning when changed during the
+session). While it reads choices, a punished incorrect choice lasts at least 50 ms, even with a 0 s
+timeout, so the session can see it.
+
+**3. Blocks** (*Blocks* panel). `Trial order` *Blocks* holds the paying side for a block of trials,
+`Block length, shortest`–`longest` (15–25, drawn at random per block, so a switch cannot be counted
+to), then changes it; with `Switch after correct in a row` N above 0, a block ends once it has run
+its shortest and the last N choices in it were correct. Bias correction and *Max same side in a
+row* do not act in blocks. Staying with the side that just paid then earns about 95%, alternating
+or one side still 50%, following the light 100%. A block's **first trial** is the test of the light:
+correct on about 0% for an animal that stays, 50% for one that alternates, above 50% for one that
+uses the light; with 15–25, about 30 switches in a 600-trial session decide it (20 or more correct of
+30). The log's *Blocks* line and the summary plot `15_BlockSwitches` give it. Inside a block the
+side is set by the block, so the psychometric and evidence panels and the log's *By group* count
+only trials outside blocks and each block's first trial, and the performance panels shade the
+blocks.
+
+**The order for LUMS0014** (the operator's, 2026-10-05): side pokes *Delay* 1 s for two sessions;
+then context correction, *Last choice and reward*, strength 0.5, floor 40%, side pokes kept; blocks
+of 15–25 last, if nothing else works. When the first trial after a switch is at 20 or more of about
+30 correct for two sessions, shorten the blocks (10–15, then 5–10), then go back to a random order
+with context correction. A random order with no lever is what an experiment runs, so record which
+sessions used which (the log's *Strategy correction* line says).
+
+**Every trial records what applied** (`BiasContext`, `Block`, `BlockSide`, `SidePokeDelays`, outcome
+7): see [`docs/data-format.md`](docs/data-format.md), *Sessions with strategy correction*, for which
+measures compare across such sessions.
 
 ---
 
@@ -434,7 +521,10 @@ equal ratios are equally hard at any total, equal differences are not.
   after this one as well.
 - **Bias correction and the run limit** reorder the trials, never change which are delivered: to offer the side
   the animal avoids, or to break a run of `MaxSameSide` trials on one side, the next trial is
-  swapped with the next later one in the session's order that pays the needed side. Every group
+  swapped with a later one in the session's order that pays the needed side, drawn at random from
+  those that can (from 0.10.0; before, the next such one, so the trials it displaced came back as
+  a run of one side once the correction eased). Blocks (§3, *Strategy correction*) use the same
+  swap. Every group
   is still delivered as often as it was balanced. Bias correction takes precedence over the run
   limit. A run on the side it is pushing towards may go past `MaxSameSide`; a run on the other
   side is still broken at the limit. So correction holds its target for as long as the order has
@@ -529,8 +619,8 @@ The parameters that are safe to change with an animal in the box, read once per 
 trial is prepared, which happens as each trial starts: a change reaches the next trial if made in
 its first moments, and otherwise the one after (the header's *next* line says what is prepared). On the
 rig it is a window of its own, in tabs (*Trial*: reward, centre reward and timing, including the
-hold without shaping; *Task*: punishment, bias correction, hold shaping; *Delivery*: light, sound
-and port light brightness), with labels and units, limits held as values are typed, and a header
+hold without shaping; *Task*: punishment, hold shaping; *Delivery*: light, sound and port light
+brightness; *Strategy*: bias correction, blocks and side pokes, §3), with labels and units, limits held as values are typed, and a header
 saying how the last trial ended and what is running now, over as many lines as it needs. In
 habituation, where both side ports pay, the header says whether the trial was **rewarded**, never
 correct or incorrect; with a contingency (training, experiment) it says correct or incorrect.
@@ -562,7 +652,11 @@ relabelled. `Runtime window` on the Experiment tab can force either.
   0.5 + strength × (0.5 − *f*), kept within 0.1–0.9, by bringing forward a trial that pays that side:
   0 is off, 1 full compensation. `BiasWindow` counts the animal's choices; trials with no side
   poke are skipped. Every group is still delivered as often; only the order changes. It takes
-  precedence over `MaxSameSide` (see *Bias correction and the run limit* in §4). In simulation,
+  precedence over `MaxSameSide` (see *Bias correction and the run limit* in §4). Why this form:
+  the animal's lean, *d* = *f* − 0.5, is mirrored and scaled by the strength *s*, so an animal
+  with no lean is left alone. An animal that goes left with chance *f* whatever the stimulus is
+  then right with chance 0.5 − 2·*s*·*d*²: below chance by more the stronger its bias, while an
+  animal that follows the stimulus loses nothing (always-left at strength 0.5: 25%). In simulation,
   an always-left animal got 74–84% right-paying trials at strength 0.5 (target 75%) and 86–92% at
   strength 1 (target 90%), for 500–600 trials of a 1000-trial order. With an unbiased animal,
   chance leanings in the window let runs reach 4–5 in 1000 trials. The trial still running counts
@@ -665,7 +759,8 @@ Panels, in the order they are read:
   - **By side** — fraction correct on left- and right-rewarded trials (in habituation, fraction of
     each side's trials rewarded); the number above each bar is the trials it counts
   - **Side bias** — P(chose left) over the last `BiasWindow` choices (as set when the session
-    started), with the P(left) that bias correction aimed for on each trial
+    started), with the P(left) that bias correction aimed for on each trial (in a block, its side:
+    1 left, 0 right)
   - **Reaction time** — by side chosen, with a running median, on a log axis (0.1 to 1 s at least,
     widened to what is on screen), so a trained animal's fraction of a second and a new animal's
     several seconds both read
@@ -1073,8 +1168,10 @@ few trials.
   name puts one kind of plot from every session together, by date: `01_Outcomes`,
   `02_Performance`, `03_Psychometric`, `04_Evidence`, `05_BySide`, `06_SideBias`,
   `07_ReactionTime`, `08_CentreHold`, `09_HoldAttempts`, `10_Engagement`, `11_PortActivity`,
-  `12_SessionTiming`, `13_PulseLocking`. `PP` is the page: 01, unless the outcomes run over more
-  than 400 trials.
+  `12_SessionTiming`, `13_PulseLocking`, `14_Habits` (0.10.0), and in a session that ran blocks
+  `15_BlockSwitches`. `PP` is the page: 01, unless the outcomes run over more than 400 trials.
+  `14_Habits` and `15_BlockSwitches` are described in §3, *Strategy correction*; for an earlier
+  session, `lum.report.fromFile(dataFile, 'Plots', 14)` adds `14_Habits`.
   About 0.5 MB a session. `08_CentreHold` is the time in the port on each trial's last hold
   (completed or not) with the hold asked for and the step backs, and how long the completed holds
   lasted. `09_HoldAttempts` is the one plot that tells a first attempt from a later one: in bins
@@ -1100,7 +1197,8 @@ few trials.
   summary for the lab notebook: when and how the session ran, the animal, the settings
   that shape a trial, how the animal did (score, choices, water, the hold, early withdrawals
   against the light's pulses (the locking beyond their shape, where it points and its p, then R and
-  its p), reaction time, side bias, 50-trial blocks), what was changed during the session, and the recordings.
+  its p), reaction time, side bias, the habits and, with blocks, the first trial after a switch,
+  50-trial blocks), what was changed during the session, and the recordings.
 - **Ending a session takes a few seconds longer** (0.9.8): once the data are saved, the video
   stopped and the rig released, the session draws the summary plots and writes the log, about
   0.3 s a plot (4–8 s in all). The console says *writing its summary plots and log* while it does,

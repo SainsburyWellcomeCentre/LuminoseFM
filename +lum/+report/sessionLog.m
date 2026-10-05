@@ -9,9 +9,10 @@ function [file, lines] = sessionLog(Data, dataFile, varargin)
 %
 % Sections: the session (when, how long, how it ended, the code), the animal and what else
 % was recorded or given, the settings that shape a trial (stage, hold and shaping, stimulus,
-% light, reward, timing, punishment, bias correction, components, sync, video), the
-% behaviour (trials, score, choices, water, the hold, early withdrawals against the light's
-% pulses (lum.report.pulseLocking), reaction time, bias, P(left) by group, 50-trial blocks),
+% light, reward, timing, punishment, bias correction, strategy correction, components, sync,
+% video), the behaviour (trials, score, choices, water, the hold, early withdrawals against the
+% light's pulses (lum.report.pulseLocking), reaction time, bias, side-port habits and block
+% switches (lum.report.habits), P(left) by group, 50-trial blocks),
 % every runtime setting changed during the session, and the recordings (video frames,
 % barcode, analog stream). Numbers come from lum.report.sessionTrials, so they
 % match the summary plots.
@@ -27,7 +28,7 @@ function [file, lines] = sessionLog(Data, dataFile, varargin)
 % Returns the file written and its lines.
 %
 % See also lum.report.write, lum.report.sessionTrials, lum.report.summaryPlots,
-% lum.report.pulseLocking
+% lum.report.pulseLocking, lum.report.habits, lum.describeStrategy
 
 p = inputParser;
 p.FunctionName = 'lum.report.sessionLog';
@@ -111,6 +112,8 @@ L{end+1} = sprintf('- Punishment: on %s, %s, timeout %g s; an unpunished wrong c
 L{end+1} = sprintf('- Trial order: bias correction %g over the last %d choices, at most %s the same side in a row%s', ...
                    g.BiasCorrection, round(g.BiasWindow), runLimitText(S), ...
                    ternary(S.Task.ReverseContingency, ', contingency reversed', ''));
+L{end+1} = sprintf('- Strategy correction: %s%s', lum.describeStrategy(S), ...
+                   ternary(strcmp(stage, 'Experiment'), ' (an Experiment session)', ''));
 L{end+1} = sprintf('- House light %s at the start; sounds %s', ...
                    ternary(logical(S.Session.HouseLight), 'on', 'off'), ...
                    ternary(logical(S.Session.UseSound), 'on', 'off'));
@@ -134,11 +137,16 @@ endedText = '';
 if endedByWithdrawal > 0
     endedText = sprintf(' (%d ended by an early withdrawal)', endedByWithdrawal);
 end
-L{end+1} = sprintf('- Choices: %d (left %d, right %d); no choice on %d: no hold started %d, hold not completed %d%s, no side poke in time %d', ...
+endedBySidePoke = '';
+if any(T.outcome == lum.Outcome.SidePokeBeforeChoice)
+    endedBySidePoke = sprintf(', ended by a side poke before the response %d', ...
+                              sum(T.outcome == lum.Outcome.SidePokeBeforeChoice));
+end
+L{end+1} = sprintf('- Choices: %d (left %d, right %d); no choice on %d: no hold started %d, hold not completed %d%s, no side poke in time %d%s', ...
                    nChoices, sum(T.choice == 1), sum(T.choice == 2), T.n - nChoices, ...
                    sum(T.outcome == lum.Outcome.NoInitiation), ...
                    sum(T.outcome == lum.Outcome.HoldNotCompleted) + endedByWithdrawal, endedText, ...
-                   sum(T.outcome == lum.Outcome.NoResponse & ~chose));
+                   sum(T.outcome == lum.Outcome.NoResponse & ~chose), endedBySidePoke);
 if any(T.responseRetries > 0)
     L{end+1} = sprintf('- Retries after a wrong choice: %d, on %d trials', sumPresent(T.responseRetries), ...
                        sum(T.responseRetries > 0));
@@ -172,7 +180,15 @@ L{end+1} = sprintf('- Reaction time: median %.2f s (quartiles %.2f-%.2f s)', med
                    quantileOf(rt, 0.25), quantileOf(rt, 0.75));
 L{end+1} = sprintf('- Side: chose left on %.0f%% of choices; bias correction aimed for P(left) %.2f-%.2f', ...
                    100 * mean(T.choice(chose) == 1), min(T.biasTarget), max(T.biasTarget));
-L{end+1} = sprintf('- By group: %s', byGroupText(T));
+habit = lum.report.habits(T);
+L{end+1} = sprintf('- %s', habitText(habit));
+if T.ranBlocks
+    L{end+1} = sprintf('- %s', blockText(habit.Blocks));
+    L{end+1} = sprintf('- By group (trials outside blocks and each block''s first trial; within a block the side follows the block): %s', ...
+                       byGroupText(T));
+else
+    L{end+1} = sprintf('- By group: %s', byGroupText(T));
+end
 L{end+1} = '';
 L{end+1} = sprintf('| Trials | %s | Choices | Hold completed | Held on the first attempt | Attempts a trial | Hold asked (s) | RT median (s) | Minutes |', ...
                    ternary(all(T.bothSidesPay), 'Rewarded', 'Correct'));
@@ -420,12 +436,49 @@ end
 end
 
 
+function text = habitText(H)
+% The habits line: side-port alternation, win-stay and lose-shift, side pokes before the response.
+text = sprintf(['Habits: chose opposite the last side poke on %s of %d choices; after a centre '...
+                'poke the next side poke was at the other side %s; repeated the last choice after '...
+                'a reward %s, after an error %s; choices alternated %s (%s from the side bias '...
+                'alone); a side poke before the response on %d of %d trials with a choice (before '...
+                'the first centre poke only %d, between attempts only %d, both %d), %.2f a trial'], ...
+               percent(H.oppositeLastSidePoke), H.nOpposite, percent(H.otherSideAfterCentre), ...
+               percent(H.repeatAfterReward), percent(H.repeatAfterError), percent(H.alternation), ...
+               percent(H.alternationExpected), H.sidePokeTrials, H.nChoices, H.beforeCentreOnly, ...
+               H.betweenOnly, H.both, H.sidePokesPerTrial);
+if H.sidePokeDelays > 0
+    text = sprintf('%s; %d trials delayed by one', text, H.sidePokeDelays);
+end
+end
+
+
+function text = blockText(B)
+% The blocks line: how many, and the first trial after a switch.
+text = sprintf(['Blocks: %d, %d switches; correct on the first trial after a switch %d of %d '...
+                '(%s), on the second %d of %d, from the third %s; the new side first chosen a '...
+                'median %g trials into the block'], B.n, B.nSwitches, B.firstCorrect, B.nFirst, ...
+               percent(B.firstCorrect / max(1, B.nFirst)), B.secondCorrect, B.nSecond, ...
+               percent(B.laterCorrect), B.trialsToNewSide);
+end
+
+
+function text = percent(value)
+% '42%', or '-' for no value.
+text = '-';
+if ~isnan(value)
+    text = sprintf('%.0f%%', 100 * value);
+end
+end
+
+
 function text = byGroupText(T)
-% How often the animal chose left on each group's trials with a choice.
+% How often the animal chose left on each group's trials with a choice: in a session with
+% blocks, those whose side the trials before did not set (T.forStimulus).
 labels = T.stimulusSet.GroupLabels;
 parts = cell(1, numel(labels));
 for k = 1:numel(labels)
-    members = T.group == k & ~isnan(T.choice);
+    members = T.group == k & ~isnan(T.choice) & T.forStimulus;
     parts{k} = sprintf('%s chose left %.0f%% (n=%d)', labels{k}, 100 * mean(T.choice(members) == 1), ...
                        sum(members));
 end

@@ -26,8 +26,9 @@ function LuminoseFM
 %   setup      settings, preflight, the LED connecting, session type, stimulus set,
 %              devices, video, sounds, windows, barcode
 %   trial loop build and upload the next trial as this one starts (an LED current or
-%              PulsePal program it needs waits for this one's ITI), run, mark the
-%              camera clock, score, record, plot, save
+%              PulsePal program it needs waits for this one's ITI; context correction
+%              waits for this one's choice), run, mark the camera clock, score, record,
+%              plot, save
 %   teardown   save the plots as an image, merge the analog stream, write the final
 %              file, keep the settings as they ended for the next session, stop the
 %              video and add its summary to the file, release devices, then draw the
@@ -199,6 +200,7 @@ if S.Session.UseOpto
 end
 fprintf('LuminoseFM: %s\n', lum.HoldShaping.describe(S));
 fprintf('LuminoseFM: %s\n', lum.HoldShaping.describeBreak(S));
+fprintf('LuminoseFM: strategy correction: %s.\n', lum.describeStrategy(S));
 families = lum.pattern.families();
 fprintf('LuminoseFM: stimulus set "%s", %d group(s), %d trial(s) ordered (seed %d)\n', ...
         families(strcmp({families.Name}, stimulusSet.Family)).Label, stimulusSet.nGroups, ...
@@ -279,8 +281,10 @@ try
     runner = lum.SessionRunner(devices.emulated, lum.triggerStates());
     fprintf('LuminoseFM: running in %s mode, %s runtime window.\n', runner.Mode, lower(windowMode));
 
-    [S, spec, sma, valveCache, queue, context, history] = prepareTrial(S, rig, devices, history, ...
-        stimulusSet, queue, sounds, cueComponents, stimulusComponents, 1, valveCache, runtime);
+    [S, history] = syncTrial(S, history, 1, runtime);
+    [S, spec, sma, valveCache, queue, context, history] = buildNextTrial(S, rig, devices, ...
+        history, stimulusSet, queue, sounds, cueComponents, stimulusComponents, 1, valveCache, ...
+        runtime);
     ledCurrent = changeDevices(context, 1);  % Nothing is running yet
     % What the first trials will deliver is known now, so it is shown before trial 1 starts
     % rather than after it ends.
@@ -322,24 +326,45 @@ try
         runner.awaitPrepareWindow();
         if BpodSystem.Status.BeingUsed == 0; break; end
 
-        prepareTimer = tic;
+        % The next trial is prepared in two parts: the runtime settings now, and the trial
+        % itself once what it depends on is known. That is now too, unless context correction
+        % reads this trial's choice (lum.BiasCorrection.readsRunningChoice): the trial is then
+        % built and uploaded once the choice is made (Data.Timing.awaitChoice).
         waitsForDevices = false;
+        prepared = false;
+        [syncSeconds, choiceSeconds, specSeconds, buildSeconds] = deal(0);
+        nextSpec = [];
         if currentTrial < maxTrials
-            [S, nextSpec, sma, valveCache, queue, nextContext, history] = prepareTrial(S, rig, ...
-                devices, history, stimulusSet, queue, sounds, cueComponents, stimulusComponents, ...
-                currentTrial + 1, valveCache, runtime);
-            nextGUI = S.GUI;
-            % This trial may still be lit, so an LED current or PulsePal program the next
-            % one needs waits for this one's ITI, and the next is uploaded after that.
-            waitsForDevices = needsDevices(nextContext);
-            nextLEDCurrent = devices.doricLED.CurrentmA;
-        else
-            nextSpec = [];
+            syncTimer = tic;
+            [S, history] = syncTrial(S, history, currentTrial + 1, runtime);
+            syncSeconds = toc(syncTimer);
+            if lum.BiasCorrection.readsRunningChoice(S)
+                choiceTimer = tic;
+                choiceState = runner.awaitChoice(lum.BiasCorrection.PostChoiceStates);
+                [choice, rewarded] = lum.BiasCorrection.choiceFromState(choiceState, ...
+                                                                        spec.CorrectSide, spec.RewardedSides);
+                history = lum.BiasCorrection.noteChoice(history, currentTrial, choice, rewarded);
+                choiceSeconds = toc(choiceTimer);
+            end
+            % Stopped while waiting for the choice: nothing more is sent to the state machine.
+            if BpodSystem.Status.BeingUsed == 1
+                [S, nextSpec, sma, valveCache, queue, nextContext, history, seconds] = ...
+                    buildNextTrial(S, rig, devices, history, stimulusSet, queue, sounds, ...
+                                   cueComponents, stimulusComponents, currentTrial + 1, ...
+                                   valveCache, runtime);
+                [specSeconds, buildSeconds] = deal(seconds(1), seconds(2));
+                prepared = true;
+                nextGUI = S.GUI;
+                % This trial may still be lit, so an LED current or PulsePal program the next
+                % one needs waits for this one's ITI, and the next is uploaded after that.
+                waitsForDevices = needsDevices(nextContext);
+                nextLEDCurrent = devices.doricLED.CurrentmA;
+            end
         end
-        prepareSeconds = toc(prepareTimer);
+        prepareSeconds = syncSeconds + specSeconds + buildSeconds;
 
         sendTimer = tic;
-        if currentTrial < maxTrials && ~waitsForDevices
+        if prepared && ~waitsForDevices
             runner.queue(sma);
         end
         sendSeconds = toc(sendTimer);
@@ -408,6 +433,10 @@ try
         % Recorded before the save, so the file written this trial already carries this
         % trial's timing. The save's own cost lands in the next file.
         data.Timing.prepare(currentTrial) = prepareSeconds;
+        data.Timing.sync(currentTrial) = syncSeconds;
+        data.Timing.spec(currentTrial) = specSeconds;
+        data.Timing.build(currentTrial) = buildSeconds;
+        data.Timing.awaitChoice(currentTrial) = choiceSeconds;
         data.Timing.send(currentTrial) = sendSeconds;
         data.Timing.devices(currentTrial) = devicesSeconds;
         data.Timing.plot(currentTrial) = plotSeconds;
@@ -571,12 +600,12 @@ if ~isempty(stoppedReason)
 end
 
 
-function [S, spec, sma, valveCache, queue, context, history] = prepareTrial(S, rig, devices, ...
-    history, stimulusSet, queue, sounds, cueComponents, stimulusComponents, trialNumber, ...
-    valveCache, runtime)
-% Everything needed to run one trial but the device commands, done while the previous trial
-% runs, perhaps during its light: context carries what changeDevices needs in its ITI.
+function [S, history] = syncTrial(S, history, trialNumber, runtime)
+% The first part of preparing trial trialNumber, as the trial before it starts: the runtime
+% window's changes, and the centre reward asked for again. Warns of an ITI, or a context
+% correction, that leaves too little time between trials.
 itiBefore = S.GUI.ITI;
+timingBefore = lum.BiasCorrection.timingNote(S);
 S = runtime.sync(S);
 if S.GUI.ITI ~= itiBefore
     % Typed in the runtime window: the tabbed one has said so already, the compact one not.
@@ -584,6 +613,10 @@ if S.GUI.ITI ~= itiBefore
     if ~isempty(itiNote)
         warning('lum:LuminoseFM:shortITI', '%s', itiNote);
     end
+end
+timingNote = lum.BiasCorrection.timingNote(S);
+if ~isempty(timingNote) && ~strcmp(timingNote, timingBefore)
+    warning('lum:LuminoseFM:contextTiming', '%s', timingNote);
 end
 
 % The centre reward the operator asked for again: its run starts, goes on or ends here,
@@ -593,8 +626,17 @@ if unticked
     S = runtime.sync(S);
 end
 
+
+function [S, spec, sma, valveCache, queue, context, history, seconds] = buildNextTrial(S, rig, ...
+    devices, history, stimulusSet, queue, sounds, cueComponents, stimulusComponents, ...
+    trialNumber, valveCache, runtime)
+% Everything needed to run one trial but the device commands, done while the previous trial
+% runs, perhaps during its light: context carries what changeDevices needs in its ITI.
+% seconds is what the spec (with the valve times) and the state machine took to make.
+specTimer = tic;
 [spec, queue] = lum.nextTrialSpec(S, stimulusSet, queue, history, trialNumber);
 history = lum.HoldShaping.notePrepared(history, spec);  % Shaping grows the next from this one
+history = lum.Blocks.notePrepared(history, spec);       % The next continues or ends its block
 
 % Valve times come from the liquid calibration, so they are recomputed only when the
 % operator changes the volume rather than on every trial. A volume the calibration
@@ -648,7 +690,10 @@ context = struct('S', S, 'rig', rig, 'devices', devices, 'spec', spec, ...
                  'stimulus', {stimulusComponents}, 'valveTimes', valveCache.times, ...
                  'centreValveTime', valveCache.centreTime);
 
+specSeconds = toc(specTimer);
+buildTimer = tic;
 sma = lum.buildTrialSM(context);
+seconds = [specSeconds, toc(buildTimer)];
 
 
 function tf = needsDevices(context)
@@ -700,7 +745,8 @@ for name = trialSeriesNames()
     data.(name{1}) = blank;
 end
 data.Timing = struct('prepare', blank, 'send', blank, 'devices', blank, 'plot', blank, ...
-                     'save', blank, 'memoryGB', blank);
+                     'save', blank, 'memoryGB', blank, 'sync', blank, 'spec', blank, ...
+                     'build', blank, 'awaitChoice', blank);
 data.RuntimeSettings = cell(1, maxTrials);
 
 
@@ -711,7 +757,8 @@ names = {'StimulusGroup', 'PatternIndex', 'CorrectSide', 'Choice', 'Correct', 'R
          'Outcome', 'ReactionTime', 'OptoOn', 'SoundOn', 'HouseLight', 'SyncMode', 'SyncPulseWidth', ...
          'BiasTargetPLeft', 'TrainingStage', 'HoldDuration', 'HoldGrace', 'HoldBreaks', ...
          'HoldAttempts', 'EarlyWithdrawals', 'CameraTime', 'LEDCurrentA', 'LEDCurrentB', ...
-         'CentreReward', 'ResponseRetries', 'CentreHoldTime'};
+         'CentreReward', 'ResponseRetries', 'CentreHoldTime', 'BiasContext', 'Block', ...
+         'BlockSide', 'SidePokeDelays'};
 
 
 function data = recordTrial(data, trialNumber, spec, result, gui)
@@ -741,6 +788,10 @@ data.EarlyWithdrawals(trialNumber) = result.EarlyWithdrawals;
 data.CentreReward(trialNumber) = result.CentreRewarded * spec.CentreRewardAmount;
 data.ResponseRetries(trialNumber) = result.ResponseRetries;
 data.CentreHoldTime(trialNumber) = result.CentreHoldTime;
+data.BiasContext(trialNumber) = spec.BiasContext;
+data.Block(trialNumber) = spec.Block;
+data.BlockSide(trialNumber) = spec.BlockSide;
+data.SidePokeDelays(trialNumber) = result.SidePokeDelays;
 data.RuntimeSettings{trialNumber} = gui;
 
 

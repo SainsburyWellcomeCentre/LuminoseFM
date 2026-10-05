@@ -12,8 +12,10 @@ function lines = trialStatus(trialNumber, spec, result, nextSpec, stimulusSet)
 % rewarded: chose left, left before the valve opened') and the running one as 'both sides
 % pay'. In training and experiment it is correct or incorrect, as the contingency scores
 % it. A trial without a choice says why (no poke, early withdrawal, hold not completed, no
-% side poke in time) in every stage. A trial that took more than one hold attempt says so:
-% 'held on attempt 3' when the hold was completed, '14 hold attempts' when it was not.
+% side poke in time, ended by a side poke before the response window) in every stage. Side
+% pokes that delayed the trial are counted, and a trial in a block says which (lum.Blocks). A
+% trial that took more than one hold attempt says so: 'held on attempt 3' when the hold was
+% completed, '14 hold attempts' when it was not.
 %
 % Arguments:
 %   trialNumber  The trial that just ended
@@ -46,6 +48,8 @@ switch result.Outcome
         what = 'hold not completed in the hold window';
     case lum.Outcome.NoResponse
         what = 'no side poke in the response window';
+    case lum.Outcome.SidePokeBeforeChoice
+        what = 'ended by a side poke before the response window';
     otherwise
         if bothPay
             if result.Rewarded
@@ -73,6 +77,9 @@ if result.HoldCompleted && attempts > 1
 elseif ~result.HoldCompleted && attempts > 1
     last = sprintf('%s (%d hold attempts)', last, attempts);
 end
+if isfield(result, 'SidePokeDelays') && result.SidePokeDelays > 0
+    last = sprintf('%s; delayed by %d side poke(s)', last, result.SidePokeDelays);
+end
 lines = {last};
 if ~isempty(nextSpec)
     lines{2} = runningText(nextSpec, stimulusSet);
@@ -96,6 +103,10 @@ else
     pays = sprintf('pays %s', sides{spec.CorrectSide});
 end
 text = sprintf('Running %d: %s, %s, hold %.2f s', spec.TrialNumber, label, pays, spec.HoldDuration);
+if isfield(spec, 'Block') && spec.Block > 0
+    text = sprintf('%s, block %d (%s), its trial %d', text, spec.Block, sides{spec.BlockSide}, ...
+                   spec.TrialNumber - spec.BlockStart + 1);
+end
 if spec.HoldSteppedBack
     text = sprintf('%s (stepped back after early withdrawals)', text);
 end

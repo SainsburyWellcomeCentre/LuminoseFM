@@ -25,7 +25,7 @@ before changing the stimulus path, the state graph, sleep blocks or the GUI. The
 | Document | Holds | Update it when |
 |---|---|---|
 | [`README.md`](README.md) | The operator's guide only: running a session, the task, the stimulus, the windows, the plots, sleep and ePhys sessions, utilities. It links to `docs/` for everything else, so reference material does not go back into it | anything the operator sees or does changes |
-| [`docs/architecture.md`](docs/architecture.md) | Decisions D1–D22 (why, and what follows), the map from design to code, Bpod constraints, open questions | a design decision is made or changes |
+| [`docs/architecture.md`](docs/architecture.md) | Decisions D1–D23 (why, and what follows), the map from design to code, Bpod constraints, open questions | a design decision is made or changes |
 | [`docs/hardware.md`](docs/hardware.md) | The box, the channel map, the light path, Flex I/O, the cameras, the software environment | the wiring, a device or a dependency changes |
 | [`docs/data-format.md`](docs/data-format.md) | Every field of every session file, and reading older files | the data schema changes |
 | [`docs/python-analysis.md`](docs/python-analysis.md) | Reading every file in Python, the clocks and their alignment, the planned HDF5 layout | any data file changes |
@@ -36,16 +36,22 @@ before changing the stimulus path, the state graph, sleep blocks or the GUI. The
 | [`docs/learning-time-literature.md`](docs/learning-time-literature.md) | Published learning times for odour and optogenetic-OB discrimination, each linked to its paper; the estimate for LuminoseFM's Training stage; LUMS0014's sessions so far, and whether it senses the light's pulses (pulse locking); the light a trial delivers, the tissue heating it causes, the published light for OSN-ChR2 perception, ChR2(H134R) desensitization, the carrier options and the one recommended | an animal first shows a group split or reaches criterion, its pulse locking changes, or the training procedure, the light's intensity or its carrier changes |
 | [`docs/rig-checks.md`](docs/rig-checks.md) | How to run a rig check, the checks waiting for the operator (*Pending*), and every result (*Done*) | a rig check runs, or a change needs one |
 | [`docs/validation-<date>.md`](docs/validation-2026-09-24.md) | A pre-deployment validation: inventory, results, fixes, open questions | a validation runs (a new file; old ones are records) |
+| [`docs/plan-habit-levers.md`](docs/plan-habit-levers.md) | **Strategy correction** (built in 0.10.0, D23): the operator's decisions, the order of use for LUMS0014 with its criteria, and what is still open | a lever is used on an animal, a criterion is met, or an open item is done (delete the file once nothing is open) |
 | [`docs/repository.md`](docs/repository.md) | The repository layout and what each test file covers | files or tests are added |
 | [`docs/code-style.md`](docs/code-style.md) | Getting help at the MATLAB prompt; how help text and comments are written; lint and the language server; what `helpTextTest` checks | the comment or help-text convention changes |
 | `CLAUDE.md` (this file) | What an agent needs: rules, paths, conventions, hardware map, naming, gotchas | a convention, API or architectural decision changes |
 
 **Where things stand** is in the docs, not here: the last release's changes in
 `docs/naming-and-versions.md`, the checks waiting for someone at the rig in `docs/rig-checks.md`
-*Pending* (P4–P14 now; all need someone at the rig or a desktop MATLAB, except P11 step 1, which
-can run headless with permission; P13 step 4's file checks passed on 2026-09-27, and 0.9.11's
-upload and 0.25 s ITI on 2026-09-28). The operator works remotely at times: run a pending check the next
-time they say they are at the rig.
+*Pending* (P4–P13 and P16 now; all need someone at the rig or a desktop MATLAB, except P11 step 1,
+which can run headless with permission; P13 step 4's file checks passed on 2026-09-27, and 0.9.11's
+upload and 0.25 s ITI on 2026-09-28; P15, strategy correction on the rig, passed on 2026-10-05). The
+operator works remotely at times: run a pending check the next time they say they are at the rig.
+
+**Next work:** strategy correction (0.10.0, D23) is built and rig-checked but not yet used on an
+animal and not committed. Its order of use for LUMS0014 and its open items are in
+`docs/plan-habit-levers.md`; audit each session that uses a lever from its log's *Habits* (and
+*Blocks*) line and record it in `docs/learning-time-literature.md`.
 
 **Working loop.** Read the relevant docs and code → change `+lum` (the protocol file stays thin) →
 add or update a test → bring the help text and comments of everything touched up to date
@@ -149,7 +155,10 @@ can be tested with no hardware. `docs/repository.md` has the full tree.
 | `+lum/timerBudget.m` | Global timers left for light after the hold window, hold clock, light clock and timed components |
 | `+lum/buildTrialSM.m` | The state graph (fixed names; outputs, timers and transitions vary) |
 | `+lum/cueTiming.m` | What each cue component does once the stimulus starts: continues, off, or timed (D12) |
-| `+lum/nextTrialSpec.m` | Trial policy: follow the order, run limit and bias correction by swapping, stage, hold, centre reward |
+| `+lum/nextTrialSpec.m` | Trial policy: follow the order; blocks, bias correction and the run limit (that precedence) by swapping with a later pattern drawn at random (`'SwapPartner', 'first'` for 0.9.14's, the regression test); stage, hold, centre reward |
+| `+lum/BiasCorrection.m` | Context correction (D23): the target by context (`S.GUI.BiasCorrectFor`), the reward floor, whether the next trial waits for the running one's choice (`readsRunningChoice`), reading a choice from a state (`choiceFromState`, `PostChoiceStates`), `noteChoice`; unavailable while incorrect choices are retried (`activeMode`, `isAvailable`) |
+| `+lum/Blocks.m` | Blocks (D23): the block a trial is in (`next`), which patterns a block may use (`canUse`), `notePrepared`, `firstTrials` for the plots |
+| `+lum/describeStrategy.m` | The strategy correction a session runs, in one line (console, log) |
 | `+lum/newHistory.m`, `updateHistory.m` | The running history the policy reads, kept in O(1) per trial |
 | `+lum/centreRewardAgain.m` | The centre reward asked for again mid-session: starts, ends and unticks its run |
 | `+lum/HoldShaping.m` | Automatic shaping of the hold (active mode, next hold and grace, step back, description); break modes; the hold without growth (`fullHold`, `holdLength`, `isFixed`); whether the light may outlast the hold (`lightMayOutlastHold`) |
@@ -159,17 +168,17 @@ can be tested with no hardware. `docs/repository.md` has the full tree.
 | `+lum/punishmentFor.m` | Which mistakes are punished, and how; whether a wrong choice may be retried |
 | `+lum/valveTimes.m` | Valve open times for a volume from Bpod's liquid calibration: 0 µL opens nothing, a volume past the fit's peak is refused, one outside the measurements noted. Every valve time goes through it |
 | `+lum/SyncMode.m` | How trials drive the sync TTL; codes are part of the data format |
-| `+lum/SessionRunner.m` | TrialManager on the rig, blocking in the emulator (D3) |
+| `+lum/SessionRunner.m` | TrialManager on the rig, blocking in the emulator (D3); `awaitChoice` waits for a state after the running trial's choice (context correction) |
 | `+lum/StartupTimes.m` | How long the session took to start, step by step (`Data.Session.Startup`) |
 | `+lum/watchMemoryAfterSession.m` | A separate process sampling MATLAB's memory and threads for 4 min after a desktop session of any type (`<data file>_memory.csv`) |
-| `+lum/OnlinePlots.m` | The behaviour session's live figure, nine panels: now and next, outcomes; performance, psychometric (along the family's evidence, or by group), evidence (u_A vs u_B with the contingency's boundary; *No light in this session* without light); by side, side bias, reaction time (log axis), centre hold (completed at any attempt, or not); header with water and the running hold. Habituation scores every trial by `Rewarded` (a trial without a choice is not rewarded); other stages score correct of the choices made. Hold attempts are not drawn here (no room): they are `09_HoldAttempts`. Every panel goes through `lum.gui.styleAxes` and every key through `lum.gui.panelLegend`: one row under the axis label, never over data |
+| `+lum/OnlinePlots.m` | The behaviour session's live figure, nine panels: now and next, outcomes; performance, psychometric (along the family's evidence, or by group), evidence (u_A vs u_B with the contingency's boundary; *No light in this session* without light); by side, side bias, reaction time (log axis), centre hold (completed at any attempt, or not); header with water and the running hold. In a session with blocks, Psychometric and Evidence count only trials outside blocks and each block's first trial, and Performance shades the blocks. Habituation scores every trial by `Rewarded` (a trial without a choice is not rewarded); other stages score correct of the choices made. Hold attempts are not drawn here (no room): they are `09_HoldAttempts`. Every panel goes through `lum.gui.styleAxes` and every key through `lum.gui.panelLegend`: one row under the axis label, never over data |
 | `+lum/holdMeasures.m` | What every plot, the log and the runtime window say about a trial's hold, from its states: hold completed (`CentreReward` or `WaitForCentreExit`), held on the first attempt, hold attempts (early withdrawals + the completed hold). `lum.scoreTrial` returns `HoldCompleted`, `HeldFirstAttempt`; not stored |
 | `+lum/trialStatus.m` | The runtime window's header lines: how the last trial ended and what runs now |
 | `+lum/loadSounds.m`, `testSounds.m`, `toneFrequencies.m` | The session's sounds, loaded once; a sound as `TestHiFiSound` arguments for the Play buttons; group tone spacing |
 | `+lum/fiberBundles.m`, `experimentChoices.m` | Bundle cables and spot counts; the Experiment tab's lists |
 | `+lum/mergeActions.m`, `timerMaskAction.m` | Output-action assembly (see [Gotchas](#bpod-and-firmware)) |
 | `+lum/launchSubject.m`, `trainingStageNote.m` | The subject the session was launched for; one line on what the stage does to rewards |
-| `+lum/+report/` | Summary plots and log (D22): `write` (the behaviour teardown's call; never throws), `summaryPlots` (13 plots, `09_HoldAttempts` the only one telling a first attempt from a later; `'Plots'` draws some), `sessionLog`, `sessionTrials` (one pass over `SessionData`, hold measures included, settings as run), `pulseLocking` (early withdrawals against the carrier's pulses: the locking beyond the withdrawal times' shape, the time it points to and its surrogate p; R and its p; spectrum from 10 Hz), `folder`, `fileTag`, `heading`, `replayOnlinePlots`, `fromFile` (a saved session, read only) |
+| `+lum/+report/` | Summary plots and log (D22): `write` (the behaviour teardown's call; never throws), `summaryPlots` (14 plots, and `15_BlockSwitches` in a session with blocks; `09_HoldAttempts` the only one telling a first attempt from a later; `'Plots'` draws some), `sessionLog`, `sessionTrials` (one pass over `SessionData`, hold measures included, settings as run), `pulseLocking` (early withdrawals against the carrier's pulses: the locking beyond the withdrawal times' shape, the time it points to and its surrogate p; R and its p; spectrum from 10 Hz), `habits` (side-port habits per session and in 100-trial bins, block switches; `14_Habits`, `15_BlockSwitches`, the log's lines), `folder`, `fileTag`, `heading`, `replayOnlinePlots`, `fromFile` (a saved session, read only) |
 | `+lum/+pattern/` | `generate` (families, groups, order, evidence, boundary) → `stimulusSet` (segments, budget) → `applyContingency` (P(left), reversal, checks, ceilings) → `patternAt`; `families`, `familyDefaults`, `typedPLeft`, `shortcuts`, `describeShortcuts`; `fromStates`, `canonicalise`, `check`, `validate`, `describe`; `withGeneratorDefaults`, `defaultPLeft`, `newSeed`, `prepareSeed` |
 | `+lum/+stim/` | Components: `OptoPattern`, `TimedOutput` → `PortLight`, `Air`; `Sound`; `CueTone`; `build`; `isTimed`, `timerCost` |
 | `+lum/+sync/` | Session barcode: `barcode` (kinds), `markerWidth`, `barcodeKinds`, `sleepMarkerWidth`, `barcodeValue`, `barcodeTime`, `decodeBarcode`, `barcodeStateMachine`; `fitToCameras` (widths the cameras can read) |
@@ -221,6 +230,13 @@ the bias target). Use these, and fix any code, label or doc that does not. The f
 | centre reward | water at the centre port for a completed hold, habituation's first `CentreRewardTrials` trials (state `CentreReward`, `Data.CentreReward`) | centre drop, initiation reward |
 | centre reward again | the centre reward given again in any stage, `CentreRewardAgainTrials` trials from a tick of `S.GUI.CentreRewardAgain` (`lum.centreRewardAgain`) | reactivated reward, bonus |
 | retry | going on to the correct port after an unpunished incorrect choice (state `RetryResponse`, `Data.ResponseRetries`) | correction trial (it is the same trial) |
+| strategy correction | the levers against habits, D23, all runtime and off by default: habit measures, side pokes before the response, context correction, blocks (Strategy tab) | habit training, anti-bias |
+| habit measures | a session's habits as the log's *Habits* line and `14_Habits` report them (`lum.report.habits`) | strategy score |
+| side poke before the response | a side poke while the trial waits for a centre poke (`S.GUI.SidePokeBeforeChoice`: *Ignore*, *Delay* in `SidePokeDelay`, *End trial* in `SidePokeBeforeChoice`, outcome 7; `Data.SidePokeDelays`) | premature response, free poke (in names) |
+| context correction, context | bias correction reading the lean in the trial's context, the trial before's choice or choice and reward (`S.GUI.BiasCorrectFor`, `Data.BiasContext` codes 0–7) | history correction |
+| reward floor | the reward share below which bias correction stops, full strength at 50% (`S.GUI.BiasRewardFloor`, `BiasRewardWindow`) | reward minimum |
+| block, block switch, first trial after a switch | a run of trials whose patterns lean to one side (`S.GUI.TrialOrder` *Blocks*, `Data.Block`, `Data.BlockSide`); a block after another; its first trial, the session's test of the light | block (for a sleep session's state machine run: that is a different block, `lum.sleep.nextBlock`) |
+| swap partner | the later pattern a swap brings forward, drawn at random from those that can serve (0.10.0) | |
 | centre hold time | seconds in the centre port on a trial's last hold, poke to exit (`Data.CentreHoldTime`) | hold duration (that is what the trial asked for) |
 | task variant | which variant of the task a session runs: Familiar/Novel, Mixture, Sequence, Motifs (`S.Task.Variant`) | task type, paradigm |
 | contingency reversal | swapping which side every group pays, P(left) to 1 - P(left) (`S.Task.ReverseContingency`) | flip, switch |
@@ -363,9 +379,12 @@ Each rule below is guarded in code; the decision behind it (D*n*) is in `docs/ar
   light pattern off (`S.Session.UseOpto`, `S.GUI.OptoOn`), the stimulus air on for the whole window
   and the centre light cue on (unless the centre light is a stimulus component); *Training* and
   *Experiment* do the reverse. *Habituation* and *Training* also switch automatic shaping on,
-  *Experiment* off. These are defaults, applied only on the dropdown's change, never during a
-  session and never enforced by validation, **except** automatic shaping in an Experiment session,
-  which `lum.validateSettings` refuses (`shapingInExperiment`). `stateMachineTest` checks a
+  *Experiment* off. *Habituation* and *Experiment* switch every strategy correction part off
+  (side pokes *Ignore*, *Correct for* *Side bias*, floor 0, *Random* order); *Experiment* also sets
+  `S.GUI.BiasCorrection` and `S.Task.MaxSameSide` to 0; *Training* leaves them. These are defaults,
+  applied only on the dropdown's change, never during a session and never enforced by validation,
+  **except** automatic shaping in an Experiment session, which `lum.validateSettings` refuses
+  (`shapingInExperiment`). An Experiment session may run any strategy correction part. `stateMachineTest` checks a
   habituation trial built from the defaults.
 - **Task variant.** `S.Task.Variant` (Familiar/Novel, Mixture, Sequence, Motifs;
   `lum.experimentChoices().TaskVariants`) names the task and is recorded; it chooses nothing yet.
@@ -420,6 +439,8 @@ WaitForResponse → RetryResponse → WaitForResponse            (wrong side, no
 CentreHold → EarlyWithdrawal (no grace) | HoldBreak ⇄ CentreHoldResumed (grace)
 EarlyWithdrawal → WaitForCentrePoke (Restart stimulus) | WaitForLightEnd (End trial)
 WaitForCentrePoke → NoInitiation → WaitForLightEnd           (hold window over)
+WaitForCentrePoke → SidePokeDelay → WaitForCentrePoke        (side poke, Delay; D23)
+WaitForCentrePoke → SidePokeBeforeChoice → WaitForLightEnd   (side poke, End trial; D23)
 ```
 
 - **The cue lasts until the stimulus starts, `S.Stimulus.Latency` after the poke (D12).** Every cue
@@ -458,7 +479,7 @@ WaitForCentrePoke → NoInitiation → WaitForLightEnd           (hold window ov
   `TrialStart`: `lum.SessionRunner.awaitPrepareWindow` waits for the running trial to leave its
   first state (*Gotchas*, the dead time warning). The window may overlap the trial's light: building and uploading a state machine
   does not touch it (rig check 2026-09-28: no missed-deadline codes, every light timer exact), but a
-  device command would. So `prepareTrial` sends nothing to a device; the loop asks
+  device command would. So preparing (`syncTrial`, `buildNextTrial`) sends nothing to a device; the loop asks
   `needsDevices` (`lum.dev.DoricLED.hasPending`, `lum.stim.Component.needsConfigure`), and a
   trial that needs an LED current or a PulsePal program waits for the running trial's `ITI`
   (`lum.SessionRunner.awaitState`: the light is over), gets them (`changeDevices`) and only then is
@@ -542,7 +563,35 @@ WaitForCentrePoke → NoInitiation → WaitForLightEnd           (hold window ov
 - **Trial *k*+1 is prepared before trial *k* is recorded** (both runners). A policy that steps from
   the last *recorded* trial splits the session into odd and even chains (automatic shaping did until
   0.9.4; the run limit lagged until 0.9.8). Step from the trial still running (`history.prepared*`,
-  `lum.HoldShaping.notePrepared`), and test in the session's order.
+  `lum.HoldShaping.notePrepared`, `lum.Blocks.notePrepared`), and test in the session's order. The
+  one exception is context correction, which needs trial *k*'s choice: with a context mode the
+  loop waits for it (`lum.SessionRunner.awaitChoice`) after syncing the runtime settings and before
+  building trial *k*+1, and notes it (`lum.BiasCorrection.noteChoice`, `history.running*`).
+
+### Strategy correction (D23)
+
+- **Off by default, every part a runtime setting** on the Strategy tab (`S.GUITabs.Strategy`:
+  *Bias*, *Blocks*, *Side pokes*). With every part off a session's trials are 0.9.14's but for the
+  swap partner: `strategyTest` replays sessions through `tests/legacyNextTrialSpec.m` (never edit
+  it) against `lum.nextTrialSpec(..., 'SwapPartner', 'first')`; keep it passing, and give a new
+  part a default that changes nothing.
+- **Precedence:** blocks, then bias correction (context and floor), then the run limit; each only
+  decides the side the next trial should pay, and the swap brings forward a pattern that can pay
+  it. Never change the contingency or draw outside the order.
+- **Side pokes before the response** are the two states `SidePokeDelay` and
+  `SidePokeBeforeChoice`, in every trial, reached only from `WaitForCentrePoke` (their transitions
+  only under *Delay* and *End trial*). They touch no timer: the light is not running there.
+- **Context correction prepares after the choice and needs a punished incorrect choice.** A retry
+  hides the first choice (`RetryResponse` lasts no time), so while incorrect choices are retried
+  *Correct for* is greyed out (setup dialog, both runtime windows) and side bias used
+  (`lum.BiasCorrection.activeMode`); never read the live choice any other way without a rig check.
+  While choices are read, `IncorrectChoice` lasts at least `lum.BiasCorrection.ReadableState`
+  (50 ms): at 0 s it passed unseen inside the trial manager's 10 ms batches (P15).
+- **Codes are data:** `Data.BiasContext` 0–7 (NaN when bias correction did not act), `Block` (0 in
+  a random order), `BlockSide`, outcome 7. Append, never renumber.
+- **Analysis:** in a session with blocks the stimulus panels, the summary's psychometric and
+  evidence plots and the log's *By group* read only `T.forStimulus` trials (outside blocks and each
+  block's first trial); `15_BlockSwitches` is that session's measure of the light.
 
 ### Stimulus
 
@@ -784,8 +833,12 @@ This is the hard constraint of the project.
   `lum.nextTrialSpec` searches the rest of the queue for a swap (a vectorised test over at most
   `MaxTrials` indices, microseconds; `MaxTrials` is 3000 by default from 0.9.11 so bias correction
   does not run out of trials of the side it pushes towards, and nothing per trial grew with it:
-  preallocate by `MaxTrials`, never loop over it in the trial loop); bias correction takes precedence over the run limit, and the
-  run limit, like shaping, counts the trial still running (`history.preparedSide`, 0.9.8).
+  preallocate by `MaxTrials`, never loop over it in the trial loop); blocks take precedence over
+  bias correction and bias correction over the run limit, and the run limit, like shaping and
+  blocks, counts the trial still running (`history.preparedSide`, 0.9.8). Context correction's
+  count by context is one vectorised pass over the recorded choices, like the side bias's;
+  `awaitChoice` waits and does no work. `Data.Timing.sync`, `.spec`, `.build`, `.awaitChoice` time
+  the parts of preparing (on the rig the state machine's build is the slow one, up to 0.24 s).
 - Don't store large per-trial copies: a session-level set plus per-trial indices.
 - Reprogram PulsePal and HiFi only between trials (in the running trial's ITI or later), never
   mid-stimulus. Sounds are loaded once (`lum.loadSounds`, only those the session can play).
@@ -849,7 +902,11 @@ says. `docs/code-style.md` has the full convention; this is what every change mu
   (`PatternIndex` into `Session.StimulusSet`). Strip `States` from the stimulus set before storing
   it: segments are enough.
 - **Per-trial series** are listed once, in `trialSeriesNames` in `LuminoseFM.m`;
-  `docs/data-format.md` and `emulatorSessionTest` list them too: keep all three in step.
+  `docs/data-format.md`, `emulatorSessionTest` and `reportTest` list them too: keep all four in
+  step. From 0.10.0 they include `BiasContext`, `Block`, `BlockSide` and `SidePokeDelays`
+  (strategy correction); blocks and context correction make the side predictable from the trials
+  before, so `docs/data-format.md` (*Sessions with strategy correction*) says which measures
+  compare across sessions.
   `Choice`/`Correct`/`Outcome` are always the **first** side poke inside the first visit to
   `WaitForResponse` (0.9.6, `lum.scoreTrial`); a retried trial is `Incorrect` with `Rewarded` 1, so
   water totals use `Rewarded` and `CentreReward`, never `Outcome`.
@@ -888,10 +945,11 @@ says. `docs/code-style.md` has the full convention; this is what every change mu
   topview twice). Engine 1.3.0 takes them out as it records (`Session.Cameras.EngineVersion`;
   `Summary.Cameras(k).TimestampCorrections` counts them, kept by `lum.dev.RealCameras`, and the
   session log names any); `spincam.io.readFrameLog` repairs older logs (`docs/python-analysis.md`).
-- **Summary plots and log (D22):** a behaviour session ends with `lum.report.write`: 13 images in
+- **Summary plots and log (D22):** a behaviour session ends with `lum.report.write`: 14 images (15 with blocks) in
   `...\Session Plots\` (`NN_<Plot>_PP_<subject>_<YYYYMMDD_HHMMSS>.png`: `01_Outcomes` …
   `09_HoldAttempts` … `12_SessionTiming`, names and numbers unchanged since 0.9.8, and
-  `13_PulseLocking` from 0.9.13; a new plot takes the next number) and
+  `13_PulseLocking` from 0.9.13, `14_Habits` and, with blocks, `15_BlockSwitches` from 0.10.0;
+  a new plot takes the next number) and
   `...\Session Logs\<data file name>_log.md`, drawn from `BpodSystem.Data` alone
   (`lum.report.sessionTrials`); nothing in the data file refers to them.
   `lum.report.fromFile(dataFile)` does the same for a saved session and **only reads** it
@@ -1239,13 +1297,21 @@ convention above. `docs/repository.md` lists what each file covers.
   The last checks (2026-09-27, 0.9.9): an emulated 24-trial session watched on screen, and a
   24-trial session on the rig (`docs/rig-checks.md`, *Done*); the online figure, tabbed runtime
   window, `_plots.png`, summary plots and log all drawn as in the headless renders. On 2026-09-28
-  (0.9.11) a headless 30-trial rig session with an LED-window change (`docs/rig-checks.md`).
+  (0.9.11) a headless 30-trial rig session with an LED-window change (`docs/rig-checks.md`). On
+  2026-10-05 (0.10.0, P15) six headless rig sessions for strategy correction, and the setup
+  dialog's Runtime tab and the tabbed runtime window's Strategy tab rendered with `exportapp` under
+  `-batch` (P16, on screen, still pending).
 - For anything that depends on pokes: `stateMachineTest` plays whole trials with `startMouse`
   (scripted `'V'` override bytes from a timer, a few hundred ms apart, never `ManualOverride`);
-  `animalSessionTest` plays four whole sessions with `startSessionMouse` (one behaviour per trial, the
-  paying side read from the running state matrix, runtime values typed into the compact window),
-  reaching every outcome path and rebuilding each trial from the saved file. Add a behaviour to
-  `startSessionMouse`'s lists for any new path.
+  `animalSessionTest` plays six whole sessions with `startSessionMouse` (one behaviour per trial, the
+  paying side read from the running state matrix, runtime values typed or menu items chosen in the
+  compact window), reaching every outcome path, the side poke states, context correction reading
+  every choice and blocks, and rebuilding each trial from the saved file. Add a behaviour to
+  `startSessionMouse`'s lists for any new path. Strategy correction's policies are pure and
+  replayed with simulated animals in the session's order in `strategyTest`.
+- The emulator has no HiFi module, so a whole trial with a sound action cannot be built there
+  (`AddState` refuses `HiFi1`, and a serial channel's messages need `MaxBytesPerSerialMsg`): test
+  sound actions on the components (`stateMachineTest`'s cue tone tests), not on a built trial.
 - Whole sessions: `emulatorSessionTest` (behaviour), `habituationSessionTest` (one trial played, the
   centre reward or its fallback where valve 2 has no calibration), `sleepSessionTest` (with and
   without test pulses), `ephysSessionTest`, all with video and the LED window off. `ledTest` and

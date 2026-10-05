@@ -50,6 +50,11 @@ classdef OnlinePlots < handle
     %                   where the hold was completed, at any attempt (lum.holdMeasures), a
     %                   grey cross where it was not
     %
+    % In a session that runs blocks (lum.Blocks), the side a trial pays inside a block is set
+    % by the trials before it, so Psychometric and Evidence count only trials outside blocks
+    % and each block's first trial (their keys say so once a block has run), and Performance
+    % shades each block in its side's colour.
+    %
     % The centre hold counts as completed however many early withdrawals came before it: in
     % the operator's view a mouse that withdrew, came back and held for the full time held.
     % How many attempts it took is in the summary plots (09_HoldAttempts), not here: the
@@ -129,6 +134,10 @@ classdef OnlinePlots < handle
         planeX                % u_A of each choice, by correct/incorrect and side chosen:
         planeY                % 4 x nTrials, rows correct-left, correct-right,
                               % incorrect-left, incorrect-right
+        lastBlock = 0         % The block of the last trial recorded; 0 outside blocks
+        anyBlock = false      % Whether a trial has run in a block
+        blockVertices         % The performance panel's shading: 4 vertices a trial, NaN
+        blockColours          % outside blocks, and each trial's block colour
 
         % Running aggregates, updated in O(1)
         barTrials = zeros(1, 2)   % Left-rewarded, right-rewarded
@@ -194,6 +203,8 @@ classdef OnlinePlots < handle
             obj.latency = S.Stimulus.Latency;
             obj.planeX = NaN(4, nTrials);
             obj.planeY = NaN(4, nTrials);
+            obj.blockVertices = NaN(4 * nTrials, 2);
+            obj.blockColours = ones(nTrials, 3);
 
             if rasterByEvidence(stimulusSet)
                 obj.rasterOfPattern = stimulusSet.Evidence;
@@ -286,6 +297,11 @@ classdef OnlinePlots < handle
                 set(h.leftPerformance, 'YData', obj.leftPerformanceY);
                 set(h.rightPerformance, 'YData', obj.rightPerformanceY);
                 set(obj.axesOf.performance, 'XLim', sessionLimits);
+
+                if obj.anyBlock
+                    set(h.blockShading, 'Vertices', obj.blockVertices, ...
+                        'FaceVertexCData', obj.blockColours);
+                end
 
                 set(h.biasLeft, 'YData', obj.biasLeftY);
                 set(h.biasTarget, 'YData', obj.biasTargetY);
@@ -450,6 +466,25 @@ classdef OnlinePlots < handle
             obj.sideOfTrial(n) = spec.CorrectSide;
             obj.biasTargetY(n) = spec.BiasTargetPLeft;
 
+            % Blocks: shade the trial, and leave every trial of a block but its first out of
+            % the stimulus panels, whose side the block set.
+            block = 0;
+            if isfield(spec, 'Block')
+                block = spec.Block;
+            end
+            forStimulus = block == 0 || block ~= obj.lastBlock;
+            obj.lastBlock = block;
+            if block > 0
+                if ~obj.anyBlock
+                    obj.anyBlock = true;
+                    set(obj.handles.psychometricKey, 'String', {'chose left, blocks'' first trials', ...
+                                                               'contingency'});
+                end
+                sideColours = {obj.theme.Left, obj.theme.Right};
+                obj.blockVertices(4 * n - 3:4 * n, :) = [n - 0.5 0; n + 0.5 0; n + 0.5 1; n - 0.5 1];
+                obj.blockColours(n, :) = sideColours{spec.BlockSide};
+            end
+
             obj.reactionTimes(n) = result.ReactionTime;
             if result.Choice == 1
                 obj.leftReactionY(n) = result.ReactionTime;
@@ -515,6 +550,9 @@ classdef OnlinePlots < handle
             % fixed jitter per trial keeps repeated patterns from hiding one another,
             % without touching the global random stream that draws sides. A session without
             % light draws nothing here (the panel says so).
+            if ~forStimulus
+                return
+            end
             lit = double(spec.OptoOn);
             series = 2 * (1 - scored) + result.Choice;   % 1..4, see planeX
             if obj.lightOn
@@ -724,6 +762,12 @@ classdef OnlinePlots < handle
             t = obj.theme;
             lum.gui.styleAxes(ax, sprintf('Performance, %d-trial window', obj.movingWindow), t);
             obj.axesOf.performance = ax;
+            % Blocks, one face a trial, drawn once a block has run (recordTrial)
+            nTrials = numel(x);
+            obj.handles.blockShading = patch(ax, 'Faces', reshape(1:4 * nTrials, 4, nTrials)', ...
+                'Vertices', obj.blockVertices, 'FaceVertexCData', obj.blockColours, ...
+                'FaceColor', 'flat', 'FaceAlpha', 0.12, 'EdgeColor', 'none', ...
+                'HandleVisibility', 'off', 'HitTest', 'off');
             chanceLine(ax, [0 numel(x)], t);
             obj.handles.leftPerformance = line(ax, x, obj.leftPerformanceY, 'Color', t.Left, ...
                                                'LineWidth', 1.6);
@@ -759,7 +803,8 @@ classdef OnlinePlots < handle
             end
             xlabel(ax, layout.XLabel);
             ylabel(ax, 'P(choose left)');
-            lum.gui.panelLegend(ax, [obj.handles.psychometric, target], {'chose left', 'contingency'}, t);
+            obj.handles.psychometricKey = lum.gui.panelLegend(ax, [obj.handles.psychometric, target], ...
+                                                              {'chose left', 'contingency'}, t);
         end
 
         function buildEvidencePanel(obj, ax)

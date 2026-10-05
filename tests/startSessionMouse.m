@@ -10,8 +10,9 @@ function mouse = startSessionMouse(behaviours)
 %              the one whose poke leads to LeftRewardDelay or RightRewardDelay from
 %              WaitForResponse
 %   'Wrong'    the other side port
-%   'Set:<name>'  types level into the compact runtime window's <name> field, as the
-%              operator would; the session reads it when it prepares its next trial
+%   'Set:<name>'  types level into the compact runtime window's <name> field, or chooses item
+%              level of its menu, as the operator would; the session reads it when it
+%              prepares its next trial
 % An empty behaviour ({}) does nothing on that trial. Trials past the list do nothing.
 %
 % A trial is recognised by the state machine running (Status.InStateMatrix) with
@@ -122,8 +123,13 @@ end
 end
 
 function setParameter(name, value)
-% Type a value into Bpod's compact parameter window, as the operator would.
+% Type a value into Bpod's compact parameter window, or choose a menu's item, as the operator would.
 global BpodSystem %#ok<GVMIS>
 index = find(strcmp(BpodSystem.GUIData.ParameterGUI.ParamNames, name), 1);
-set(BpodSystem.GUIHandles.ParameterGUI.Params(index), 'String', num2str(value));
+control = BpodSystem.GUIHandles.ParameterGUI.Params(index);
+if strcmp(get(control, 'Style'), 'popupmenu')
+    set(control, 'Value', value);
+else
+    set(control, 'String', num2str(value));
+end
 end

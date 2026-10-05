@@ -36,7 +36,7 @@ themselves.
 package (`+lum`): for those, `help lum.<package>` is the list to read. A package's list is built
 from each file's first help line, so that line is written to be read on its own.
 
-The design behind the code (decisions D1–D22) is in [`architecture.md`](architecture.md); a
+The design behind the code (decisions D1–D23) is in [`architecture.md`](architecture.md); a
 comment that names a decision (`D21`) points there.
 
 ---

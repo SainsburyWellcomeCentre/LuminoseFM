@@ -29,6 +29,8 @@ function [sma, plan] = buildTrialSM(context)
 %                          -> RetryResponse    (not punished) -> WaitForResponse |
 %                          -> NoResponse                                        +-> WaitForLightEnd
 %   WaitForCentrePoke -> NoInitiation         -> WaitForLightEnd   (the hold window ran out)
+%   WaitForCentrePoke -> SidePokeDelay        -> WaitForCentrePoke (a side poke, 'Delay')
+%   WaitForCentrePoke -> SidePokeBeforeChoice -> WaitForLightEnd   (a side poke, 'End trial')
 %   WaitForCentreExit -> NoResponse           -> WaitForLightEnd
 %   *RewardDelay      -> WithdrewBeforeReward -> WaitForLightEnd   (only with a reward delay)
 %   WaitForLightEnd   -> ITI -> exit
@@ -100,6 +102,16 @@ function [sma, plan] = buildTrialSM(context)
 % reward valve almost the instant the hold ends. It leaves on Port2Out, or at once
 % on the centre port already being clear (condition 3), which is how a hold that ends
 % during a forgiven break still reaches the response window.
+%
+% A side poke while the trial waits for a centre poke (from trial start, and after an early
+% withdrawal with restarts) does what S.GUI.SidePokeBeforeChoice says, a runtime setting
+% (strategy correction, D23): nothing ('Ignore', the default), a delay ('Delay':
+% SidePokeDelay, S.GUI.SidePokeDelay long, with the cue off and centre pokes ignored, then
+% the wait for the poke again, the hold window still running), or the end of the trial
+% ('End trial': SidePokeBeforeChoice, unrewarded, with an early withdrawal's punishment when
+% those are punished). Both states exist in every trial and are unreachable under 'Ignore'.
+% A side poke then is a new visit, not drinking that went on: the drinking grace keeps a
+% rewarded trial going until the animal has been out of both side ports for a while.
 %
 % Arguments:
 %   context  Struct describing the trial:
@@ -299,6 +311,7 @@ end
 % through with a zero timer and no sound.
 earlyWithdrawalPunishment = lum.punishmentFor(S, 'EarlyWithdrawal');
 incorrectChoicePunishment = lum.punishmentFor(S, 'IncorrectChoice');
+sidePokePunishment = lum.punishmentFor(S, 'SidePokeBeforeChoice');
 
 % A punishment noise is let finish before anything can cut it off: with restarts and a
 % cue tone, WaitForCentrePoke follows the break and plays the tone, which would replace
@@ -313,6 +326,34 @@ end
 incorrectChoiceTimer = incorrectChoicePunishment.Timeout;
 if playsNoise(context, incorrectChoicePunishment)
     incorrectChoiceTimer = max(incorrectChoiceTimer, S.Sound.NoiseDuration);
+end
+% Context correction reads the choice from the state the trial reaches, and the trial manager
+% reports states once per batch of events: a 0 s IncorrectChoice could pass unseen
+% (lum.BiasCorrection.ReadableState).
+if lum.BiasCorrection.readsRunningChoice(S)
+    incorrectChoiceTimer = max(incorrectChoiceTimer, lum.BiasCorrection.ReadableState);
+end
+sidePokeTimer = sidePokePunishment.Timeout;
+if playsNoise(context, sidePokePunishment)
+    sidePokeTimer = max(sidePokeTimer, S.Sound.NoiseDuration);
+end
+
+% A side poke while the trial waits for a centre poke: ignored, a delay, or the trial's end.
+sidePokeMode = 1;
+if isfield(S.GUI, 'SidePokeBeforeChoice')
+    sidePokeMode = S.GUI.SidePokeBeforeChoice;
+end
+sidePokeTransitions = {};
+switch sidePokeMode
+    case 2
+        sidePokeTransitions = {rig.PokeIn.Left, 'SidePokeDelay', rig.PokeIn.Right, 'SidePokeDelay'};
+    case 3
+        sidePokeTransitions = {rig.PokeIn.Left, 'SidePokeBeforeChoice', ...
+                               rig.PokeIn.Right, 'SidePokeBeforeChoice'};
+end
+sidePokeDelay = 0;
+if isfield(S.GUI, 'SidePokeDelay')
+    sidePokeDelay = S.GUI.SidePokeDelay;
 end
 
 % The hold window starts with the trial and is never cancelled or re-triggered.
@@ -337,8 +378,9 @@ else
 end
 sma = AddState(sma, 'Name', 'WaitForCentrePoke', ...
     'Timer', 0, ...
-    'StateChangeConditions', {rig.PokeIn.Centre, afterPoke, ...
-                              holdWindowEnded, 'NoInitiation', 'Condition4', 'NoInitiation'}, ...
+    'StateChangeConditions', [{rig.PokeIn.Centre, afterPoke, ...
+                               holdWindowEnded, 'NoInitiation', 'Condition4', 'NoInitiation'}, ...
+                              sidePokeTransitions], ...
     'OutputActions', lum.mergeActions(cueOn, cueStateSync));
 
 % The latency: the animal holds with the cue still on, and nothing of the stimulus has
@@ -528,6 +570,26 @@ sma = AddState(sma, 'Name', 'NoInitiation', ...
     'StateChangeConditions', {'Tup', trialEnd}, ...
     'OutputActions', lum.mergeActions(cueOff, centreOff, pokeSync));
 
+% A side poke before the response window, 'Delay': the cue goes off (the cue tone stops)
+% and centre pokes are ignored for S.GUI.SidePokeDelay, then the trial waits for a centre
+% poke again, which puts the cue back on; the hold window runs on, and ending in it lapses
+% the trial. Further side pokes are ignored. With task-event sync the line drops here and
+% rises again as the wait resumes, as after an early withdrawal.
+sma = AddState(sma, 'Name', 'SidePokeDelay', ...
+    'Timer', sidePokeDelay, ...
+    'StateChangeConditions', {'Tup', 'WaitForCentrePoke', holdWindowEnded, 'NoInitiation', ...
+                              'Condition4', 'NoInitiation'}, ...
+    'OutputActions', lum.mergeActions(cueOff, centreOff, pokeSync));
+
+% A side poke before the response window, 'End trial': unrewarded, the cue off, with an early
+% withdrawal's punishment when those are punished (at least the noise, which the ITI would
+% cut off), then the trial ends.
+sma = AddState(sma, 'Name', 'SidePokeBeforeChoice', ...
+    'Timer', sidePokeTimer, ...
+    'StateChangeConditions', {'Tup', trialEnd}, ...
+    'OutputActions', lum.mergeActions(cueOff, centreOff, pokeSync, ...
+                                      noiseActions(context, sidePokePunishment)));
+
 % The light may still be playing after a hold shorter than it (D21), and ending the
 % state machine would drop its lines, so the trial waits for the light clock here: until
 % its end, or at once when it is not running (it ended, was cancelled with a broken
@@ -564,6 +626,8 @@ plan = struct('timers', {timerGrants}, 'cueTimers', {cueGrants}, 'holdClock', ho
               'latency', latency, ...
               'earlyWithdrawalTimer', earlyWithdrawalTimer, ...
               'incorrectChoiceTimer', incorrectChoiceTimer, ...
+              'sidePokeMode', sidePokeMode, 'sidePokeDelay', sidePokeDelay, ...
+              'sidePokeTimer', sidePokeTimer, 'sidePokePunishment', sidePokePunishment, ...
               'centreReward', strcmp(holdDone, 'CentreReward'), ...
               'centreValveTime', centreValveTime, ...
               'earlyWithdrawalPunishment', earlyWithdrawalPunishment, ...

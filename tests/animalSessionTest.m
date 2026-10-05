@@ -19,6 +19,11 @@ function tests = animalSessionTest
 %   experiment   the Experiment stage with a fixed 0.2 s hold under 1 s of light: quick
 %                choices while the light plays on (D21), a retry, a broken hold then a
 %                completed one, no poke
+%   strategy     strategy correction: side pokes delay the trial (before the first centre
+%                poke and between attempts), then end it once the runtime window says so;
+%                context correction for last choice and reward, so every trial is prepared
+%                after the one before has chosen (lum.SessionRunner.awaitChoice)
+%   blocks       blocks of three trials, every one played correct
 % Each saved trial is then checked against what its behaviour must give, re-scored from
 % its raw events, and its timing compared with the settings it records (TrialSettings,
 % HoldDuration, HoldGrace, the stimulus set). The emulator keeps no millisecond time, so
@@ -43,6 +48,10 @@ mkdir(testCase.TestData.folder);
     runSession(testCase, 'habituation', habituationSettings(), habituationBehaviours());
 [testCase.TestData.experiment, testCase.TestData.experimentLog] = ...
     runSession(testCase, 'experiment', experimentSettings(), experimentBehaviours());
+[testCase.TestData.strategy, testCase.TestData.strategyLog] = ...
+    runSession(testCase, 'strategy', strategySettings(), strategyBehaviours());
+[testCase.TestData.blocks, testCase.TestData.blocksLog] = ...
+    runSession(testCase, 'blocks', blockSettings(), blockBehaviours());
 end
 
 function teardownOnce(testCase)
@@ -223,10 +232,55 @@ verifyGreaterThan(testCase, diff(data.RawEvents.Trial{1}.States.WaitForLightEnd(
                   'Trial 1 was over before its light and waited for it');
 end
 
+%% Strategy correction: side pokes, context correction, blocks
+
+function testSidePokesDelayAndThenEndTheTrial(testCase)
+data = testCase.TestData.strategy;
+O = @(name) lum.Outcome.(name);
+verifyEqual(testCase, data.Outcome, [O('Correct'), O('Correct'), O('Correct'), O('Incorrect'), ...
+                                     O('Correct'), O('SidePokeBeforeChoice'), O('Correct')]);
+verifyEqual(testCase, data.SidePokeDelays, [0 1 1 0 0 0 0], ...
+            'Before the first centre poke on trial 2, between attempts on trial 3');
+verifyEqual(testCase, data.Rewarded, [1 1 1 0 1 0 1]);
+modes = cellfun(@(s) s.SidePokeBeforeChoice, data.TrialSettings);
+verifyEqual(testCase, modes, [2 2 2 2 2 3 3], 'End trial typed during trial 5');
+S = data.Session.Settings;
+for k = [2 3]
+    span = data.RawEvents.Trial{k}.States.SidePokeDelay(1, :);
+    verifyGreaterThanOrEqual(testCase, diff(span), S.GUI.SidePokeDelay - 1e-3, sprintf('Trial %d', k));
+end
+end
+
+function testContextCorrectionReadsEachChoiceBeforeTheNextTrial(testCase)
+% Every trial from the second was prepared after the one before chose, its context that
+% choice and its reward; after a trial with no choice, none.
+data = testCase.TestData.strategy;
+expected = [0, lum.BiasCorrection.contextOf(3, data.Choice(1:end - 1), data.Rewarded(1:end - 1))];
+verifyEqual(testCase, data.BiasContext, expected);
+verifyEqual(testCase, data.BiasContext(7), 0, 'Trial 6 ended on a side poke: no choice');
+verifyTrue(testCase, all(data.Timing.awaitChoice >= 0));
+verifyEqual(testCase, data.Block, zeros(1, data.nTrials));
+verifyTrue(testCase, all(isnan(data.BlockSide)));
+end
+
+function testBlocksHoldThePayingSide(testCase)
+data = testCase.TestData.blocks;
+verifyEqual(testCase, data.Block, [1 1 1 2 2 2 3 3 3 4 4 4]);
+sides = data.BlockSide(1:3:end);
+verifyTrue(testCase, all(diff(sides) ~= 0), 'Each block takes the other side');
+verifyEqual(testCase, data.CorrectSide, data.BlockSide, 'A pure set pays the block''s side');
+verifyEqual(testCase, data.BiasTargetPLeft, double(data.BlockSide == 1));
+verifyTrue(testCase, all(isnan(data.BiasContext)), 'Bias correction does not act in blocks');
+verifyEqual(testCase, data.Rewarded, ones(1, 12));
+dataFile = fullfile(testCase.TestData.folder, 'testAnimal_LuminoseFM_blocks.mat');
+text = fileread(fullfile(lum.report.folder(dataFile, 'Logs'), 'testAnimal_LuminoseFM_blocks_log.md'));
+verifySubstring(testCase, text, 'Blocks: 4, 3 switches');
+end
+
 %% Every session
 
 function testEverySavedTrialRescoresToWhatWasSaved(testCase)
-for name = {'training', 'punished', 'habituation', 'experiment'}
+for name = {'training', 'punished', 'habituation', 'experiment', 'strategy', 'blocks'}
     data = testCase.TestData.(name{1});
     for k = 1:data.nTrials
         spec = struct('CorrectSide', data.CorrectSide(k));
@@ -241,7 +295,7 @@ end
 end
 
 function testEveryTrialRecordsItsStimulusAndSettings(testCase)
-for name = {'training', 'punished', 'habituation', 'experiment'}
+for name = {'training', 'punished', 'habituation', 'experiment', 'strategy', 'blocks'}
     data = testCase.TestData.(name{1});
     set = data.Session.StimulusSet;
     verifyEqual(testCase, data.StimulusGroup, set.PatternGroup(data.PatternIndex), name{1});
@@ -255,7 +309,7 @@ end
 end
 
 function testNoSessionWarnedOrFailed(testCase)
-for name = {'training', 'punished', 'habituation', 'experiment'}
+for name = {'training', 'punished', 'habituation', 'experiment', 'strategy', 'blocks'}
     log = testCase.TestData.([name{1} 'Log']);
     % The one warning expected: the training session's refused reward
     log = regexprep(log, 'Warning: The reward stays at 6 uL[^\n]*', '');
@@ -389,6 +443,49 @@ retry = {0.3, 'Centre', 1; 0.6, 'Centre', 0; 0.9, 'Wrong', 1; 1.1, 'Wrong', 0; .
 brokenThenComplete = {0.3, 'Centre', 1; 0.4, 'Centre', 0; 0.9, 'Centre', 1; 1.2, 'Centre', 0; ...
                       1.5, 'Correct', 1; 1.7, 'Correct', 0};
 behaviours = {quick, retry, brokenThenComplete, {}};
+end
+
+function S = strategySettings()
+S = baseSettings();
+S.Session.MaxTrials = 7;
+S.GUI.HoldWindow = 4;
+S.GUI.ResponseWindow = 1.2;
+S.GUI.PunishCondition = 3;        % Incorrect choices punished, so context correction applies
+S.GUI.PunishType = 1;             % Timeout
+S.GUI.PunishTimeout = 0.6;
+S.GUI.SidePokeBeforeChoice = 2;   % Delay
+S.GUI.SidePokeDelay = 0.5;
+S.GUI.BiasCorrection = 0.5;
+S.GUI.BiasCorrectFor = 3;         % Last choice and reward
+end
+
+function behaviours = strategyBehaviours()
+correct = {0.3, 'Centre', 1; 1.3, 'Centre', 0; 1.7, 'Correct', 1; 2.1, 'Correct', 0};
+sidePokeFirst = {0.2, 'Port1', 1; 0.35, 'Port1', 0; 1.0, 'Centre', 1; 2.0, 'Centre', 0; ...
+                 2.4, 'Correct', 1; 2.8, 'Correct', 0};
+sidePokeBetween = {0.3, 'Centre', 1; 0.45, 'Centre', 0; 0.7, 'Port3', 1; 0.85, 'Port3', 0; ...
+                   1.5, 'Centre', 1; 2.5, 'Centre', 0; 2.9, 'Correct', 1; 3.3, 'Correct', 0};
+wrong = {0.3, 'Centre', 1; 1.3, 'Centre', 0; 1.7, 'Wrong', 1; 2.0, 'Wrong', 0};
+typesEndTrial = [correct; {2.4, 'Set:SidePokeBeforeChoice', 3}];
+endsTrial = {0.2, 'Port3', 1; 0.35, 'Port3', 0};
+behaviours = {correct, sidePokeFirst, sidePokeBetween, wrong, typesEndTrial, endsTrial, correct};
+end
+
+function S = blockSettings()
+S = baseSettings();
+S.Session.MaxTrials = 12;
+S.GUI.HoldWindow = 3;
+S.GUI.ResponseWindow = 1.2;
+S.GUI.TrialOrder = 2;   % Blocks
+S.GUI.BlockMin = 3;
+S.GUI.BlockMax = 3;
+S.GUI.BiasCorrection = 0.5;
+S.Task.MaxSameSide = 2;  % Neither acts in blocks
+end
+
+function behaviours = blockBehaviours()
+correct = {0.3, 'Centre', 1; 1.3, 'Centre', 0; 1.7, 'Correct', 1; 2.1, 'Correct', 0};
+behaviours = repmat({correct}, 1, 12);
 end
 
 function tf = valve2Calibrated()

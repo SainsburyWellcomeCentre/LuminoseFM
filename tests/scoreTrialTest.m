@@ -227,8 +227,42 @@ result = lum.scoreTrial(makeTrial('WaitForCentrePoke', [0.1 60.1], 'NoInitiation
 verifyTrue(testCase, isnan(result.CentreHoldTime), 'No hold, no hold time');
 end
 
+function testASidePokeThatEndsTheTrialIsItsOwnOutcome(testCase)
+% 'End trial': a side poke while waiting for the centre poke ends the trial, unrewarded.
+result = lum.scoreTrial(makeTrial('WaitForCentrePoke', [0.1 0.6], 'SidePokeBeforeChoice', [0.6 1.6], ...
+                                  'ITI', [1.6 1.85], 'Port1In', 0.6), spec(1), testCase.TestData.rig);
+verifyEqual(testCase, result.Outcome, lum.Outcome.SidePokeBeforeChoice);
+verifyEqual(testCase, lum.Outcome.SidePokeBeforeChoice, 7, 'Appended: codes are never renumbered');
+verifyTrue(testCase, isnan(result.Choice), 'A side poke before the response window is no choice');
+verifyEqual(testCase, result.Rewarded, 0);
+verifyEqual(testCase, result.SidePokeDelays, 0);
+end
+
+function testSidePokeDelaysAreCountedAndTheTrialGoesOn(testCase)
+% 'Delay': two side pokes delayed the trial; it went on to a correct choice.
+result = lum.scoreTrial(makeTrial('WaitForCentrePoke', [0.1 0.5; 2.5 3; 5 5.2], ...
+                                  'SidePokeDelay', [0.5 2.5; 3 5], 'CentreHold', [5.2 6.2], ...
+                                  'WaitForCentreExit', [6.2 6.4], 'WaitForResponse', [6.4 6.9], ...
+                                  'LeftRewardDelay', [6.9 6.9], 'LeftReward', [6.9 7], ...
+                                  'Port1In', [0.5 3 6.9], 'Port2In', 5.2), ...
+                        spec(1), testCase.TestData.rig);
+verifyEqual(testCase, result.SidePokeDelays, 2);
+verifyEqual(testCase, result.Outcome, lum.Outcome.Correct);
+verifyEqual(testCase, result.Choice, 1, 'The choice is the poke in the response window');
+end
+
+function testOldTrialsHaveNoSidePokeDelays(testCase)
+% A trial from before 0.10.0 has neither state; the scorer says none.
+trial = makeTrial('WaitForCentrePoke', [0.1 60.1], 'NoInitiation', [60.1 60.1]);
+trial.States = rmfield(trial.States, {'SidePokeDelay', 'SidePokeBeforeChoice'});
+result = lum.scoreTrial(trial, spec(1), testCase.TestData.rig);
+verifyEqual(testCase, result.SidePokeDelays, 0);
+verifyEqual(testCase, result.Outcome, lum.Outcome.NoInitiation);
+end
+
 function testOutcomeNamesCoverEveryCode(testCase)
-verifyEqual(testCase, numel(lum.Outcome.allNames()), 7);
+verifyEqual(testCase, numel(lum.Outcome.allNames()), 8);
+verifyEqual(testCase, lum.Outcome.name(lum.Outcome.SidePokeBeforeChoice), 'SidePokeBeforeChoice');
 verifyEqual(testCase, lum.Outcome.name(lum.Outcome.HoldNotCompleted), 'HoldNotCompleted');
 verifyEqual(testCase, lum.Outcome.name(lum.Outcome.Correct), 'Correct');
 verifyEqual(testCase, lum.Outcome.name(99), 'Unknown');
@@ -242,7 +276,7 @@ stateNames = {'TrialStart', 'WaitForCentrePoke', 'PreStimulusHold', 'CentreHold'
               'EarlyWithdrawal', 'LeftRewardDelay', 'RightRewardDelay', 'LeftReward', ...
               'RightReward', 'DrinkingLeft', 'DrinkingRight', 'DrinkingGrace', ...
               'WithdrewBeforeReward', 'IncorrectChoice', 'NoResponse', 'NoInitiation', 'ITI', ...
-              'CentreReward', 'RetryResponse'};
+              'CentreReward', 'RetryResponse', 'SidePokeDelay', 'SidePokeBeforeChoice'};
 trial = struct('States', struct(), 'Events', struct());
 for i = 1:numel(stateNames)
     trial.States.(stateNames{i}) = [NaN NaN];
@@ -250,13 +284,13 @@ end
 end
 
 function trial = makeTrial(varargin)
-% makeTrial('StateName', [start end], ..., 'PortNIn', time, ...) builds a raw trial.
+% makeTrial('StateName', [start end; ...], ..., 'PortNIn', times, ...) builds a raw trial.
 trial = trialTemplate();
 for i = 1:2:numel(varargin)
     name = varargin{i};
     value = varargin{i+1};
-    if numel(value) == 2
-        trial.States.(name) = value;
+    if isfield(trial.States, name) || (numel(value) == 2 && ~startsWith(name, {'Port', 'GlobalTimer'}))
+        trial.States.(name) = value;   % A state: [start end], a row per visit
     elseif isfield(trial.Events, name)
         trial.Events.(name) = [trial.Events.(name) value];
     else

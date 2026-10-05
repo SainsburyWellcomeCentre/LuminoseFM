@@ -19,7 +19,10 @@ it. Keep session files out of the data folder (`%TEMP%\LuminoseFM_rigcheck`, sub
 
 **Virtual pokes.** Write the state machine's virtual input bytes from a MATLAB timer on a fixed
 cycle, as the console's port buttons do: `BpodSystem.SerialPort.write(['V' ch-1 level], 'uint8')`.
-Never drive `ManualOverride` from a timer.
+Never drive `ManualOverride` from a timer. A timer that watches `BpodSystem.Status.CurrentStateName`,
+starts a trial's script when it sees `TrialStart` (or `WaitForCentrePoke` after `ITI`), and writes
+only when it pokes, loads the port far less than one writing every cycle (P15's
+`rigCheckStrategy.m`, kept in `%TEMP%\LuminoseFM_rigcheck`).
 
 **A headless session.** Set the appdata `LuminoseFM_Headless` and `BpodSystem` up as
 `emulatorSessionTest` does, and also do what `RunProtocol` does before a session:
@@ -47,8 +50,8 @@ once it has passed.
 | [P10](#p10-what-094-changed-seen-in-a-desktop-session-094) | a refused reward volume and the hold plot in a desktop session | 0.9.4 |
 | [P11](#p11-the-light-playing-on-after-a-short-hold-095) | light at the fiber tips after a short hold (step 1 can run headless) | 0.9.5 |
 | [P12](#p12-what-096-changed-in-a-desktop-session-096) | the mouse-drawn crop, crops per session type, the carried hold, the memory after a desktop behaviour session | 0.9.6 |
+| [P16](#p16-the-strategy-tab-in-a-desktop-session-0100) | the Strategy tab in the setup dialog and both runtime windows, *Correct for* greying out | 0.10.0 |
 | [P13](#p13-the-hold-on-the-timing-panel-the-wrapped-header-and-the-summary-plots-098) | the runtime hold, the wrapped header, the teardown's plots on screen, the animal at the new timing (step 4's file checks passed 2026-09-27 and, for 0.9.11's upload, 2026-09-28) | 0.9.8, 0.9.11 |
-| [P14](#p14-light-or-sound-the-mouse-could-sense-without-the-bulb-0913) | the box dark, someone looking at the cables and implant and listening near the LED driver while each channel pulses | 0.9.13 |
 
 ### P4. Calibrate the 2-to-19 bundle (0.9.1)
 
@@ -202,30 +205,47 @@ The pieces are tested under the emulator; these need the desktop MATLAB and the 
    *inter-trial dead time* box; the LED window reads *waiting to be sent between trials* after
    **Apply** until the current is sent.
 
-### P14. Light or sound the mouse could sense without the bulb (0.9.13)
+### P16. The Strategy tab in a desktop session (0.10.0)
 
-LUMS0014's early withdrawals lock to the 20 Hz light pulses (`docs/learning-time-literature.md`,
-*Do the pulses reach the mouse?*), which says the mouse senses them, not how. This check looks for
-the other ways. No animal; the cable connected to a dummy ferrule or a spare GRIN lens, placed where
-the implant would be.
-
-1. Room and box lights off, house light off. For leaks, hold the light on: `TestDoricLED('Currents',
-   [250 410 500 900], 'On', 5, 'Count', 2)` lights A, then B, then both, for 5 s at each current
-   (the session's currents are A 253 and B 496 mA at 8 mW/mm², A 409 and B 893 mA at 12). With eyes
-   dark-adapted for a few minutes, look from where the mouse's head would be at the ferrule and its
-   sleeve, the patch cords, the commutator and the driver's front panel, and note any blue and on
-   which channel at which current. B runs at about twice A's current for the same irradiance, so a
-   leak at the commutator or the cords would show more on B.
-2. For sound, the session's own pulses: start a behaviour session with light (Training, the
-   settings file as the animal runs it) and poke the centre port by hand. Each poke plays the 0.3 s
-   window of 20 Hz pulses on A or B. Listen close to the LED driver, the LED heads and the cable for
-   a tick or buzz, and record a minute with an ultrasonic-capable microphone if one is to hand (mice
-   hear up to about 80 kHz).
-3. Record each finding under *Done*, and in the literature document's section. A leak that the mouse
-   could see can be covered (black sleeve, opaque heat-shrink at the ferrule) before raising the
-   light.
+In a desktop MATLAB (emulator or rig, no animal): the setup dialog's Runtime tab shows four tabs'
+panels in three columns (Delivery under Task) with every label readable; choosing *Experiment* on
+the Task tab sets *Bias correction* 0, *Max same side in a row* 0, *Correct for* *Side bias*,
+*Reward floor* 0, *Trial order* *Random* and *Side poke before the response* *Ignore*; *Correct for*
+greys out when *Punish on* is *None* or *Early withdrawal* and comes back with *Incorrect choice*,
+in the setup dialog, the tabbed runtime window (at once, on choosing) and Bpod's compact window
+(from the next trial). In a session: a side poke while the cue is on switches it off for the delay.
 
 ## Done
+
+### 2026-10-05 — P15, strategy correction (0.10.0) on the rig, no animal, fibers terminated, run by an agent with the operator's permission
+
+No other MATLAB running, COM3 free. Behaviour sessions headless in `-batch` (LUMS0014's settings
+file as the base: pure channel A or B, 0.3 s window and hold, 20 Hz carrier, jittered sync; hold
+window 4 s, response window 3 s, ITI 0.25 s; files in `%TEMP%\LuminoseFM_rigcheck`, subject
+`FakeSubject`), poked by a timer that watched `Status.CurrentStateName` and wrote `'V'` bytes only
+to poke (`rigCheckStrategy.m` and `rigCheckReport.m` in that folder). Version `0.10.0+676ff9a`
+(uncommitted).
+
+| Check | Result |
+|-------|--------|
+| Part 1, *Delay* 1 s, `_163026` (16 trials, a side poke before the first centre poke or between attempts on half of them) | 8 delays, each 1.0000 s; the trial went on to a choice every time; every gap between trials 0.1 ms; no dead time warning; no state machine error codes; every trial through `WaitForLightEnd`; every trial rescored to what was saved |
+| Part 1, *End trial*, `_163315` (15 trials, a side poke 0.2 s into every third) | 5 trials ended `SidePokeBeforeChoice` (outcome 7), unrewarded, with no timeout (early withdrawals not punished). Every gap 0.1 ms but one, 3.1 ms with one dead time warning, after trial 10: a trial ended 0.45 s after it started is shorter than the loop's work while it runs (the trial before's plot, about 0.2 s, and the next trial's preparation, 0.08–0.25 s). A quick early withdrawal under *End trial* does the same; a punishment timeout covers it |
+| Part 1, blocks of 3–5, `_163529` (24 trials) | Blocks of 3, 4, 3, 5, 3, 3 and 3 (cut by the session's end), sides alternating, `CorrectSide` = `BlockSide` on every trial, `BiasTargetPLeft` 1/0, `BiasContext` NaN; every gap 0.1 ms; log lines *Strategy correction*, *Habits*, *Blocks*, *By group (trials outside blocks ...)*; 15 summary plots |
+| Part 2, context correction, *Last choice and reward*, strength 0.5, floor 40%, timeout 1 s, with video, `_163952` (30 trials) | Every gap 0.1 ms; `awaitChoice` median 2.6 s; `prepare` after the choice median 37 ms, at most 151 ms; the 30 contexts as recorded all equal those computed from the file's choices and rewards |
+| Part 2, the same at a 0 s timeout, `_164309` (30 trials) | One gap of 36 ms with one dead time warning (a 163 ms build inside the 0.25 s ITI), as the validation note says. **12 of 30 contexts recorded as none** where the trial before was an unrewarded choice: a 0 s `IncorrectChoice` passed inside one of `BpodTrialManager`'s 10 ms batches, unseen by `CurrentStateName`. Fixed: while choices are read live, `IncorrectChoice` lasts at least 50 ms (`lum.BiasCorrection.ReadableState`), and `DrinkingGrace` and `WithdrewBeforeReward` also say the side outside habituation |
+| After the fix, `_164800` (30 trials, 0 s timeout) | Every context equals the file's; every gap 0.1 ms; no warning |
+| MATLAB's time per trial | `Timing.build` (the state machine) is the slow part of `prepare`: median 4–95 ms across sessions, at most 238 ms; `sync` at most 71 ms, `spec` at most 26 ms. The 0.4–0.55 s preparations of LUMS0014's sessions were not reproduced here |
+
+The videos of the two context sessions (about 1 GB) are in that folder's `Session Videos`. Not seen:
+an animal under any lever, and the windows on screen (headless; the Strategy tab is P16).
+
+### 2026-10-05 — P14, light or sound the mouse could sense without the bulb, operator at the rig
+
+Checked by the operator, no animal, after LUMS0014's session of 2026-10-05 (the light then 20 Hz ×
+20 ms at 12 mW/mm², A 409 mA, B 893 mA). With the box dark, no blue light leaked from the cables,
+the commutator or the ferrule, and the LED driver made no sound while the channels pulsed. So the
+pulse locking in `docs/learning-time-literature.md` (*Do the pulses reach the mouse?*), if it is
+real, does not come from light escaping outside the bulb or from the driver's sound.
 
 ### 2026-09-28 (evening) — the 0.25 s ITI and SpinCam 1.3.0 on the rig, no animal, run by an agent with the operator's permission
 

@@ -357,6 +357,10 @@ end
         if isfield(controls.Runtime, 'OptoOn')
             controls.Runtime.OptoOn.Value = logical(candidate.GUI.OptoOn);
         end
+        % Strategy correction, bias correction and the run limit (lum.stageDefaults)
+        controls.MaxSameSide.Value = candidate.Task.MaxSameSide;
+        showRuntime(controls.Runtime, candidate.GUI, {'BiasCorrection', 'BiasCorrectFor', ...
+                    'BiasRewardFloor', 'TrialOrder', 'SidePokeBeforeChoice'});
         refresh();
     end
 
@@ -577,6 +581,9 @@ end
                   lum.HoldShaping.growsHold(candidate));
         setEnable(runtimeHandles(c.Runtime, {'GraceStart', 'GraceShrink', 'GraceTarget'}), ...
                   lum.HoldShaping.hasGrace(candidate));
+        % Context correction reads the first choice, which a retry hides (lum.BiasCorrection)
+        setEnable(runtimeHandles(c.Runtime, {'BiasCorrectFor'}), ...
+                  lum.BiasCorrection.isAvailable(candidate));
         cameras.update(candidate.Camera);
         doric.update(candidate);
         c.Tabs.Cameras.Title = countedTitle('Cameras', candidate.Camera.Enabled * ...
@@ -1296,37 +1303,85 @@ grid = uigridlayout(tab, [2 1], 'RowHeight', {34, '1x'}, 'Padding', 12, 'RowSpac
 note(grid, ['Starting values for the parameters that stay editable during the session. They '...
             'appear in the runtime window, where a change takes effect on the next trial.'], t);
 
+% In S.GUITabs's order, one column per runtime window tab, except that a short tab shares the
+% column of the short one before it (Delivery under Task), so four tabs fit three columns wide
+% enough to read.
 tabNames = unique({fields.Tab}, 'stable');
-columns = uigridlayout(grid, [1 numel(tabNames)], 'Padding', 0, 'ColumnSpacing', 12, ...
+declared = intersect(fieldnames(S.GUITabs)', tabNames, 'stable');
+tabNames = [declared, setdiff(tabNames, declared, 'stable')];
+rows = cellfun(@(name) sum(strcmp({fields.Tab}, name)), tabNames);
+columnOf = zeros(1, numel(tabNames));
+for i = 1:numel(tabNames)
+    if i > 1 && rows(i) + sum(rows(columnOf == columnOf(i - 1))) <= 8
+        columnOf(i) = columnOf(i - 1);
+    else
+        columnOf(i) = max(columnOf) + 1;
+    end
+end
+columns = uigridlayout(grid, [1 max(columnOf)], 'Padding', 0, 'ColumnSpacing', 12, ...
                        'BackgroundColor', t.Background);
 if ~isfield(controls, 'Runtime')
     controls.Runtime = struct();
 end
-for i = 1:numel(tabNames)
-    inTab = fields(strcmp({fields.Tab}, tabNames{i}));
-    panelNames = unique({inTab.Panel}, 'stable');
-    heights = cellfun(@(name) panelHeight(sum(strcmp({inTab.Panel}, name)) ...
-                                          + strcmp(name, 'Timing')), panelNames, ...
-                      'UniformOutput', false);
-    column = uigridlayout(columns, [numel(panelNames) + 2, 1], ...
-                          'RowHeight', [{22}, heights, {'1x'}], 'Padding', 0, 'RowSpacing', 10, ...
+for c = 1:max(columnOf)
+    % Each tab's heading, then its panels, down the column
+    rowHeights = {};
+    for i = find(columnOf == c)
+        inTab = fields(strcmp({fields.Tab}, tabNames{i}));
+        panelNames = unique({inTab.Panel}, 'stable');
+        heights = cellfun(@(name) panelHeight(sum(strcmp({inTab.Panel}, name)) ...
+                                              + strcmp(name, 'Timing')), panelNames, ...
+                          'UniformOutput', false);
+        rowHeights = [rowHeights, {22}, heights]; %#ok<AGROW>
+    end
+    column = uigridlayout(columns, [numel(rowHeights) + 1, 1], ...
+                          'RowHeight', [rowHeights, {'1x'}], 'Padding', 0, 'RowSpacing', 10, ...
                           'BackgroundColor', t.Background, 'Scrollable', 'on');
-    uilabel(column, 'Text', tabNames{i}, 'FontSize', 14, 'FontWeight', 'bold', 'FontColor', t.Ink);
-    for j = 1:numel(panelNames)
-        members = inTab(strcmp({inTab.Panel}, panelNames{j}));
-        isTiming = strcmp(panelNames{j}, 'Timing');
-        form = formPanel(column, panelNames{j}, numel(members) + isTiming, t, 200);
-        if isTiming
-            label(form, 'Stimulus window (s)', t);
-            controls.TimingWindow = numberField(form, S.Stimulus.Duration, [0.001 60], onEdit, false);
-            controls.TimingWindow.Tooltip = ['The stimulus window, from stimulus onset: the same '...
-                'setting as the Stimulus tab''s Duration. Fixed for the session once it starts; '...
-                'the runtime window shows it.'];
+    for i = find(columnOf == c)
+        inTab = fields(strcmp({fields.Tab}, tabNames{i}));
+        panelNames = unique({inTab.Panel}, 'stable');
+        uilabel(column, 'Text', tabNames{i}, 'FontSize', 14, 'FontWeight', 'bold', 'FontColor', t.Ink);
+        for j = 1:numel(panelNames)
+            members = inTab(strcmp({inTab.Panel}, panelNames{j}));
+            isTiming = strcmp(panelNames{j}, 'Timing');
+            form = formPanel(column, panelTitle(panelNames{j}), numel(members) + isTiming, t, 200);
+            if isTiming
+                label(form, 'Stimulus window (s)', t);
+                controls.TimingWindow = numberField(form, S.Stimulus.Duration, [0.001 60], onEdit, false);
+                controls.TimingWindow.Tooltip = ['The stimulus window, from stimulus onset: the same '...
+                    'setting as the Stimulus tab''s Duration. Fixed for the session once it starts; '...
+                    'the runtime window shows it.'];
+            end
+            for k = 1:numel(members)
+                label(form, members(k).Label, t);
+                controls.Runtime.(members(k).Name) = runtimeControl(form, members(k), onEdit);
+            end
         end
-        for k = 1:numel(members)
-            label(form, members(k).Label, t);
-            controls.Runtime.(members(k).Name) = runtimeControl(form, members(k), onEdit);
-        end
+    end
+end
+end
+
+
+function title = panelTitle(name)
+% 'SidePokes' -> 'Side pokes', as the runtime window titles its panels.
+title = regexprep(name, '(?<=[a-z])([A-Z])', ' ${lower($1)}');
+end
+
+
+function showRuntime(handles, values, names)
+% Write S.GUI values back into the Runtime tab's controls, for settings changed by code.
+for i = 1:numel(names)
+    name = names{i};
+    if ~isfield(handles, name) || ~isfield(values, name)
+        continue
+    end
+    control = handles.(name);
+    if isa(control, 'matlab.ui.control.DropDown')
+        control.Value = control.Items{min(values.(name), numel(control.Items))};
+    elseif isa(control, 'matlab.ui.control.CheckBox')
+        control.Value = logical(values.(name));
+    elseif isa(control, 'matlab.ui.control.NumericEditField')
+        control.Value = values.(name);
     end
 end
 end

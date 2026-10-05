@@ -112,7 +112,8 @@ verifyEmpty(testCase, report.Problems, strjoin(report.Problems, ' | '));
 names = cellfun(@fileNameOf, report.Plots, 'UniformOutput', false);
 expected = {'01_Outcomes', '02_Performance', '03_Psychometric', '04_Evidence', '05_BySide', ...
             '06_SideBias', '07_ReactionTime', '08_CentreHold', '09_HoldAttempts', '10_Engagement', ...
-            '11_PortActivity', '12_SessionTiming', '13_PulseLocking'};
+            '11_PortActivity', '12_SessionTiming', '13_PulseLocking', '14_Habits'};
+verifyNumElements(testCase, report.Plots, numel(expected), 'No 15_BlockSwitches without blocks');
 for i = 1:numel(expected)
     verifyTrue(testCase, any(strcmp(names, sprintf('%s_01_SUBJ01_20260101_100000.png', expected{i}))), ...
                expected{i});
@@ -156,7 +157,7 @@ verifyEqual(testCase, after.datenum, info.datenum);
 [folder, name] = fileparts(dataFile);
 verifyEqual(testCase, report.OnlinePlots, fullfile(folder, [name '_plots.png']));
 verifyTrue(testCase, isfile(report.OnlinePlots));
-verifyNumElements(testCase, report.Plots, 13);
+verifyNumElements(testCase, report.Plots, 14);
 verifyTrue(testCase, isfile(report.Log));
 end
 
@@ -299,6 +300,132 @@ end
 
 %% Helpers
 
+%% Habits and blocks (strategy correction)
+
+function testAnAlternatorsFreePokesAreItsHabit(testCase)
+% LUMS0014's cycle: choose left, then a free poke right as the next trial starts, then the
+% centre, then left again. Its choices look random, its side pokes alternate strictly.
+[Data, ~] = habitSession(testCase, 'alternator', 300);
+H = lum.report.habits(lum.report.sessionTrials(Data));
+verifyEqual(testCase, H.oppositeLastSidePoke, 1, 'Every choice opposite the last side poke');
+verifyEqual(testCase, H.otherSideAfterCentre, 1, 'Every visit after a centre poke at the other side');
+verifyEqual(testCase, H.repeatAfterReward, 0.6, 'AbsTol', 0.08, 'Repeats when a free poke came between');
+verifyEqual(testCase, H.sidePokeShare, 0.6, 'AbsTol', 0.08);
+verifyEqual(testCase, H.sidePokeTrials, H.beforeCentreOnly, 'Every free poke before the centre poke');
+verifyEqual(testCase, H.firstPokeOpposite, 1, 'The first poke opposite the choice before');
+verifyEqual(testCase, size(H.Bins.Trials), [3 2], 'Three blocks of 100 trials');
+verifyEmpty(testCase, H.Blocks, 'No blocks run');
+end
+
+function testWinStayLoseShiftIsMeasured(testCase)
+[Data, ~] = habitSession(testCase, 'winStay', 300);
+H = lum.report.habits(lum.report.sessionTrials(Data));
+verifyEqual(testCase, H.repeatAfterReward, 1);
+verifyEqual(testCase, H.repeatAfterError, 0);
+verifyEqual(testCase, H.sidePokeTrials, 0, 'No side pokes before the response');
+verifyEqual(testCase, H.alternation, 1 - mean(Data.Rewarded(1:end - 1)), 'AbsTol', 0.02);
+end
+
+function testTheLogSaysTheHabits(testCase)
+[Data, dataFile] = habitSession(testCase, 'alternator', 200);
+[~, lines] = lum.report.sessionLog(Data, dataFile, 'Write', false);
+habit = lines(startsWith(lines, '- Habits:'));
+verifyNumElements(testCase, habit, 1);
+verifySubstring(testCase, habit{1}, 'chose opposite the last side poke on 100% of');
+strategy = lines(startsWith(lines, '- Strategy correction:'));
+verifyNumElements(testCase, strategy, 1);
+verifySubstring(testCase, strategy{1}, 'trial order random');
+end
+
+function testABlockSessionIsMeasuredByItsSwitches(testCase)
+% A win-stay animal in blocks of 10: wrong on each switch's first trial, right after.
+[Data, dataFile] = habitSession(testCase, 'blocks', 200);
+T = lum.report.sessionTrials(Data);
+verifyTrue(testCase, T.ranBlocks);
+verifyEqual(testCase, find(T.forStimulus), 1:10:200, 'Each block''s first trial');
+H = lum.report.habits(T);
+verifyEqual(testCase, [H.Blocks.n, H.Blocks.nSwitches], [20 19]);
+verifyEqual(testCase, H.Blocks.firstCorrect, 0);
+verifyEqual(testCase, H.Blocks.secondCorrect, 19);
+verifyEqual(testCase, H.Blocks.trialsToNewSide, 2);
+verifyEqual(testCase, H.Blocks.Curve.NewSide(H.Blocks.Curve.Offsets == 0), 0);
+verifyEqual(testCase, H.Blocks.Curve.NewSide(H.Blocks.Curve.Offsets == 1), 1);
+[~, lines] = lum.report.sessionLog(Data, dataFile, 'Write', false);
+verifyTrue(testCase, any(startsWith(lines, '- Blocks: 20, 19 switches; correct on the first trial after a switch 0 of 19')));
+verifyTrue(testCase, any(startsWith(lines, '- By group (trials outside blocks and each block''s first trial')));
+files = lum.report.summaryPlots(Data, dataFile, 'Plots', [2 3 4 14 15]);
+names = cellfun(@fileNameOf, files, 'UniformOutput', false);
+verifyTrue(testCase, any(startsWith(names, '15_BlockSwitches_01')), strjoin(names, ', '));
+verifyNumElements(testCase, files, 5);
+end
+
+function testTheTrialLinesSayTheSidePokesAndTheBlock(testCase)
+spec = struct('RewardedSides', 1, 'CorrectSide', 1);
+result = resultOf(lum.Outcome.SidePokeBeforeChoice, NaN, 0);
+lines = lum.trialStatus(4, spec, result, [], []);
+verifySubstring(testCase, lines{1}, 'ended by a side poke before the response window');
+result = resultOf(lum.Outcome.Correct, 1, 1);
+result.SidePokeDelays = 2;
+lines = lum.trialStatus(4, spec, result, [], []);
+verifySubstring(testCase, lines{1}, 'delayed by 2 side poke(s)');
+end
+
+
+function [Data, dataFile] = habitSession(testCase, kind, n)
+% A made-up training session whose every trial opens its response window at 1 s, with the
+% choice poke at 1.3 s, and, for the alternator, a free side poke at 0.2 s on 60% of trials.
+%   alternator  a free poke at the side opposite its last choice, then a choice opposite
+%               that; no free poke, and it chooses opposite its last choice
+%   winStay     stays after a reward, moves after none; rewards at random
+%   blocks      in blocks of 10 alternating sides, staying after a reward
+[Data, dataFile] = madeUpSession(testCase, n, 2, sprintf('2026020%d_100000', numel(kind)));
+stream = RandStream('mt19937ar', 'Seed', n + numel(kind));
+last = 1;
+names = {'Port1In', 'Port3In'};
+for k = 1:n
+    events = struct('Port2In', 0.5);
+    free = strcmp(kind, 'alternator') && rand(stream) < 0.6 && k > 1;
+    switch kind
+        case 'alternator'
+            choice = 3 - last;
+            if free
+                events.(names{3 - last}) = 0.2;
+                choice = last;
+            end
+            rewarded = rand(stream) < 0.5;
+        case 'winStay'
+            choice = last;
+            if k > 1 && ~Data.Rewarded(k - 1)
+                choice = 3 - last;
+            end
+            rewarded = rand(stream) < 0.5;
+        case 'blocks'
+            Data.Block(k) = ceil(k / 10);
+            Data.BlockSide(k) = 1 + mod(Data.Block(k) + 1, 2);
+            Data.CorrectSide(k) = Data.BlockSide(k);
+            choice = last;
+            if k > 1 && ~Data.Rewarded(k - 1)
+                choice = 3 - last;
+            end
+            rewarded = choice == Data.CorrectSide(k);
+    end
+    if isfield(events, names{choice})
+        events.(names{choice}) = [events.(names{choice}), 1.3];
+    else
+        events.(names{choice}) = 1.3;
+    end
+    Data.Choice(k) = choice;
+    Data.Rewarded(k) = double(rewarded);
+    Data.Correct(k) = double(rewarded);
+    Data.Outcome(k) = lum.Outcome.Incorrect + (rewarded == 1) * (lum.Outcome.Correct - lum.Outcome.Incorrect);
+    Data.RawEvents.Trial{k} = struct('States', struct('CentreHold', [0.5 0.8], ...
+        'WaitForCentreExit', [0.8 1], 'WaitForResponse', [1 1.3], 'EarlyWithdrawal', [NaN NaN], ...
+        'NoInitiation', [NaN NaN]), 'Events', events);
+    last = choice;
+end
+Data.Block(isnan(Data.Block)) = 0;
+end
+
 function T = madeUpWithdrawals(times, optoOn, frequency, pulseWidth)
 % The fields of lum.report.sessionTrials that lum.report.pulseLocking reads: one trial per
 % early withdrawal, alternating A only and B only, each lit for the whole 0.3 s window.
@@ -352,7 +479,8 @@ names = {'StimulusGroup', 'PatternIndex', 'CorrectSide', 'Choice', 'Correct', 'R
          'Outcome', 'ReactionTime', 'OptoOn', 'SoundOn', 'HouseLight', 'SyncMode', 'SyncPulseWidth', ...
          'BiasTargetPLeft', 'TrainingStage', 'HoldDuration', 'HoldGrace', 'HoldBreaks', ...
          'HoldAttempts', 'EarlyWithdrawals', 'CameraTime', 'LEDCurrentA', 'LEDCurrentB', ...
-         'CentreReward', 'ResponseRetries', 'CentreHoldTime'};
+         'CentreReward', 'ResponseRetries', 'CentreHoldTime', 'BiasContext', 'Block', ...
+          'BlockSide', 'SidePokeDelays'};
 for i = 1:numel(names)
     Data.(names{i}) = NaN(1, n);
 end

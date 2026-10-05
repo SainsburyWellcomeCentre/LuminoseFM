@@ -75,6 +75,15 @@ right — D8 in [`architecture.md`](architecture.md).
 | ePhys calibration | The session type that sends light pulses stepping through intensities and paired-pulse intervals, for the recorded response (`S.Ephys`, D18) |
 | input-output curve | Single pulses at intensities from lowest to highest, one step per level (`S.Ephys.InputOutput`) |
 | paired-pulse ratio | Pairs of pulses at one intensity, one step per inter-pulse interval (`S.Ephys.PairedPulse`) |
+| strategy correction | The levers against habits such as alternating between the side ports, all runtime settings on the Strategy tab and off by default (D23): habit measures, side pokes before the response, context correction, blocks |
+| habit measures | What a session's log line and `14_Habits` report of its habits: choices opposite the last side poke, the next side poke at the other side after a centre poke, alternation against the side bias's, repeating after a reward and after an error, side pokes before the response (`lum.report.habits`) |
+| side poke before the response | A side poke while the trial waits for a centre poke, at its start or after an early withdrawal (`S.GUI.SidePokeBeforeChoice`: *Ignore*, *Delay* in state `SidePokeDelay` for `S.GUI.SidePokeDelay`, *End trial* in state `SidePokeBeforeChoice`, outcome 7; `Data.SidePokeDelays`). Not "premature response" |
+| context correction | Bias correction reading the animal's lean in the trial's context rather than over all its recent choices (`S.GUI.BiasCorrectFor`: *Side bias*, *Last choice*, *Last choice and reward*; `lum.BiasCorrection`) |
+| context | What the trial before did, as context correction reads it: its choice, or its choice and reward (`Data.BiasContext`, codes 0–7) |
+| reward floor | The share of rewarded choices below which bias correction stops acting, rising in a straight line to full strength at 50% (`S.GUI.BiasRewardFloor`, over `S.GUI.BiasRewardWindow` choices) |
+| block | A run of trials whose patterns lean to one side, then the other (`S.GUI.TrialOrder` *Blocks*, `BlockMin`–`BlockMax`; `Data.Block`, `Data.BlockSide`; `lum.Blocks`) |
+| block switch, first trial after a switch | A block following another, and its first trial: the side changed with nothing in the trials before to say so, so its score measures the light alone (`15_BlockSwitches`, the log's block line) |
+| swap partner | The later pattern bias correction, the run limit or a block brings forward: one drawn at random from those that can pay the wanted side (from 0.10.0; the first one before) |
 
 ---
 
@@ -84,6 +93,33 @@ Settings files are converted when loaded. Analysis code reading older **data** f
 names.
 
 Newest first. Each table puts the old behaviour or name on the left and the new on the right.
+
+### 0.9.14 → 0.10.0 — strategy correction: levers against side-port habits
+
+The audit of LUMS0014's session of 2026-10-05 found the mouse alternating between the side ports on
+every visit (its choice opposite the side port it poked last on 96–98% of choices since training
+began), with free side pokes between trials making its choices look random; the habit earned 50%
+and nothing in the settings made it pay less. The operator decided (2026-10-05) to build four
+levers as one feature, all off by default and runtime settings (D23; the plan,
+`docs/plan-habit-levers.md`, now holds only what is still open). With every part off a session
+runs as in 0.9.14 but for the swap partner.
+
+| 0.9.14 | 0.10.0 |
+|---|---|
+| Habits read by hand in each audit | `lum.report.habits`; the log's *Habits* line; summary plot `14_Habits` (`lum.report.fromFile(..., 'Plots', 14)` draws it for earlier sessions) |
+| A side poke while the trial waits for a centre poke does nothing | `S.GUI.SidePokeBeforeChoice` *Ignore* (default), *Delay* (state `SidePokeDelay`, `S.GUI.SidePokeDelay` 1 s, cue off, `Data.SidePokeDelays`), *End trial* (state `SidePokeBeforeChoice`, outcome 7 `SidePokeBeforeChoice`, an early withdrawal's punishment) |
+| Bias correction over the last `BiasWindow` choices | `S.GUI.BiasCorrectFor`: *Side bias* (default), *Last choice*, *Last choice and reward* (`lum.BiasCorrection`; `Data.BiasContext`); `S.GUI.BiasRewardFloor` (0–50%, default 0) over `S.GUI.BiasRewardWindow` (50) choices. Greyed out, and side bias used, while incorrect choices are retried |
+| The next trial always prepared as the running one starts | With a context mode, prepared after the running one's choice (`lum.SessionRunner.awaitChoice`, `Data.Timing.awaitChoice`); `Data.Timing.sync`, `.spec`, `.build` time the parts of `prepare` |
+| Trial order random | `S.GUI.TrialOrder` *Blocks*: `BlockMin`–`BlockMax` (15–25), `BlockSwitchAfterCorrect` (0); `Data.Block`, `Data.BlockSide`; summary plot `15_BlockSwitches` and a log line in a session with blocks, whose psychometric and evidence plots and *By group* read trials outside blocks and each block's first, and whose performance plots shade the blocks |
+| The swap took the first later pattern that could pay the wanted side | One drawn at random from them (`lum.nextTrialSpec`; `'SwapPartner', 'first'` for the regression test against 0.9.14, `tests/legacyNextTrialSpec.m`) |
+| *Bias* panel on the Task tab | On a new Strategy tab with *Blocks* and *Side pokes* (`S.GUITabs.Strategy`); the setup dialog's Runtime tab puts Delivery under Task |
+| Choosing Experiment: shaping off | Also every strategy part off, bias correction strength 0 and `S.Task.MaxSameSide` 0; Habituation every part off |
+| `lum.Outcome` 0–6 | 7 `SidePokeBeforeChoice` appended |
+| 13 summary plots | 14, and `15_BlockSwitches` in a session with blocks |
+
+No setting was renamed and no file needs converting: the new settings come from the defaults. The
+new per-trial series, outcome and timing fields are in `data-format.md` (*One value per trial*,
+*Sessions with strategy correction*, *Reading older files*) and `python-analysis.md`.
 
 ### 0.9.13 → 0.9.14 — pulse locking beyond the withdrawal times' shape
 

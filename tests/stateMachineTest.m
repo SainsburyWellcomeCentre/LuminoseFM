@@ -29,7 +29,8 @@ variants = {withSideLights(lum.defaultSettings, 0, 1), ...
             withShaping(lum.defaultSettings, 'Both'), noLight(lum.defaultSettings), ...
             endingTrial(lum.defaultSettings), withCue(lum.defaultSettings, {'Tone', 'Air'}, 0.3), ...
             withCue(lum.defaultSettings, {}), withLatency(lum.defaultSettings, 0.2), ...
-            withFixedHold(lum.defaultSettings, 0.3), withShaping(lum.defaultSettings, 'Grow hold')};
+            withFixedHold(lum.defaultSettings, 0.3), withShaping(lum.defaultSettings, 'Grow hold'), ...
+            withSidePokes(lum.defaultSettings, 2), withSidePokes(lum.defaultSettings, 3)};
 for i = 1:numel(variants)
     names = sort(lum.buildTrialSM(makeTestContext('Settings', variants{i})).StateNames);
     verifyEqual(testCase, names, reference, sprintf('Variant %d changed the states', i));
@@ -1038,6 +1039,100 @@ end
 
 %% Running -----------------------------------------------------------------------
 
+%% Side pokes before the response (strategy correction) -------------------------------
+
+function testASidePokeBeforeTheResponseIsIgnoredByDefault(testCase)
+sma = lum.buildTrialSM(makeTestContext());
+verifyEqual(testCase, targetOf(sma, 'WaitForCentrePoke', 'Port1In'), 'WaitForCentrePoke');
+verifyEqual(testCase, targetOf(sma, 'WaitForCentrePoke', 'Port3In'), 'WaitForCentrePoke');
+verifyEmpty(testCase, sourcesOf(sma, 'SidePokeDelay'), 'Unreachable under Ignore');
+verifyEmpty(testCase, sourcesOf(sma, 'SidePokeBeforeChoice'), 'Unreachable under Ignore');
+end
+
+function testASidePokeCanDelayTheTrialWithTheCueOff(testCase)
+% The delay writes every cue component's stop actions, as NoInitiation does (a cue tone's
+% stop command too: the emulator has no HiFi module to build one with).
+global BpodSystem %#ok<GVMIS>
+rig = RigConfig;
+outputs = BpodSystem.StateMachineInfo.OutputChannelNames;
+S = withCue(withSidePokes(lum.defaultSettings, 2), {'CentreLight', 'Air'});
+S.GUI.SidePokeDelay = 1.5;
+[sma, plan] = lum.buildTrialSM(makeTestContext('Settings', S));
+verifyEqual(testCase, targetOf(sma, 'WaitForCentrePoke', 'Port1In'), 'SidePokeDelay');
+verifyEqual(testCase, targetOf(sma, 'WaitForCentrePoke', 'Port3In'), 'SidePokeDelay');
+verifyEqual(testCase, stateTimer(sma, 'SidePokeDelay'), 1.5);
+verifyEqual(testCase, tupTargetOf(sma, 'SidePokeDelay'), 'WaitForCentrePoke');
+verifyEqual(testCase, targetOf(sma, 'SidePokeDelay', 'Port2In'), 'SidePokeDelay', ...
+            'Centre pokes are ignored in the delay');
+verifyEqual(testCase, timerEndTargetOf(sma, 'SidePokeDelay', plan.holdWindowTimer), 'NoInitiation', ...
+            'The hold window runs on through the delay');
+verifyEqual(testCase, conditionTargetOf(sma, 'SidePokeDelay', 4), 'NoInitiation');
+row = stateIndex(sma, 'SidePokeDelay');
+verifyEqual(testCase, sma.OutputMatrix(row, strcmp(outputs, rig.LED.Centre)), 0, 'The cue light off');
+verifyEqual(testCase, sma.OutputMatrix(row, strcmp(outputs, rig.Valve.Air)), 0, 'The cue air off');
+verifyEqual(testCase, targetOf(sma, 'CentreHold', 'Port1In'), 'CentreHold', ...
+            'Only before the hold: a side poke during it is not one');
+end
+
+function testASidePokeCanEndTheTrialWithAnEarlyWithdrawalsPunishment(testCase)
+S = withSidePokes(lum.defaultSettings, 3);
+[sma, plan] = lum.buildTrialSM(makeTestContext('Settings', S));
+verifyEqual(testCase, targetOf(sma, 'WaitForCentrePoke', 'Port1In'), 'SidePokeBeforeChoice');
+verifyEqual(testCase, tupTargetOf(sma, 'SidePokeBeforeChoice'), 'WaitForLightEnd');
+verifyEqual(testCase, plan.sidePokeTimer, 0, 'Early withdrawals not punished: no timeout');
+S.GUI.PunishCondition = 2;   % Early withdrawal
+S.GUI.PunishType = 1;        % Timeout
+S.GUI.PunishTimeout = 1.5;
+sma = lum.buildTrialSM(makeTestContext('Settings', S));
+verifyEqual(testCase, stateTimer(sma, 'SidePokeBeforeChoice'), 1.5);
+S.GUI.PunishCondition = 3;   % Incorrect choice only
+sma = lum.buildTrialSM(makeTestContext('Settings', S));
+verifyEqual(testCase, stateTimer(sma, 'SidePokeBeforeChoice'), 0);
+end
+
+function testTaskEventSyncIsLowInTheSidePokeStates(testCase)
+global BpodSystem %#ok<GVMIS>
+column = find(strcmp(BpodSystem.StateMachineInfo.OutputChannelNames, 'BNC2'));
+S = withSidePokes(lum.defaultSettings, 2);
+S.Sync.Mode = lum.SyncMode.TaskEvents;
+context = makeTestContext('Settings', S, 'SyncChannel', 'BNC2');
+context.spec.SyncMode = lum.SyncMode.TaskEvents;
+context.spec.SyncPulseWidth = NaN;
+sma = lum.buildTrialSM(context);
+verifyEqual(testCase, sma.OutputMatrix(stateIndex(sma, 'SidePokeDelay'), column), 0);
+verifyEqual(testCase, sma.OutputMatrix(stateIndex(sma, 'SidePokeBeforeChoice'), column), 0);
+verifyEqual(testCase, sma.OutputMatrix(stateIndex(sma, 'WaitForCentrePoke'), column), 1, ...
+            'Raised again as the wait resumes');
+end
+
+function testASidePokeDelaysTheTrialInTheEmulator(testCase)
+S = withFixedHold(withSidePokes(lum.defaultSettings, 2), 0.1);
+S.GUI.SidePokeDelay = 0.5;
+S.GUI.HoldWindow = 5;
+S.GUI.ITI = 0.05;
+context = makeTestContext('Settings', S);
+trial = runPoked(context, {0.2, 'Port1', 1; 0.4, 'Port1', 0; 0.5, 'Port2', 1; 0.7, 'Port2', 0; ...
+                           1.2, 'Port2', 1; 1.6, 'Port2', 0; 2.0, 'Port1', 1; 2.2, 'Port1', 0});
+result = lum.scoreTrial(trial, context.spec, context.rig);
+verifyEqual(testCase, result.SidePokeDelays, 1);
+verifyGreaterThanOrEqual(testCase, diff(trial.States.SidePokeDelay(1, :)), 0.5 - 1e-3);
+verifyGreaterThan(testCase, trial.States.CentreHold(1, 1), trial.States.SidePokeDelay(1, 2) - 1e-3, ...
+                  'The centre poke in the delay was ignored; the hold began after it');
+verifyNotEqual(testCase, result.Outcome, lum.Outcome.SidePokeBeforeChoice);
+end
+
+function testASidePokeEndsTheTrialInTheEmulator(testCase)
+S = withSidePokes(lum.defaultSettings, 3);
+S.GUI.HoldWindow = 5;
+S.GUI.ITI = 0.05;
+context = makeTestContext('Settings', S);
+trial = runPoked(context, {0.2, 'Port3', 1; 0.4, 'Port3', 0});
+result = lum.scoreTrial(trial, context.spec, context.rig);
+verifyEqual(testCase, result.Outcome, lum.Outcome.SidePokeBeforeChoice);
+verifyEqual(testCase, result.Rewarded, 0);
+verifyFalse(testCase, isnan(trial.States.WaitForLightEnd(1)));
+end
+
 function testATrialRunsToCompletionInTheEmulator(testCase)
 % The state machine must not merely assemble: it has to run. With no pokes the hold
 % window runs out in WaitForCentrePoke, and the trial goes to NoInitiation and exits.
@@ -1116,7 +1211,13 @@ names = {'TrialStart', 'WaitForCentrePoke', 'PreStimulusHold', 'CentreHold', ...
          'EarlyWithdrawal', 'LeftRewardDelay', 'RightRewardDelay', 'LeftReward', ...
          'RightReward', 'DrinkingLeft', 'DrinkingRight', 'DrinkingGrace', ...
          'WithdrewBeforeReward', 'IncorrectChoice', 'NoResponse', 'NoInitiation', 'ITI', ...
-         'CentreReward', 'RetryResponse', 'WaitForLightEnd'};
+         'CentreReward', 'RetryResponse', 'WaitForLightEnd', 'SidePokeDelay', ...
+         'SidePokeBeforeChoice'};
+end
+
+function S = withSidePokes(S, mode)
+% A side poke before the response: 1 ignored, 2 a delay, 3 the trial's end.
+S.GUI.SidePokeBeforeChoice = mode;
 end
 
 function S = withShaping(S, mode)

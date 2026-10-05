@@ -48,3 +48,17 @@ if lum.HoldShaping.completedHold(result.Outcome)
 else
     history.withdrawalsAtHold = history.withdrawalsAtHold + result.EarlyWithdrawals;
 end
+
+% Correct choices in a row within a block, for switching blocks on performance (lum.Blocks):
+% a new block starts the count again, and a trial without a choice leaves it as it is.
+if isfield(spec, 'Block') && spec.Block > 0
+    if spec.Block ~= history.runBlock
+        history.runBlock = spec.Block;
+        history.blockCorrectRun = 0;
+    end
+    if result.Correct == 1
+        history.blockCorrectRun = history.blockCorrectRun + 1;
+    elseif result.Correct == 0
+        history.blockCorrectRun = 0;
+    end
+end

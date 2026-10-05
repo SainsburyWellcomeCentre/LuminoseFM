@@ -41,6 +41,19 @@ function [files, problems] = summaryPlots(Data, dataFile, varargin)
 %                       withdrawal times' shape alone gives; and the locking beyond that shape
 %                       at each frequency from 10 Hz (lum.report.pulseLocking; a control in a
 %                       session without light)
+%   14_Habits           Side-port habits in blocks of 100 trials: choices opposite the last
+%                       side poke, the next side poke at the other side after a centre poke,
+%                       alternation against what the side bias gives, repeating the last
+%                       choice after a reward and after an error, and trials with a side poke
+%                       before the response window (lum.report.habits)
+%   15_BlockSwitches    Only in a session that ran blocks (lum.Blocks): P(correct) and
+%                       P(chose the new block's side) from 5 trials before each switch to 10
+%                       after, and the first trial after a switch: the session's measure of
+%                       the light, since within a block staying on one side scores too
+%
+% In a session that ran blocks, the psychometric and evidence plots use the trials whose
+% side the trials before did not set (outside blocks, and each block's first trial:
+% lum.report.sessionTrials, forStimulus), say so, and the performance plot shades the blocks.
 %
 % A hold counts as completed however many early withdrawals came before it
 % (lum.holdMeasures): only 09_HoldAttempts tells a first attempt from a later one. The
@@ -61,7 +74,7 @@ function [files, problems] = summaryPlots(Data, dataFile, varargin)
 % Options:
 %   'Folder'      Where to write (default lum.report.folder(dataFile, 'Plots'))
 %   'Resolution'  Dots per inch of the images (default 150)
-%   'Plots'       The numbers (NN) of the plots to draw (default: all), e.g. 13 to add a new
+%   'Plots'       The numbers (NN) of the plots to draw (default: all), e.g. 14 to add a new
 %                 plot to sessions drawn before it existed
 %
 % Returns:
@@ -70,7 +83,7 @@ function [files, problems] = summaryPlots(Data, dataFile, varargin)
 %             Never throws for a single plot.
 %
 % See also lum.report.write, lum.report.sessionTrials, lum.OnlinePlots, lum.holdMeasures,
-% lum.report.pulseLocking
+% lum.report.pulseLocking, lum.report.habits
 
 p = inputParser;
 p.FunctionName = 'lum.report.summaryPlots';
@@ -117,7 +130,11 @@ plots = [plots; ...
     {10, 'Engagement', 1, [1400 800], @(fig) drawEngagement(fig, T, t)}; ...
     {11, 'PortActivity', 1, [1400 520], @(fig) drawPortActivity(fig, T, t)}; ...
     {12, 'SessionTiming', 1, [1400 640], @(fig) drawSessionTiming(fig, Data, T, t)}; ...
-    {13, 'PulseLocking', 1, [1400 860], @(fig) drawPulseLocking(fig, T, t)}];
+    {13, 'PulseLocking', 1, [1400 860], @(fig) drawPulseLocking(fig, T, t)}; ...
+    {14, 'Habits', 1, [1400 860], @(fig) drawHabits(fig, T, t)}];
+if T.ranBlocks
+    plots(end+1, :) = {15, 'BlockSwitches', 1, [1400 560], @(fig) drawBlockSwitches(fig, T, t)};
+end
 
 if ~isempty(p.Results.Plots)
     plots = plots(ismember([plots{:, 1}], p.Results.Plots), :);
@@ -219,6 +236,7 @@ ax = nexttile(tiledlayout(fig, 1, 1, 'Padding', 'compact'));
 window = movingWindow(T);
 lum.gui.styleAxes(ax, sprintf('Performance, %d-trial window', window), t);
 x = 1:T.n;
+shadeBlocks(ax, T, t);
 chanceLine(ax, [0 T.n + 1], t);
 left = line(ax, x, moving(T.scored, window, T.correctSide == 1), 'Color', t.Left, 'LineWidth', 1.6);
 right = line(ax, x, moving(T.scored, window, T.correctSide == 2), 'Color', t.Right, 'LineWidth', 1.6);
@@ -227,8 +245,11 @@ running = line(ax, x, cumulativeMean(T.scored), 'Color', t.SeriesSoft, 'LineStyl
 set(ax, 'YLim', [0 1], 'XLim', [0, max(T.n, 20) + 1]);
 xlabel(ax, 'Trial');
 ylabel(ax, scoreAxisLabel(T));
-lum.gui.panelLegend(ax, [whole, left, right, running], ...
-                    {'all', 'left-rewarded', 'right-rewarded', 'session so far'}, t);
+keys = {'all', 'left-rewarded', 'right-rewarded', 'session so far'};
+if T.ranBlocks
+    keys{end} = 'session so far (shaded: blocks, by side)';
+end
+lum.gui.panelLegend(ax, [whole, left, right, running], keys, t);
 end
 
 
@@ -246,18 +267,20 @@ end
 chanceLine(ax, span + [-pad pad], t);
 target = line(ax, layout.X, layout.Target, 'Color', t.SeriesSoft, 'LineStyle', ':', 'Marker', 'd', ...
               'MarkerSize', 7, 'LineWidth', 1.4);
-chose = ~isnan(T.choice);
+chose = ~isnan(T.choice) & T.forStimulus;   % In blocks, each block's first trial only
 point = zeros(1, T.n);
 point(chose) = layout.Index(T.pattern(chose));
+choices = T.choice;
+choices(~chose) = NaN;
 halves = {1:floor(T.n / 2), floor(T.n / 2) + 1:T.n};
 styles = {'--', '-.'};
 halfHandles = gobjects(1, 2);
 for h = 1:2
-    [pLeft, ~] = psychometric(point(halves{h}), T.choice(halves{h}), numel(layout.X));
+    [pLeft, ~] = psychometric(point(halves{h}), choices(halves{h}), numel(layout.X));
     halfHandles(h) = line(ax, layout.X, pLeft, 'Color', t.SeriesSoft, 'LineWidth', 1.2, ...
                           'LineStyle', styles{h}, 'Marker', '.', 'MarkerSize', 16);
 end
-[pLeft, errors, counts] = psychometric(point, T.choice, numel(layout.X));
+[pLeft, errors, counts] = psychometric(point, choices, numel(layout.X));
 whole = errorbar(ax, layout.X, pLeft, errors, 'Color', t.Series, 'LineWidth', 2, 'Marker', 'o', ...
                  'MarkerSize', 8, 'MarkerFaceColor', t.Series, 'CapSize', 0);
 for b = 1:numel(layout.X)
@@ -271,8 +294,11 @@ if ~isempty(layout.TickLabels)
 end
 xlabel(ax, layout.XLabel);
 ylabel(ax, 'P(choose left)');
-lum.gui.panelLegend(ax, [whole, halfHandles, target], ...
-                    {'chose left, whole session', 'first half', 'second half', 'contingency'}, t);
+keys = {'chose left, whole session', 'first half', 'second half', 'contingency'};
+if T.ranBlocks
+    keys{1} = sprintf('chose left: trials outside blocks and each block''s first (%d)', sum(chose));
+end
+lum.gui.panelLegend(ax, [whole, halfHandles, target], keys, t);
 end
 
 
@@ -301,7 +327,7 @@ set(ax, 'XLim', [-0.06 1.06], 'YLim', [-0.06 1.06], 'XTick', 0:0.25:1, 'YTick', 
 axis(ax, 'square');
 xlabel(ax, 'u_A, evidence on A (fraction of the window lit)');
 ylabel(ax, 'u_B, evidence on B');
-chose = find(~isnan(T.choice));
+chose = find(~isnan(T.choice) & T.forStimulus);   % In blocks, each block's first trial only
 lit = double(T.optoOn(chose) == 1);
 if ~any(lit)
     % Every choice would sit at the origin: say why rather than show a blob.
@@ -324,7 +350,11 @@ for side = 1:2
                       'MarkerSize', 7, 'MarkerFaceColor', 'none', 'MarkerEdgeColor', t.Incorrect, ...
                       'LineWidth', 1.4);
 end
-lum.gui.panelLegend(ax, handles, scoreLabels(T), t);
+keys = scoreLabels(T);
+if T.ranBlocks
+    keys = strcat(keys, ' (outside blocks, and blocks'' first trials)');
+end
+lum.gui.panelLegend(ax, handles, keys, t);
 end
 
 
@@ -772,6 +802,112 @@ end
 
 %% Helpers ----------------------------------------------------------------------
 
+function drawHabits(fig, T, t)
+% The side-port habits over the session in blocks of 100 trials, and over the whole session.
+H = lum.report.habits(T);
+layout = tiledlayout(fig, 3, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
+ax = nexttile(layout, [2 1]);
+lum.gui.styleAxes(ax, 'Habits, in blocks of 100 trials', t);
+B = H.Bins;
+x = mean(B.Trials, 2)';
+chanceLine(ax, [0, max(T.n, 100) + 1], t);
+style = {'LineWidth', 1.8, 'MarkerSize', 7};
+handles = [ ...
+    line(ax, x, B.oppositeLastSidePoke, 'Color', t.Series, 'Marker', 'o', ...
+         'MarkerFaceColor', t.Series, style{:}, 'LineWidth', 2.4), ...
+    line(ax, x, B.otherSideAfterCentre, 'Color', t.Series, 'Marker', 's', 'LineStyle', '--', style{:}), ...
+    line(ax, x, B.alternation, 'Color', t.SeriesSoft, 'Marker', 'd', style{:}), ...
+    line(ax, x, B.alternationExpected, 'Color', t.SeriesSoft, 'LineStyle', ':', style{:}), ...
+    line(ax, x, B.repeatAfterReward, 'Color', t.Correct, 'Marker', '^', 'MarkerFaceColor', t.Correct, style{:}), ...
+    line(ax, x, B.repeatAfterError, 'Color', t.Incorrect, 'Marker', 'v', style{:}), ...
+    line(ax, x, B.sidePokeShare, 'Color', t.Right, 'Marker', 'x', style{:})];
+set(ax, 'YLim', [0 1], 'XLim', [0, max(T.n, 100) + 1]);
+xlabel(ax, 'Trial');
+ylabel(ax, 'Share');
+lum.gui.panelLegend(ax, handles, {'opposite the last side poke', 'other side after centre', ...
+    'alternated', 'from side bias alone', 'repeat after reward', 'repeat after error', ...
+    'side poke first'}, t);
+
+ax = nexttile(layout);
+lum.gui.styleAxes(ax, sprintf('Whole session (%d choices)', H.nChoices), t);
+values = [H.oppositeLastSidePoke, H.otherSideAfterCentre, H.alternation, H.repeatAfterReward, ...
+          H.repeatAfterError, H.sidePokeShare];
+labels = {'opposite the last side poke', 'other side after centre', 'alternated', ...
+          'repeat after reward', 'repeat after error', 'side poke first'};
+colours = [t.Series; t.Series; t.SeriesSoft; t.Correct; t.Incorrect; t.Right];
+chanceLine(ax, [0.4, numel(values) + 0.6], t);
+bars = bar(ax, 1:numel(values), values, 0.6, 'FaceColor', 'flat', 'EdgeColor', 'none');
+bars.CData = colours;
+for i = 1:numel(values)
+    if ~isnan(values(i))
+        note(ax, i, values(i) + 0.02, sprintf('%.0f%%', 100 * values(i)), t, ...
+             'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom');
+    end
+end
+set(ax, 'YLim', [0 1.1], 'YTick', 0:0.25:1, 'XLim', [0.4, numel(values) + 0.6], ...
+    'XTick', 1:numel(values), 'XTickLabel', labels);
+end
+
+
+function drawBlockSwitches(fig, T, t)
+% Around each block switch: P(correct) and P(chose the new side), and the first trial after it.
+B = lum.report.habits(T).Blocks;
+layout = tiledlayout(fig, 1, 4, 'TileSpacing', 'compact', 'Padding', 'compact');
+ax = nexttile(layout, [1 3]);
+lum.gui.styleAxes(ax, sprintf('Around a block switch (%d switches)', B.nSwitches), t);
+curve = B.Curve;
+chanceLine(ax, [curve.Offsets(1) - 0.5, curve.Offsets(end) + 0.5], t);
+line(ax, [-0.5 -0.5], [0 1], 'Color', t.SeriesSoft, 'LineStyle', '--', 'LineWidth', 1);
+newSide = line(ax, curve.Offsets, curve.NewSide, 'Color', t.Series, 'Marker', 'o', ...
+               'MarkerFaceColor', t.Series, 'LineWidth', 2.4, 'MarkerSize', 7);
+correct = line(ax, curve.Offsets, curve.Correct, 'Color', t.Correct, 'Marker', 's', ...
+               'MarkerFaceColor', t.Correct, 'LineWidth', 1.8, 'MarkerSize', 7);
+set(ax, 'YLim', [0 1], 'XLim', [curve.Offsets(1) - 0.5, curve.Offsets(end) + 0.5], ...
+    'XTick', curve.Offsets);
+xlabel(ax, 'Trials from the switch (0: the new block''s first trial)');
+ylabel(ax, 'Share of choices');
+lum.gui.panelLegend(ax, [newSide, correct], {'chose the new block''s side', 'correct'}, t);
+
+ax = nexttile(layout);
+lum.gui.styleAxes(ax, 'Correct, by place in the block', t);
+values = [B.firstCorrect / max(1, B.nFirst), B.secondCorrect / max(1, B.nSecond), B.laterCorrect];
+counts = {sprintf('%d of %d', B.firstCorrect, B.nFirst), sprintf('%d of %d', B.secondCorrect, B.nSecond), ''};
+chanceLine(ax, [0.4 3.6], t);
+bars = bar(ax, 1:3, values, 0.6, 'FaceColor', 'flat', 'EdgeColor', 'none');
+bars.CData = [t.Series; t.SeriesSoft; t.SeriesSoft];
+for i = 1:3
+    if ~isnan(values(i))
+        note(ax, i, values(i) + 0.02, strtrim(sprintf('%.0f%% %s', 100 * values(i), counts{i})), t, ...
+             'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom');
+    end
+end
+set(ax, 'YLim', [0 1.1], 'YTick', 0:0.25:1, 'XLim', [0.4 3.6], 'XTick', 1:3, ...
+    'XTickLabel', {'first', 'second', '3rd on'});
+ylabel(ax, 'Fraction correct');
+end
+
+
+function shadeBlocks(ax, T, t)
+% Each block as a faint band in its side's colour, behind the data.
+if ~T.ranBlocks
+    return
+end
+starts = find(T.blockFirst);
+colours = {t.Left, t.Right};
+for i = 1:numel(starts)
+    last = starts(i) + find(T.block(starts(i):end) ~= T.block(starts(i)), 1) - 2;
+    if isempty(last)
+        last = T.n;
+    end
+    side = T.blockSide(starts(i));
+    if any(side == [1 2])
+        patch(ax, [starts(i) - 0.5, last + 0.5, last + 0.5, starts(i) - 0.5], [0 0 1 1], ...
+              colours{side}, 'FaceAlpha', 0.12, 'EdgeColor', 'none', 'HandleVisibility', 'off');
+    end
+end
+end
+
+
 function handle = pulseBands(ax, starts, width, top, t)
 % A pale band for each light pulse, starting at starts (ms), behind the data. Returns one
 % band, for the key.
@@ -906,6 +1042,9 @@ function [names, colours] = outcomeRows(T, t)
 % How a trial can end, in the order the rows and the stacks show it, and their colours.
 names = {'Rewarded or correct', 'Not rewarded or incorrect', 'No side poke in time', ...
          'Hold not completed', 'No hold started'};
+if any(T.outcome == lum.Outcome.SidePokeBeforeChoice)
+    names{4} = 'Hold not completed or side poke first';
+end
 if all(T.bothSidesPay)
     names(1:2) = {'Rewarded', 'Not rewarded'};
 elseif ~any(T.bothSidesPay)
@@ -917,14 +1056,16 @@ end
 
 function row = outcomeRow(T, trials)
 % 1 scored good, 2 scored bad, 3 no side poke, 4 hold not completed (the hold window ran out,
-% or an early withdrawal ended the trial), 5 no hold started.
+% an early withdrawal ended the trial, or a side poke before the response window did), 5 no
+% hold started.
 row = zeros(size(trials));
 outcome = T.outcome(trials);
 chose = ~isnan(T.choice(trials));
 row(chose & T.scored(trials) == 1) = 1;
 row(chose & T.scored(trials) ~= 1) = 2;
 row(~chose & outcome == lum.Outcome.NoResponse) = 3;
-row(~chose & ismember(outcome, [lum.Outcome.HoldNotCompleted, lum.Outcome.EarlyWithdrawal])) = 4;
+row(~chose & ismember(outcome, [lum.Outcome.HoldNotCompleted, lum.Outcome.EarlyWithdrawal, ...
+                                 lum.Outcome.SidePokeBeforeChoice])) = 4;
 row(~chose & outcome == lum.Outcome.NoInitiation) = 5;
 row(row == 0) = 2;   % CorrectNoReward without a choice cannot happen; kept visible if it does
 end

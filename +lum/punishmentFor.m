@@ -9,7 +9,10 @@ function punishment = punishmentFor(S, event)
 %
 % Arguments:
 %   S      Settings struct; uses S.GUI.PunishCondition, PunishType, PunishTimeout
-%   event  'IncorrectChoice' or 'EarlyWithdrawal'
+%   event  'IncorrectChoice', 'EarlyWithdrawal' or 'SidePokeBeforeChoice' (a side poke
+%          before the response window that ends the trial, S.GUI.SidePokeBeforeChoice
+%          'End trial'; punished when early withdrawals are, since both answer before the
+%          response window opens)
 %
 % Returns:
 %   .Timeout    Seconds to hold the animal before the next trial; 0 if none
@@ -18,7 +21,8 @@ function punishment = punishmentFor(S, event)
 %   .Retry      True if the animal may try again: an incorrect choice that is not
 %               punished sends it back to the response window, where the correct
 %               port still pays. Always false for an early withdrawal, whose retry
-%               is decided by S.Task.OnHoldBreak.
+%               is decided by S.Task.OnHoldBreak, and for a side poke before the
+%               response window, which ends the trial.
 %
 % What each setting means for an incorrect choice:
 %   not punished        RetryResponse, then the response window again (started anew);
@@ -57,12 +61,12 @@ TYPE_BOTH = 3;
 switch event
     case 'IncorrectChoice'
         applies = ismember(S.GUI.PunishCondition, [CONDITION_INCORRECT_CHOICE, CONDITION_BOTH]);
-    case 'EarlyWithdrawal'
+    case {'EarlyWithdrawal', 'SidePokeBeforeChoice'}
         applies = ismember(S.GUI.PunishCondition, [CONDITION_EARLY_WITHDRAWAL, CONDITION_BOTH]);
     otherwise
         error('lum:punishmentFor:unknownEvent', ...
-              ['Unknown punishable event ''%s''. Use ''IncorrectChoice'' or '...
-               '''EarlyWithdrawal''.'], event);
+              ['Unknown punishable event ''%s''. Use ''IncorrectChoice'', '...
+               '''EarlyWithdrawal'' or ''SidePokeBeforeChoice''.'], event);
 end
 applies = applies && S.GUI.PunishCondition ~= CONDITION_NONE;
 
