@@ -1373,7 +1373,8 @@ and the run limit act on the trial order and could not touch it (`learning-time-
 *Side-port alternation*; the audit of 2026-10-05).
 
 **Decision.** One feature, *strategy correction*, with four parts, all runtime settings on one
-Strategy tab, all off by default so a session runs as 0.9.14 did:
+Strategy tab, all off by default so a session runs as 0.9.14 did (each setting's formula, worked
+examples and reasons: [`strategy-correction.md`](strategy-correction.md)):
 
 | Part | What it does | Acts on | Code |
 |---|---|---|---|

@@ -378,7 +378,8 @@ trials. **Strategy correction** (0.10.0) is three levers against habits, and a m
 Every lever is a runtime setting on the runtime window's **Strategy** tab (and the setup dialog's
 Runtime tab), **off by default**, switched off by choosing *Habituation* or *Experiment*, and can
 be changed during the session (from the next trial prepared). Change one thing at a time, as for
-the light, so a change in behaviour can be put down to it.
+the light, so a change in behaviour can be put down to it. How each setting is computed, with a
+worked example and the reason for it, is in [`docs/strategy-correction.md`](docs/strategy-correction.md).
 
 **The habits, every session.** The session log's *Habits* line and the summary plot `14_Habits`
 say how often the animal chose the port opposite the last side port it poked, went to the other
@@ -418,10 +419,12 @@ In each context the next trial pays left with chance 0.5 + strength × (0.5 − 
 left choices there, as plain bias correction does. A habit is then right less often than chance (an
 animal that alternates strictly, at strength 0.5: about 25%), while an animal that follows the
 light is still rewarded on every correct choice: which side each light pays never changes, only the
-order. `Reward floor (%)` keeps the habit's reward from falling too far: with the animal's share of
-rewarded choices (over the last `Reward floor window`, 50 choices) at the floor or below, no
-correction; at 50% or more, full strength; in between, in proportion. A strong habit then settles a
-little above the floor (LUMS0014's at 40%: about 43%); a lower floor pushes harder. 0 is no floor.
+order. `Reward floor (%)` turns bias correction down when it costs the animal too much water. Over
+its last `Reward floor window` choices (50): rewarded on 50% or more, bias correction acts at the
+strength set in `Bias correction`; at the floor or below, it stops; in between, its strength falls
+in a straight line towards none (floor 40%, strength 0.5, rewarded on 45%: 0.25). A strong habit
+then settles a little above the floor (LUMS0014's at 40%: about 43%). 0 is no floor: bias
+correction always acts at the set strength, the most it can push; a higher floor corrects less.
 Context correction needs incorrect choices **punished** (*Punish on* *Incorrect choice* or *Both*):
 while they are retried, `Correct for` is greyed out and side bias is used, because the first choice
 of a retried trial cannot be read in time. It also prepares each trial once the trial before has

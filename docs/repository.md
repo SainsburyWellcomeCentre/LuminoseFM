@@ -99,6 +99,7 @@ LuminoseFM/
     ├── learning-time-literature.md published learning times, with links, the estimate for this task, light dose and heating
     ├── rig-checks.md             how to run a rig check, what has been checked, what waits for the operator
     ├── validation-2026-09-24.md  the pre-deployment validation of 0.9.3 → 0.9.4
+    ├── strategy-correction.md    the Strategy tab setting by setting: formulas, worked examples, reasons
     ├── plan-habit-levers.md      strategy correction (built in 0.10.0): what is still open, and its use with LUMS0014
     ├── repository.md             this file
     ├── code-style.md             help at the MATLAB prompt; help text, comments and lint
