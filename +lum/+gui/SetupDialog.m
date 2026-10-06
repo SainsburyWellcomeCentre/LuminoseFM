@@ -109,28 +109,45 @@ outer = uigridlayout(fig, [5 1], 'RowHeight', {58, '1x', 46, 'fit', 34}, ...
                      'Padding', [14 10 14 12], 'RowSpacing', 8, 'BackgroundColor', t.Background);
 buildHeader(outer, S, rig, t);
 tabGroup = uitabgroup(outer);
+% Each tab goes to the window's view as soon as it is built, not the whole window at
+% the end. Sent in one update, the window sometimes stopped part way in a desktop
+% MATLAB: a few tabs drawn, no Start or Cancel, and the drawnow after the build never
+% returned (5 of 33 openings on 2026-10-06; 0 of 48 a tab at a time). nocallbacks holds
+% a click made meanwhile until that drawnow, when everything it reads exists.
+drawnow nocallbacks;
 
 controls = struct();
 controls = buildExperimentTab(tabGroup, S, controls, choices, t, @refresh);
+drawnow nocallbacks;
 controls = buildTaskTab(tabGroup, S, controls, runtime, t, @refresh, @stageChosen);
+drawnow nocallbacks;
 controls = buildCueTab(tabGroup, S, controls, t, @refresh, @playSound);
+drawnow nocallbacks;
 stimulusActions = struct('edit', @refresh, 'design', @openDesigner, 'play', @playSound, ...
                          'family', @chooseFamily, 'pLeftEdit', @onPLeftEdit, ...
                          'randomise', @randomiseTrials, 'seed', @typeSeed, ...
                          'seedEachSession', @setSeedEachSession);
 controls = buildStimulusTab(tabGroup, S, controls, t, stimulusActions);
+drawnow nocallbacks;
 controls = buildLightPathTab(tabGroup, S, controls, t, @refresh);
+drawnow nocallbacks;
 doricTab = uitab(tabGroup, 'Title', 'Doric LED', 'BackgroundColor', t.Background);
 controls.Tabs.Doric = doricTab;
 doric = lum.gui.DoricSetup(doricTab, S, t, @refresh, p.Results.DoricLED, ...
                            'CalibrationFolder', p.Results.CalibrationFolder);
+drawnow nocallbacks;
 controls = buildSideTab(tabGroup, S, 'Left', controls, choices, t, @refresh, @playSound);
+drawnow nocallbacks;
 controls = buildSideTab(tabGroup, S, 'Right', controls, choices, t, @refresh, @playSound);
+drawnow nocallbacks;
 controls = buildSyncTab(tabGroup, S, controls, t, @refresh);
+drawnow nocallbacks;
 cameraTab = uitab(tabGroup, 'Title', 'Cameras', 'BackgroundColor', t.Background);
 controls.Tabs.Cameras = cameraTab;
 cameras = lum.gui.CameraSetup(cameraTab, S.Camera, t, @refresh, 'Subject', S.Meta.Subject);
+drawnow nocallbacks;
 controls = buildRuntimeTab(tabGroup, runtime, controls, S, t, @refresh);
+drawnow nocallbacks;
 % The settings shown in two or three places are one setting each: a change to any copy
 % goes to the others before the dialog reads them back.
 linkTwins({controls.StimulusDuration, controls.TaskWindow, controls.TimingWindow}, @refresh);

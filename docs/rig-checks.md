@@ -51,6 +51,7 @@ once it has passed.
 | [P11](#p11-the-light-playing-on-after-a-short-hold-095) | light at the fiber tips after a short hold (step 1 can run headless) | 0.9.5 |
 | [P12](#p12-what-096-changed-in-a-desktop-session-096) | the mouse-drawn crop, crops per session type, the carried hold, the memory after a desktop behaviour session | 0.9.6 |
 | [P16](#p16-the-strategy-tab-in-a-desktop-session-0100) | the Strategy tab in the setup dialog and both runtime windows, *Correct for* greying out | 0.10.0 |
+| [P17](#p17-the-behaviour-setup-dialog-drawn-whole-on-every-launch-0101) | five launches of LUMS0014 in behaviour, each dialog drawn to its buttons | 0.10.1 |
 | [P13](#p13-the-hold-on-the-timing-panel-the-wrapped-header-and-the-summary-plots-098) | the runtime hold, the wrapped header, the teardown's plots on screen, the animal at the new timing (step 4's file checks passed 2026-09-27 and, for 0.9.11's upload, 2026-09-28) | 0.9.8, 0.9.11 |
 
 ### P4. Calibrate the 2-to-19 bundle (0.9.1)
@@ -215,7 +216,33 @@ greys out when *Punish on* is *None* or *Early withdrawal* and comes back with *
 in the setup dialog, the tabbed runtime window (at once, on choosing) and Bpod's compact window
 (from the next trial). In a session: a side poke while the cue is on switches it off for the delay.
 
+### P17. The behaviour setup dialog drawn whole on every launch (0.10.1)
+
+From Bpod's launch manager on the rig, no animal: launch LUMS0014 five times and choose
+*Behaviour*. Each time the setup dialog must draw every tab up to *Runtime* and the *Cancel* and
+*Start session* buttons, then close with *Cancel*. Do the same once for FakeSubject. A dialog that
+stops part way means the freeze of 2026-10-06 is still there. Note the launch, and whether the LED
+had finished connecting.
+
 ## Done
+
+### 2026-10-06 — the behaviour setup dialog freezing part way (0.10.0 → 0.10.1), desktop MATLAB on the rig PC, no Bpod, run by an agent
+
+The operator reported that the behaviour setup dialog hung for LUMS0014 (no *Runtime* tab, no
+*Cancel* or *Start session*) but not for FakeSubject. No MATLAB was running when the checks began;
+no COM port was opened. Each subject's settings file was copied out of the data folder, merged,
+cropped and seeded as `LuminoseFM` does, and the dialog opened after `lum.gui.SessionTypeDialog`
+with DoricLED's simulated driver, connected.
+
+- `-batch`, visible or not, with or without the LED: both subjects' dialogs built every time
+  (3–11 s), validation *Ready to start*. The two files differ only in values the operator set.
+- Desktop MATLAB, one opening after another: 5 of 33 froze, LUMS0014 and FakeSubject alike. The
+  window showed three or four tabs and no buttons, its title bar greyed out; MATLAB sat at 0% CPU.
+  Logged build steps showed every component added (to the *Start session* button) in 3–4 s, and
+  MATLAB then waiting in the `drawnow` after the build for over 30 s.
+- With `drawnow` after the header and each tab: 0 of 24. With the 0.10.1 code (`drawnow
+  nocallbacks` after each): 0 of 24. Opening takes about 1 s longer.
+- Not checked: the launch from Bpod's launch manager with the real LED (P17).
 
 ### 2026-10-05 — P15, strategy correction (0.10.0) on the rig, no animal, fibers terminated, run by an agent with the operator's permission
 

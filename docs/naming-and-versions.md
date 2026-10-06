@@ -94,6 +94,20 @@ names.
 
 Newest first. Each table puts the old behaviour or name on the left and the new on the right.
 
+### 0.10.0 → 0.10.1 — the behaviour setup dialog no longer freezes part way
+
+On 2026-10-06 the behaviour setup dialog froze on three launches of LUMS0014: a few tabs drawn, no
+*Runtime* tab, no *Start session* or *Cancel*. It was not the subject's settings: in a desktop
+MATLAB the dialog froze in 5 of 33 openings, FakeSubject's included. MATLAB had added every
+component, then waited in the `drawnow` after the build for the window's view to confirm the
+update, and the view had stopped part way. This is the freeze of 0.7.1, now after the view has
+loaded. 0.10.0 added nine runtime settings to the dialog's *Runtime* tab, which may be why it
+started with that release.
+
+| 0.10.0 | 0.10.1 |
+|---|---|
+| The setup dialog's components go to the view in one update after the whole window is built | One update per tab (`drawnow nocallbacks` after the header and after each tab in `lum.gui.SetupDialog`; a click during the build waits for the full `drawnow` after it): 0 freezes in 48 desktop openings. The dialog takes about 1 s longer to open. Data format unchanged |
+
 ### 0.9.14 → 0.10.0 — strategy correction: levers against side-port habits
 
 The audit of LUMS0014's session of 2026-10-05 found the mouse alternating between the side ports on

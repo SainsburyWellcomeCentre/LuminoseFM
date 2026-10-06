@@ -44,10 +44,11 @@ before changing the stimulus path, the state graph, sleep blocks or the GUI. The
 
 **Where things stand** is in the docs, not here: the last release's changes in
 `docs/naming-and-versions.md`, the checks waiting for someone at the rig in `docs/rig-checks.md`
-*Pending* (P4–P13 and P16 now; all need someone at the rig or a desktop MATLAB, except P11 step 1,
-which can run headless with permission; P13 step 4's file checks passed on 2026-09-27, and 0.9.11's
-upload and 0.25 s ITI on 2026-09-28; P15, strategy correction on the rig, passed on 2026-10-05). The
-operator works remotely at times: run a pending check the next time they say they are at the rig.
+*Pending* (P4–P13, P16 and P17 now; all need someone at the rig or a desktop MATLAB, except P11
+step 1, which can run headless with permission; P13 step 4's file checks passed on 2026-09-27, and
+0.9.11's upload and 0.25 s ITI on 2026-09-28; P15, strategy correction on the rig, passed on
+2026-10-05). The operator works remotely at times: run a pending check the next time they say they
+are at the rig.
 
 **Next work:** strategy correction (0.10.0, D23) is built and rig-checked but not yet used on an
 animal and not committed. Its order of use for LUMS0014 and its open items are in
@@ -420,7 +421,8 @@ Each rule below is guarded in code; the decision behind it (D*n*) is in `docs/ar
   and early withdrawals are no outcome category or colour of their own. Only `09_HoldAttempts`
   tells a first attempt from a later one.
 - **Every new uifigure waits for its view** (`lum.gui.Form.waitForView(fig)` straight after
-  `uifigure(...)`), and is checked once from a desktop MATLAB ([Gotchas](#matlab-windows-and-tests)).
+  `uifigure(...)`), reaches it a part at a time (`drawnow nocallbacks` after each tab of the setup
+  dialog), and is checked once from a desktop MATLAB ([Gotchas](#matlab-windows-and-tests)).
 
 ### The behaviour trial
 
@@ -1213,7 +1215,11 @@ Each has already cost time and is guarded in code; don't undo them.
   after `uifigure(...)`, in every window). In a desktop MATLAB (R2025b), a window whose web view
   finished loading while components were still being added sometimes stayed as first drawn, and the
   next `drawnow` or `uiwait` never returned. `-batch` runs and invisible windows never show it, so the
-  suite cannot: check a new window from a desktop MATLAB.
+  suite cannot: check a new window from a desktop MATLAB. A large window must also not reach its
+  view in one update: the behaviour setup dialog, sent whole after its build, froze part way (a few
+  tabs, no buttons) in 5 of 33 desktop openings (0.10.0, 2026-10-06), and 0 of 48 with a `drawnow`
+  after each tab (0.10.1). Build a big window a part at a time, with `drawnow nocallbacks` after
+  each part (a click during the build then waits until everything it reads exists).
 - `exportgraphics` refuses a classic figure holding more than one `uipanel`, and `print` refuses any
   figure with UI components (both plot figures have both). `exportapp` captures them, and the
   uifigure windows, headless under `-batch`.
