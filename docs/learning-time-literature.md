@@ -81,6 +81,7 @@ choosing left or right with a wheel.
 | 2026-10-04 | Training, a wrong choice ends the trial | on, window 0.3 s, 12 mW/mm², 20 Hz × 20 ms | 458 | 50% | 50% / 51% |
 | 2026-10-05 | Training, a wrong choice ends the trial, 1 s timeout | on, window 0.3 s, 12 mW/mm², 20 Hz × 20 ms | 600 | 47% | 66% / 66% |
 | 2026-10-06 | As 10-05, and a side poke before the response delays the trial 1 s | on, window 0.3 s, 12 mW/mm², 20 Hz × 20 ms | 514 | 53% | 53% / 48% |
+| 2026-10-07 | As 10-06 | on, window 0.3 s, 12 mW/mm², 20 Hz × 20 ms | 462 | 47% | 46% / 52% |
 
 The procedure took 3 days, in line with the 2–7 days of pretraining above. LUMS0014 now does 350
 to 730 trials a session and completes nearly every hold. There is no sign yet that the light
@@ -171,6 +172,23 @@ range, so the step's second session goes ahead. The one new thing is in the port
 withdrawals came earlier on A trials than on B (*Do the pulses reach the mouse?*, 2026-10-06).
 3,841 punished trials so far.
 
+On 2026-10-07 (day 8), the second session of step 1, with nothing changed. No split: P(left | A)
+46%, P(left | B) 52% (p 0.22), the stimulus weight −0.02 ± 0.19 with the last side poke and the
+last choice in the fit. The habit was as strong for the first 300 trials (the choice opposite the
+last side poke on 94–98% of each 50) and looser after (84–90%, and 3 of the last 7 choices), as
+in every session since 10-02, where it fell to 80–90% after about trial 350 while early
+withdrawals and attempts a trial rose; over the session 92%. The choices that broke it did not
+follow the light: they came on 7% of trials where the light agreed with the habit and 8% where it
+did not (p 0.73; 5.2% and 5.3% over 10-04 to 10-07, 2,011 choices), and were correct on 51%. Side
+pokes before the response did not fall (0.90 a trial, on 46% of trials with a choice): fewer came
+before the first centre poke (82 trials against 136) and more between hold attempts (153 against
+145). Early withdrawals ended 42% of attempts (29% on 10-06, 36% on 10-05, 49% on 10-04). The last
+12 trials took 8 minutes. Rewards 47% of trials, 462 trials. A's earlier withdrawals of 10-06 did
+not come back (*Do the pulses reach the mouse?*, 2026-10-07). After two sessions step 1 has not
+done its job (`plan-habit-levers.md`). 4,303 punished trials so far: 2,269 with 5 ms pulses at
+8 mW/mm² (09-30 to 10-03) and 2,034 with 20 ms pulses at 12 mW/mm² (10-04 to 10-07), counted
+apart because the second light is a new start.
+
 ### Side-port alternation
 
 Found 2026-10-05. LUMS0014 alternates between the side ports on every visit, scored or not: its
@@ -189,6 +207,7 @@ term a weight of −3.2 ± 0.23 and the stimulus −0.08 ± 0.22.
 | 2026-09-28 to 10-04 (training) | 96–98% | 89–96% |
 | 2026-10-05 | 98% | 96% |
 | 2026-10-06 (side pokes delay 1 s) | 96% | 96% |
+| 2026-10-07 (side pokes delay 1 s) | 92% | 93% |
 
 So the choice is set by which side port the mouse visited last, and the stimulus has little room
 to show. The habit pays half the time, because which side pays is random: the visit before the
@@ -257,6 +276,7 @@ after a pulse began that it points to and its p against the surrogates' spread i
 | 2026-10-04 | yes, 20 ms pulses at 12 mW/mm² | 434 | 0.108 (0.17) | 0.070 at 37 ms | 0.067 at 47 ms | 0.15 |
 | 2026-10-05 | yes, 20 ms pulses at 12 mW/mm² | 306 | 0.108 (0.32) | 0.078 at 36 ms | 0.030 at 38 ms | 0.76 |
 | 2026-10-06 | yes, 20 ms pulses at 12 mW/mm² | 167 | 0.227 (0.004) | 0.074 at 36 ms | 0.169 at 30 ms | 0.0055 |
+| 2026-10-07 | yes, 20 ms pulses at 12 mW/mm² | 273 | 0.092 (0.51) | 0.083 at 36 ms | 0.029 at 47 ms | 0.79 |
 
 - **20 Hz stands out.** Pooled over the light sessions it is the strongest frequency from 10 to
   40 Hz; neither 10 nor 40 Hz exceeds the shape's surrogates.
@@ -339,6 +359,14 @@ of withdrawals in the first 30 ms on first attempts is too fast to be a response
 light. The fewer late withdrawals on A trials could be. The test for the next sessions, decided
 now: each trial's median early-withdrawal time, A against B (Mann–Whitney), and whether A's stays
 the earlier.
+
+**2026-10-07, the same light: neither came back.** Each trial's median early-withdrawal time was
+A 197 ms (83 trials) against B 222 ms (86 trials), p 0.78; every withdrawal, A 194 ms against B
+204 ms. Both channels had more withdrawals in the first 50 ms than on any day before (A 38, B 45 of
+153 and 173), so 10-06's early A withdrawals were not A's alone this time. Nothing beyond the
+shape (0.029, p 0.79), and A (0.073, p 0.48) and B (0.028, p 0.90) alone neither. Both of 10-06's
+results read as one session's variation. Over the four sessions at 20 Hz × 20 ms and 12 mW/mm²
+nothing in the port or in the choices shows that the mouse senses the light.
 
 Every behaviour session now reports it: a line in the log's *Behaviour* section and the summary plot
 `13_PulseLocking`, leading (from 0.9.14) with the locking beyond the shape, the time it points to

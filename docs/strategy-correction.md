@@ -253,7 +253,7 @@ drinking grace, a punishment timeout or the ITI are not affected.
 |---|---|---|
 | *Ignore* | nothing | none |
 | *Delay* | the cue goes off and centre pokes are ignored for the delay (state `SidePokeDelay`); further side pokes in the delay are ignored and do not restart it; then the trial waits for a centre poke again, cue on. The hold window keeps running: if it ends during the delay, the trial is *No initiation* | the delay, each time |
-| *End trial* | the trial ends unrewarded (state `SidePokeBeforeChoice`, outcome 7), with the early withdrawal's punishment if early withdrawals are punished | the trial |
+| *End trial* | the trial ends unrewarded (state `SidePokeBeforeChoice`, outcome 7), with the early withdrawal's punishment if early withdrawals are punished | the trial; with early withdrawals unpunished no timeout, so the next trial starts after the ITI (less than a 1 s delay), and context correction uses side bias on it (no previous choice) |
 
 **Example: *Delay* 1 s on 2026-10-05's behaviour.** At 0.6 side pokes a trial, about 0.6 s a
 trial, against about 8 s a trial: a 7% slower session if nothing changes. Each delay is counted

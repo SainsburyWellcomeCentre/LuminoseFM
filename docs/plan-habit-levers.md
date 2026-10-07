@@ -48,7 +48,8 @@ habit to a cost. Change one thing at a time, as for the light. Read each step fr
   towards the visits' 96%).
 - It has done its job when side pokes before the response fall from 0.6 a trial to under 0.1.
 - If the mouse is rewarded on fewer than 40% of trials, or runs far fewer trials, shorten the delay
-  or go back. *End trial* is the harder version, for a third session if the free pokes do not fall.
+  or go back. If the free pokes do not fall, a longer delay is the harder version: *End trial*
+  costs less than a 1 s delay unless early withdrawals are punished too (*Still open*).
 
 **Step 2: context correction.** *Last choice and reward*, strength 0.5, floor 40%, side pokes kept
 (P15 part 2 has passed; incorrect choices must be punished, as they are at the 1 s timeout).
@@ -89,9 +90,27 @@ Blocks are also the most direct test of whether the mouse can use the light at a
 
 - **The animal.** Step 1 began on 2026-10-06 (*Delay* 1 s, first of its two sessions): the habit
   hardly moved (choice opposite the last side poke 96%, side pokes before the response 0.79 a
-  trial against 0.92, choices alternating 65% against 51%), rewards 53%, 514 trials; the second
-  session goes ahead. Record each in `learning-time-literature.md` (the LUMS0014 table: which
-  levers, the *Habits* line, for blocks the first trial after a switch rather than % correct).
+  trial against 0.92, choices alternating 65% against 51%), rewards 53%, 514 trials. The second
+  session (2026-10-07) did not move it either: opposite the last side poke 92% (94–98% for the
+  first 300 trials), side pokes before the response 0.90 a trial, choices alternating 65%, rewards
+  47%. Step 1 has not met its mark; the next step is the operator's decision, open on 2026-10-07.
+  Record each in `learning-time-literature.md` (the LUMS0014 table: which levers, the *Habits*
+  line, for blocks the first trial after a switch rather than % correct).
+- **Step 2 sees only part of the habit while side pokes before the response continue** (found
+  2026-10-07). Context correction reads the choices, and the habit is in the visits: choices
+  alternated on 93–97% where no side poke came between two choices and on 38–45% where one did
+  (10-02 to 10-07), 65% overall. Replayed on 10-07's own choices, *Last choice and reward* at 0.5
+  with a 40% floor would have paid 47.9% of them against the 49.9% the session's side bias paid
+  (*Last choice*, the same; at strength 1 and no floor, 44%), and it pays the trials with a side
+  poke before the response more (52%) than those without (45%), because such a poke makes the
+  next choice repeat the last. It bites once those pokes are rare: in a simulated visit alternator
+  with 0.05 of them a trial, 43% with the floor and 33% without.
+- **_End trial_ costs less than _Delay_ 1 s under LUMS0014's punishment** (found 2026-10-07). With
+  `PunishCondition` *Incorrect choice*, `SidePokeBeforeChoice` has no timeout, so the next trial
+  starts after the 0.25 s ITI; and the trial after an ended one has no previous choice, so context
+  correction falls back to side bias there. A timeout for it today needs `PunishCondition` *Both*,
+  which also punishes early withdrawals (42% of attempts on 10-07). A longer *Delay* costs a side
+  poke time without either effect.
 - **P16**, the Strategy tab seen in a desktop session (`rig-checks.md`, *Pending*).
 - **Slow preparations after the choice.** LUMS0014's sessions had preparations up to 0.55 s on 1%
   of trials; on the rig (P15) the state machine's build was the slow part (at most 238 ms). With
