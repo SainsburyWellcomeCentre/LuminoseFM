@@ -94,6 +94,18 @@ names.
 
 Newest first. Each table puts the old behaviour or name on the left and the new on the right.
 
+### 0.10.1 → 0.10.2 — two lines of the session log say what happened
+
+Found in the audit of LUMS0014's session of 2026-10-06, the first with side pokes delayed. Logs
+only: the data and the settings are unchanged, and a log written by an earlier version is read as
+below (`lum.report.fromFile` writes one again with the new wording).
+
+| 0.10.1 | 0.10.2 |
+|---|---|
+| *Punishment*: "an unpunished wrong choice ends the trial" when incorrect choices were punished | "a wrong choice ends the trial" (punished), or "a wrong choice may be retried" (not punished) |
+| *Habits*: "238 trials delayed by one" | "238 trials delayed by a side poke (370 delays)": a trial can be delayed more than once (`lum.report.habits` `.sidePokeDelayCount`) |
+| *Trial order*: "at most 3 the same side in a row" with bias correction on, though runs of 7 were drawn that session | "at most 3 (more where bias correction favours that side) the same side in a row": bias correction takes precedence over the run limit (`lum.nextTrialSpec`), as since 0.9.4 |
+
 ### 0.10.0 → 0.10.1 — the behaviour setup dialog no longer freezes part way
 
 On 2026-10-06 the behaviour setup dialog froze on three launches of LUMS0014: a few tabs drawn, no

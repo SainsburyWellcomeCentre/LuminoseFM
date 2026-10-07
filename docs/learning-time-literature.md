@@ -80,6 +80,7 @@ choosing left or right with a wheel.
 | 2026-10-03 | Training, a wrong choice ends the trial | on, window 0.3 s | 471 | 49% | 58% / 59% |
 | 2026-10-04 | Training, a wrong choice ends the trial | on, window 0.3 s, 12 mW/mm², 20 Hz × 20 ms | 458 | 50% | 50% / 51% |
 | 2026-10-05 | Training, a wrong choice ends the trial, 1 s timeout | on, window 0.3 s, 12 mW/mm², 20 Hz × 20 ms | 600 | 47% | 66% / 66% |
+| 2026-10-06 | As 10-05, and a side poke before the response delays the trial 1 s | on, window 0.3 s, 12 mW/mm², 20 Hz × 20 ms | 514 | 53% | 53% / 48% |
 
 The procedure took 3 days, in line with the 2–7 days of pretraining above. LUMS0014 now does 350
 to 730 trials a session and completes nearly every hold. There is no sign yet that the light
@@ -158,6 +159,18 @@ five punished days before). In the port it held better than on 10-03 and 10-04: 
 ended 36% of attempts (49–50%), and 67% of holds were completed on the first attempt. Its choices
 are explained instead by the alternation below. 3,327 punished trials so far, with no split.
 
+On 2026-10-06 (day 7), the first session with a lever: a side poke while the trial waited for a
+centre poke delayed it 1 s (*Delay*, step 1 of `plan-habit-levers.md`); everything else as on
+10-05. Still no split: P(left | A) 53%, P(left | B) 48% (p 0.22), the stimulus weight
+−0.13 ± 0.22 with the last side poke and the last choice in the fit. The delay ran 370 times on 238
+trials, and the habit hardly moved (*Side-port alternation* below): the choice went opposite the
+last side poke on 96%, side pokes before the response came on 47% of trials with a choice (60% on
+10-05) and 0.79 a trial (0.92), and choices alternated on 65% (51%; 64% on 10-04). The plan's mark
+for the step, under 0.1 a trial, is far off; rewards (53% of trials) and trials (514) stayed in
+range, so the step's second session goes ahead. The one new thing is in the port: early
+withdrawals came earlier on A trials than on B (*Do the pulses reach the mouse?*, 2026-10-06).
+3,841 punished trials so far.
+
 ### Side-port alternation
 
 Found 2026-10-05. LUMS0014 alternates between the side ports on every visit, scored or not: its
@@ -175,6 +188,7 @@ term a weight of −3.2 ± 0.23 and the stimulus −0.08 ± 0.22.
 | 2026-09-25 to 09-27 (habituation) | 90%, 94%, 95% | 56%, 76%, 88% |
 | 2026-09-28 to 10-04 (training) | 96–98% | 89–96% |
 | 2026-10-05 | 98% | 96% |
+| 2026-10-06 (side pokes delay 1 s) | 96% | 96% |
 
 So the choice is set by which side port the mouse visited last, and the stimulus has little room
 to show. The habit pays half the time, because which side pays is random: the visit before the
@@ -194,9 +208,9 @@ following the light still earns every correct choice; blocks make staying on the
 earn about 95% and test the light on each block's first trial. Every session's log now has a
 *Habits* line with the measures in the table above (`lum.report.habits`; `14_Habits` can be drawn
 for the earlier sessions with `lum.report.fromFile(..., 'Plots', 14)`). The order of use for
-LUMS0014 is in `plan-habit-levers.md`: *Delay* 1 s first, then context correction, blocks last. No
-session has run a lever yet; record each here with its *Habits* line, and for blocks the first
-trial after a switch rather than % correct.
+LUMS0014 is in `plan-habit-levers.md`: *Delay* 1 s first, then context correction, blocks last.
+The first lever session was 2026-10-06 (*Delay* 1 s, above); record each here with its *Habits*
+line, and for blocks the first trial after a switch rather than % correct.
 
 ### Do the pulses reach the mouse?
 
@@ -242,6 +256,7 @@ after a pulse began that it points to and its p against the surrogates' spread i
 | 2026-10-03 | yes | 431 | 0.142 (0.021) | 0.069 at 37 ms | 0.081 at 42 ms | 0.063 |
 | 2026-10-04 | yes, 20 ms pulses at 12 mW/mm² | 434 | 0.108 (0.17) | 0.070 at 37 ms | 0.067 at 47 ms | 0.15 |
 | 2026-10-05 | yes, 20 ms pulses at 12 mW/mm² | 306 | 0.108 (0.32) | 0.078 at 36 ms | 0.030 at 38 ms | 0.76 |
+| 2026-10-06 | yes, 20 ms pulses at 12 mW/mm² | 167 | 0.227 (0.004) | 0.074 at 36 ms | 0.169 at 30 ms | 0.0055 |
 
 - **20 Hz stands out.** Pooled over the light sessions it is the strongest frequency from 10 to
   40 Hz; neither 10 nor 40 Hz exceeds the shape's surrogates.
@@ -261,9 +276,10 @@ after a pulse began that it points to and its p against the surrogates' spread i
   rising smoothly to the end of the window, as in the sessions with light, in 5–8%.
 - **A and B trials lock alike** (difference in R p 0.69, the same phase), though B's LED runs at
   about twice A's current (496 against 253 mA) for the same irradiance at the tips.
-- **Nothing else differs between A and B in the port**: the chance of an attempt ending in an early
-  withdrawal 0.46 against 0.51 (p 0.054, mostly from the first session with light), the median
-  withdrawal time, and holds completed on the first attempt.
+- **Nothing else differed between A and B in the port** up to 2026-10-05: the chance of an attempt
+  ending in an early withdrawal 0.46 against 0.51 (p 0.054, mostly from the first session with
+  light), the median withdrawal time, and holds completed on the first attempt. On 2026-10-06 the
+  withdrawal times did (below).
 
 So whether LUMS0014 senses the pulses is open. R passed the shape's surrogates on 10-02 and 10-03,
 and the locking beyond the shape does so only pooled over sessions. Because the pulses start at the
@@ -298,6 +314,31 @@ session is one of 22 such tests over the 11 sessions, and the habituation sessio
 gave A's would-be pulses p 0.007 (09-25) and 0.005 (09-27). A's direction also moves from session
 to session (23–49 ms over the six punished sessions, 1 ms on 09-29). Not a sign of perception on
 its own; A beyond the shape is one more thing to watch.
+
+**2026-10-06, the same light.** The strongest single session so far: 0.169 beyond the shape at
+30 ms (p 0.0055), R 0.227 (p 0.004); A 0.221 (p 0.025, n 72), B 0.143 (p 0.15, n 95). It is not
+specific to the carrier: from 10 to 40 Hz, 15, 16, 20, 21, 25 and 26 Hz all pass their
+surrogates' 95th percentile, and 20 Hz ranks second of 31 (15 Hz first). The session had the
+fewest withdrawals of any with light (167, against 306–621), and their times had a shape unlike
+the sessions before (below); a feature of the times narrower than a period passes for locking, as
+in habituation. Not counted as locking.
+
+The withdrawal times themselves differed between the channels, for the first time in any
+session. With the same chance of an attempt ending early (21% of first attempts on both), A's
+withdrawals came a median 115 ms into the light (n 97) and B's 228 ms (n 105). Each trial's median,
+A 136 ms against B 227 ms, gives p 0.0014 (Mann–Whitney, 53 and 57 trials), and a trial-level
+permutation p 0.002; it held in each third of the session (A 166, 146, 85 ms; B 237, 212, 223 ms),
+and on first attempts alone (134 against 221 ms, p 0.033). B's withdrawals rose to the end of the
+window as in every session before; A's were spread evenly, with more in the first 30 ms (12 of 53
+first attempts, against B's 5 of 57) and fewer in the last 90 ms (15 against 33). In the 11
+sessions before, A's and B's medians never differed (p 0.07–1.0, the three habituation sessions
+included). The trials before A and B trials were alike (rewarded 52% and 53%, chose left 52% and
+48%), and the light, LED currents (A 409, B 893 mA) and cables were as on 10-04 and 10-05.
+Two things weigh against reading it as perception yet: it is one session of twelve, and the excess
+of withdrawals in the first 30 ms on first attempts is too fast to be a response to that attempt's
+light. The fewer late withdrawals on A trials could be. The test for the next sessions, decided
+now: each trial's median early-withdrawal time, A against B (Mann–Whitney), and whether A's stays
+the earlier.
 
 Every behaviour session now reports it: a line in the log's *Behaviour* section and the summary plot
 `13_PulseLocking`, leading (from 0.9.14) with the locking beyond the shape, the time it points to

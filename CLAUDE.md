@@ -50,8 +50,8 @@ step 1, which can run headless with permission; P13 step 4's file checks passed 
 2026-10-05). The operator works remotely at times: run a pending check the next time they say they
 are at the rig.
 
-**Next work:** strategy correction (0.10.0, D23) is built and rig-checked but not yet used on an
-animal and not committed. Its order of use for LUMS0014 and its open items are in
+**Next work:** strategy correction (0.10.0, D23) is built, rig-checked and committed; LUMS0014
+began step 1 (*Delay* 1 s) on 2026-10-06. Its order of use for LUMS0014 and its open items are in
 `docs/plan-habit-levers.md`; audit each session that uses a lever from its log's *Habits* (and
 *Blocks*) line and record it in `docs/learning-time-literature.md`.
 
@@ -1255,7 +1255,8 @@ Each has already cost time and is guarded in code; don't undo them.
   (the experiment session's first trial unscored: the scripted mouse missed it); both passed on
   the rerun. On 2026-10-04 the timeline and `testNoSessionWarnedOrFailed` failed together in a full
   run, and `testHabituationOutcomesFollowTheAnimal` once on the rerun of its file (the same
-  scripted-mouse miss); each passed on the next run.
+  scripted-mouse miss); each passed on the next run. The timeline failed once more on 2026-10-06
+  (a label read at x = -244 px) and passed on the rerun of its file.
 - The Chameleon3 quantizes `AcquisitionFrameRate`, and writing a read-back value lands one step higher
   (100.058 → 100.12). `CameraSetup` takes a frame rate back from SpinCam's viewer only when it differs
   by more than 0.2 Hz, rounded to 0.1 Hz.

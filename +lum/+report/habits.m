@@ -28,7 +28,8 @@ function H = habits(T)
 %   .firstPokeSide         Trials with a choice whose first poke was a side poke, and
 %   .firstPokeOpposite     the share of them at the side opposite the choice before
 %   .sidePokesPerTrial     Side pokes before the response window, per trial (every trial)
-%   .sidePokeDelays        Trials delayed by a side poke (S.GUI.SidePokeBeforeChoice 'Delay')
+%   .sidePokeDelays        Trials delayed by a side poke (S.GUI.SidePokeBeforeChoice 'Delay'),
+%                          and .sidePokeDelayCount the delays (a trial can have several)
 %   .endedBySidePoke       Trials ended by one ('End trial')
 %   .Bins                  The same measures in blocks of 100 trials (.Trials, first and last
 %                          of each), for the summary plot 14_Habits
@@ -50,6 +51,7 @@ H = measure(T, 1:T.n, pairs);
 H.nChoices = sum(~isnan(T.choice));
 H.sidePokesPerTrial = mean(T.sidePokesBeforeCentre + T.sidePokesBetween);
 H.sidePokeDelays = sum(T.sidePokeDelays > 0);
+H.sidePokeDelayCount = sum(T.sidePokeDelays, 'omitnan');
 H.endedBySidePoke = sum(T.outcome == lum.Outcome.SidePokeBeforeChoice);
 
 % In blocks of 100 trials, for the plot

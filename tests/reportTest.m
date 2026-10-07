@@ -328,13 +328,54 @@ end
 
 function testTheLogSaysTheHabits(testCase)
 [Data, dataFile] = habitSession(testCase, 'alternator', 200);
+Data.SidePokeDelays(:) = 0;
+Data.SidePokeDelays([3 7 9]) = [1 2 1];
 [~, lines] = lum.report.sessionLog(Data, dataFile, 'Write', false);
 habit = lines(startsWith(lines, '- Habits:'));
 verifyNumElements(testCase, habit, 1);
 verifySubstring(testCase, habit{1}, 'chose opposite the last side poke on 100% of');
+verifySubstring(testCase, habit{1}, '3 trials delayed by a side poke (4 delays)');
 strategy = lines(startsWith(lines, '- Strategy correction:'));
 verifyNumElements(testCase, strategy, 1);
 verifySubstring(testCase, strategy{1}, 'trial order random');
+end
+
+function testThePunishmentLineSaysWhatAWrongChoiceDoes(testCase)
+% 2026-10-06's log said 'an unpunished wrong choice ends the trial' of a punished one.
+[Data, dataFile] = habitSession(testCase, 'winStay', 20);
+[~, lines] = lum.report.sessionLog(Data, dataFile, 'Write', false);
+verifySubstring(testCase, punishmentLine(lines), 'a wrong choice may be retried');
+Data.Session.Settings.GUI.PunishCondition = 3;
+[~, lines] = lum.report.sessionLog(Data, dataFile, 'Write', false);
+line = punishmentLine(lines);
+verifySubstring(testCase, line, 'on incorrect choice');
+verifySubstring(testCase, line, 'a wrong choice ends the trial');
+verifyEmpty(testCase, strfind(line, 'unpunished'));
+end
+
+function testTheRunLimitSaysBiasCorrectionGoesFirst(testCase)
+% 2026-10-06's log said 'at most 3 the same side in a row' of a session with runs of 7, which
+% bias correction, taking precedence over the run limit, drew.
+[Data, dataFile] = habitSession(testCase, 'winStay', 20);
+Data.Session.Settings.Task.MaxSameSide = 3;
+Data.Session.Settings.GUI.BiasCorrection = 0.5;
+verifySubstring(testCase, trialOrderLine(Data, dataFile), ...
+                'at most 3 (more where bias correction favours that side) the same side in a row');
+Data.Session.Settings.GUI.BiasCorrection = 0;
+line = trialOrderLine(Data, dataFile);
+verifySubstring(testCase, line, 'at most 3 the same side in a row');
+verifyEmpty(testCase, strfind(line, 'favours'));
+end
+
+function line = trialOrderLine(Data, dataFile)
+% The log's trial order line.
+[~, lines] = lum.report.sessionLog(Data, dataFile, 'Write', false);
+line = lines{startsWith(lines, '- Trial order:')};
+end
+
+function line = punishmentLine(lines)
+% The log's one punishment line.
+line = lines{startsWith(lines, '- Punishment:')};
 end
 
 function testABlockSessionIsMeasuredByItsSwitches(testCase)

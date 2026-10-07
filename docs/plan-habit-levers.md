@@ -87,9 +87,11 @@ Blocks are also the most direct test of whether the mouse can use the light at a
 
 ## Still open
 
-- **The animal.** No session has run any lever on an animal yet. Record each in
-  `learning-time-literature.md` (the LUMS0014 table: which levers, the *Habits* line, for blocks the
-  first trial after a switch rather than % correct).
+- **The animal.** Step 1 began on 2026-10-06 (*Delay* 1 s, first of its two sessions): the habit
+  hardly moved (choice opposite the last side poke 96%, side pokes before the response 0.79 a
+  trial against 0.92, choices alternating 65% against 51%), rewards 53%, 514 trials; the second
+  session goes ahead. Record each in `learning-time-literature.md` (the LUMS0014 table: which
+  levers, the *Habits* line, for blocks the first trial after a switch rather than % correct).
 - **P16**, the Strategy tab seen in a desktop session (`rig-checks.md`, *Pending*).
 - **Slow preparations after the choice.** LUMS0014's sessions had preparations up to 0.55 s on 1%
   of trials; on the rig (P15) the state machine's build was the slow part (at most 238 ms). With

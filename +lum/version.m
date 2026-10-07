@@ -19,7 +19,7 @@ function text = version(part)
 %
 % See also LuminoseFM
 
-release = '0.10.1';
+release = '0.10.2';
 text = release;
 if nargin > 0 && strcmp(part, 'release')
     return

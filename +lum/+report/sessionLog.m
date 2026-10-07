@@ -106,7 +106,7 @@ L{end+1} = sprintf('- Reward: %g uL a side reward, delay %g s, drinking grace %g
 L{end+1} = sprintf('- Timing: hold window %g s, response window %g s, ITI %g s', g.HoldWindow, ...
                    g.ResponseWindow, g.ITI);
 punish = lum.punishmentFor(S, 'IncorrectChoice');
-L{end+1} = sprintf('- Punishment: on %s, %s, timeout %g s; an unpunished wrong choice %s', ...
+L{end+1} = sprintf('- Punishment: on %s, %s, timeout %g s; a wrong choice %s', ...
                    lower(menuItem(S, 'PunishCondition')), lower(menuItem(S, 'PunishType')), ...
                    g.PunishTimeout, ternary(punish.Retry, 'may be retried', 'ends the trial'));
 L{end+1} = sprintf('- Trial order: bias correction %g over the last %d choices, at most %s the same side in a row%s', ...
@@ -389,9 +389,12 @@ end
 
 
 function text = runLimitText(S)
-% The same-side run limit, or that there is none.
+% The same-side run limit, or that there is none. Bias correction takes precedence over the
+% limit (lum.nextTrialSpec), so with it on a run on the side it favours can be longer.
 if S.Task.MaxSameSide < 1
     text = 'any number of trials';
+elseif S.GUI.BiasCorrection > 0
+    text = sprintf('%d (more where bias correction favours that side)', S.Task.MaxSameSide);
 else
     text = sprintf('%d', S.Task.MaxSameSide);
 end
@@ -448,7 +451,8 @@ text = sprintf(['Habits: chose opposite the last side poke on %s of %d choices; 
                percent(H.alternationExpected), H.sidePokeTrials, H.nChoices, H.beforeCentreOnly, ...
                H.betweenOnly, H.both, H.sidePokesPerTrial);
 if H.sidePokeDelays > 0
-    text = sprintf('%s; %d trials delayed by one', text, H.sidePokeDelays);
+    text = sprintf('%s; %d trials delayed by a side poke (%d delays)', text, H.sidePokeDelays, ...
+                   H.sidePokeDelayCount);
 end
 end
 
