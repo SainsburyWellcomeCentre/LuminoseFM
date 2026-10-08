@@ -72,3 +72,4 @@ end
 sounds('LeftTone') = 3 + stimulusSet.nGroups;
 sounds('RightTone') = 4 + stimulusSet.nGroups;
 sounds('CueTail') = 5 + stimulusSet.nGroups;
+sounds('SidePoke') = 6 + stimulusSet.nGroups;

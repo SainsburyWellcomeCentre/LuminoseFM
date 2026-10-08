@@ -105,10 +105,8 @@ L{end+1} = sprintf('- Reward: %g uL a side reward, delay %g s, drinking grace %g
                    g.RewardAmount, g.RewardDelay, g.DrinkingGrace, centreRewardText(S));
 L{end+1} = sprintf('- Timing: hold window %g s, response window %g s, ITI %g s', g.HoldWindow, ...
                    g.ResponseWindow, g.ITI);
-punish = lum.punishmentFor(S, 'IncorrectChoice');
-L{end+1} = sprintf('- Punishment: on %s, %s, timeout %g s; a wrong choice %s', ...
-                   lower(menuItem(S, 'PunishCondition')), lower(menuItem(S, 'PunishType')), ...
-                   g.PunishTimeout, ternary(punish.Retry, 'may be retried', 'ends the trial'));
+L{end+1} = sprintf('- Punishment: incorrect choice %s; early withdrawal %s', ...
+                   punishmentText(S, 'IncorrectChoice'), punishmentText(S, 'EarlyWithdrawal'));
 L{end+1} = sprintf('- Trial order: bias correction %g over the last %d choices, at most %s the same side in a row%s', ...
                    g.BiasCorrection, round(g.BiasWindow), runLimitText(S), ...
                    ternary(S.Task.ReverseContingency, ', contingency reversed', ''));
@@ -454,6 +452,38 @@ if H.sidePokeDelays > 0
     text = sprintf('%s; %d trials delayed by a side poke (%d delays)', text, H.sidePokeDelays, ...
                    H.sidePokeDelayCount);
 end
+if H.timeoutRestarts > 0
+    text = sprintf('%s; a timeout restarted by a side poke on %d trials (%d restarts)', text, ...
+                   H.timeoutRestarts, H.timeoutRestartCount);
+end
+end
+
+
+function text = punishmentText(S, event)
+% What one mistake cost as the session started: 'none, may be retried', 'timeout 3 s, ends
+% the trial', 'white noise', 'timeout 2 s + noise'.
+p = lum.punishmentFor(S, event);
+if ~p.Applies
+    text = 'none';
+    if p.Retry
+        text = 'none, may be retried';
+    end
+    return
+end
+parts = {};
+if p.Timeout > 0
+    parts{end+1} = sprintf('timeout %g s', p.Timeout);
+end
+if p.PlayNoise
+    parts{end+1} = 'white noise';
+end
+if isempty(parts)
+    parts = {'timeout 0 s'};
+end
+text = strjoin(parts, ' + ');
+if strcmp(event, 'IncorrectChoice')
+    text = [text, ', ends the trial'];
+end
 end
 
 
@@ -561,12 +591,6 @@ elseif ischar(value)
 else
     text = mat2str(value, 4);
 end
-end
-
-
-function text = menuItem(S, name)
-% A runtime parameter's current value as the windows show it.
-text = valueText(S, name, S.GUI.(name));
 end
 
 

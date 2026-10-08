@@ -21,6 +21,7 @@ function T = sessionTrials(Data)
 %   .outcome .choice .correct .rewarded .correctSide .group .pattern .reactionTime
 %   .holdDuration .centreHoldTime .holdAttempts .earlyWithdrawals .centreReward
 %   .responseRetries .biasTarget .optoOn .trainingStage .biasContext .sidePokeDelays
+%   .timeoutRestarts
 %                     The per-trial series (NaN where an older file has none)
 %   .block, .blockSide  1 x n: the trial's block (0 in a random order, and in files from
 %                     before 0.10.0) and its side (lum.Blocks)
@@ -78,7 +79,7 @@ series = {'Outcome', 'outcome'; 'Choice', 'choice'; 'Correct', 'correct'; ...
           'CentreReward', 'centreReward'; 'ResponseRetries', 'responseRetries'; ...
           'BiasTargetPLeft', 'biasTarget'; 'OptoOn', 'optoOn'; 'TrainingStage', 'trainingStage'; ...
           'BiasContext', 'biasContext'; 'Block', 'block'; 'BlockSide', 'blockSide'; ...
-          'SidePokeDelays', 'sidePokeDelays'};
+          'SidePokeDelays', 'sidePokeDelays'; 'TimeoutRestarts', 'timeoutRestarts'};
 for i = 1:size(series, 1)
     if isfield(Data, series{i, 1})
         T.(series{i, 2}) = double(Data.(series{i, 1})(1:n));
@@ -91,6 +92,7 @@ T.block(isnan(T.block)) = 0;   % Files from before 0.10.0: every trial in a rand
 T.ranBlocks = any(T.block > 0);
 T.forStimulus = T.block == 0 | T.blockFirst;
 T.sidePokeDelays(isnan(T.sidePokeDelays)) = 0;
+T.timeoutRestarts(isnan(T.timeoutRestarts)) = 0;
 T.bothSidesPay = T.trainingStage == 1;
 T.scored = T.correct;
 T.scored(T.bothSidesPay) = double(T.rewarded(T.bothSidesPay) == 1);

@@ -377,7 +377,8 @@ end
         % Strategy correction, bias correction and the run limit (lum.stageDefaults)
         controls.MaxSameSide.Value = candidate.Task.MaxSameSide;
         showRuntime(controls.Runtime, candidate.GUI, {'BiasCorrection', 'BiasCorrectFor', ...
-                    'BiasRewardFloor', 'TrialOrder', 'SidePokeBeforeChoice'});
+                    'BiasRewardFloor', 'TrialOrder', 'SidePokeBeforeChoice', 'TimeoutSidePoke', ...
+                    'SidePokeSound'});
         refresh();
     end
 
@@ -555,6 +556,7 @@ end
         candidate.Sound.Amplitude = c.SoundAmplitude.Value;
         candidate.Sound.Attenuation_dB = c.Attenuation.Value;
         candidate.Sound.NoiseDuration = c.NoiseDuration.Value;
+        candidate.Sound.SidePokeSoundDuration = c.SidePokeSoundDuration.Value;
 
         candidate.Sync.Mode = find(strcmp(c.SyncMode.Value, S.Sync.ModeNames), 1);
         candidate.Sync.FixedWidth = c.SyncFixed.Value;
@@ -979,7 +981,7 @@ grid = uigridlayout(tab, [1 2], 'ColumnWidth', {520, '1x'}, 'Padding', 12, ...
 components = S.Cue.Components;
 nComponents = numel(components);
 left = uigridlayout(grid, [4 1], 'RowHeight', {panelHeight(nComponents + 1), panelHeight(1), ...
-                    panelHeight(3), '1x'}, 'Padding', 0, 'RowSpacing', 10, ...
+                    panelHeight(4), '1x'}, 'Padding', 0, 'RowSpacing', 10, ...
                     'BackgroundColor', t.Background);
 table = timingTable(left, 'Cue components', nComponents, ...
                     {'Through stimulus', 'If not, on for (s)'}, t);
@@ -1002,7 +1004,7 @@ controls.CueToneFrequency = numberField(row, S.Cue.ToneFrequency, [20 80000], on
 controls.PlayCue = playButton(row, 'Play the cue tone (0.5 s) with the sound output below', ...
                               @() onPlay('Cue'));
 
-form = formPanel(left, 'Sound output', 3, t, 190);
+form = formPanel(left, 'Sound output', 4, t, 190);
 label(form, 'Amplitude (0-1)', t);
 controls.SoundAmplitude = numberField(form, S.Sound.Amplitude, [0 1], onEdit, false);
 controls.SoundAmplitude.Tooltip = 'Every sound''s amplitude, as a fraction of full scale';
@@ -1014,6 +1016,15 @@ row = playRow(form, t);
 controls.NoiseDuration = numberField(row, S.Sound.NoiseDuration, [0.001 10], onEdit, false);
 controls.PlayNoise = playButton(row, 'Play the punishment noise with these settings', ...
                                 @() onPlay('Noise'));
+label(form, 'Side-poke sound (s)', t);
+row = playRow(form, t);
+controls.SidePokeSoundDuration = numberField(row, S.Sound.SidePokeSoundDuration, [0.01 2], ...
+                                             onEdit, false);
+controls.SidePokeSoundDuration.Tooltip = ['The noise burst played on a side poke that costs '...
+                                          'time, when Sound on a side poke that costs time is '...
+                                          'ticked (Runtime tab, Side pokes)'];
+controls.PlaySidePoke = playButton(row, 'Play the side-poke sound with these settings', ...
+                                   @() onPlay('SidePoke'));
 
 note(left, ['The cue asks the animal to start a trial. Every ticked part comes on at trial '...
             'start and stays on until the stimulus starts — through the wait for the poke, '...

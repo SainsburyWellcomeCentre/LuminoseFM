@@ -93,7 +93,12 @@ Blocks are also the most direct test of whether the mouse can use the light at a
   trial against 0.92, choices alternating 65% against 51%), rewards 53%, 514 trials. The second
   session (2026-10-07) did not move it either: opposite the last side poke 92% (94–98% for the
   first 300 trials), side pokes before the response 0.90 a trial, choices alternating 65%, rewards
-  47%. Step 1 has not met its mark; the next step is the operator's decision, open on 2026-10-07.
+  47%. Step 1 has not met its mark. On 2026-10-08 the operator lengthened the delay to 3 s and the
+  timeout to 3 s together. In the first 200 trials neither moved the habit (opposite the last side
+  poke 88–96% of each 50, delays 0.48–0.68 a trial); after trial 200 the mouse disengaged (a median
+  20 s a trial, 11 holds lapsed) and was stopped at 308 trials, rewarded on 50%. The plan's rule
+  above (far fewer trials: shorten the delay or go back) applies if the next session ends the same
+  way; with two settings changed at once, put the timeout back to 1 s first.
   Record each in `learning-time-literature.md` (the LUMS0014 table: which levers, the *Habits*
   line, for blocks the first trial after a switch rather than % correct).
 - **Step 2 sees only part of the habit while side pokes before the response continue** (found
@@ -105,12 +110,24 @@ Blocks are also the most direct test of whether the mouse can use the light at a
   poke before the response more (52%) than those without (45%), because such a poke makes the
   next choice repeat the last. It bites once those pokes are rare: in a simulated visit alternator
   with 0.05 of them a trial, 43% with the floor and 33% without.
+- **The timeout is a free window for the habit's visit** (found 2026-10-08). Side pokes during
+  `IncorrectChoice` cost nothing, and at 3 s the mouse poked a side port during 32% of timeouts
+  (6–11% at 1 s), then chose opposite that poke on 83%, repeating the error. *Delay* reaches only
+  the pokes while the trial waits for a centre poke. Built in 0.11.0 at the operator's request
+  (2026-10-08): *Side poke in a timeout* *Restart the timeout*, for an incorrect choice's and an
+  early withdrawal's timeout, with an optional sound on every side poke that costs time (*Sound on
+  a side poke that costs time*), and each mistake's punishment set apart. Off by default; not yet
+  used on an animal. Suggested on 2026-10-08, not yet decided by the operator: first a session
+  with 300 ms continuous light (Frequency 0), the timeout back to 1 s and *Delay* 3 s; then the
+  sound, and the restart if the timeout goes back up. The sound itself waits for a check by ear
+  (`rig-checks.md`, P18).
 - **_End trial_ costs less than _Delay_ 1 s under LUMS0014's punishment** (found 2026-10-07). With
-  `PunishCondition` *Incorrect choice*, `SidePokeBeforeChoice` has no timeout, so the next trial
-  starts after the 0.25 s ITI; and the trial after an ended one has no previous choice, so context
-  correction falls back to side bias there. A timeout for it today needs `PunishCondition` *Both*,
-  which also punishes early withdrawals (42% of attempts on 10-07). A longer *Delay* costs a side
-  poke time without either effect.
+  early withdrawals unpunished, `SidePokeBeforeChoice` has no timeout, so the next trial starts
+  after the 0.25 s ITI; and the trial after an ended one has no previous choice, so context
+  correction falls back to side bias there. *End trial* costs what an early withdrawal does, so a
+  timeout for it still needs `Early withdrawal` punished (42% of attempts on 10-07); from 0.11.0
+  that no longer punishes incorrect choices the same way. A longer *Delay* costs a side poke time
+  without either effect.
 - **P16**, the Strategy tab seen in a desktop session (`rig-checks.md`, *Pending*).
 - **Slow preparations after the choice.** LUMS0014's sessions had preparations up to 0.55 s on 1%
   of trials; on the rig (P15) the state machine's build was the slow part (at most 238 ms). With

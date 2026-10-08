@@ -751,14 +751,14 @@ data.RuntimeSettings = cell(1, maxTrials);
 
 
 function names = trialSeriesNames()
-% Every per-trial series written to the data file, one value per trial. docs/data-format.md
-% and emulatorSessionTest list them too; keep all three in step.
+% Every per-trial series written to the data file, one value per trial. docs/data-format.md,
+% emulatorSessionTest and reportTest list them too; keep all four in step.
 names = {'StimulusGroup', 'PatternIndex', 'CorrectSide', 'Choice', 'Correct', 'Rewarded', ...
          'Outcome', 'ReactionTime', 'OptoOn', 'SoundOn', 'HouseLight', 'SyncMode', 'SyncPulseWidth', ...
          'BiasTargetPLeft', 'TrainingStage', 'HoldDuration', 'HoldGrace', 'HoldBreaks', ...
          'HoldAttempts', 'EarlyWithdrawals', 'CameraTime', 'LEDCurrentA', 'LEDCurrentB', ...
          'CentreReward', 'ResponseRetries', 'CentreHoldTime', 'BiasContext', 'Block', ...
-         'BlockSide', 'SidePokeDelays'};
+         'BlockSide', 'SidePokeDelays', 'TimeoutRestarts'};
 
 
 function data = recordTrial(data, trialNumber, spec, result, gui)
@@ -792,6 +792,7 @@ data.BiasContext(trialNumber) = spec.BiasContext;
 data.Block(trialNumber) = spec.Block;
 data.BlockSide(trialNumber) = spec.BlockSide;
 data.SidePokeDelays(trialNumber) = result.SidePokeDelays;
+data.TimeoutRestarts(trialNumber) = result.TimeoutRestarts;
 data.RuntimeSettings{trialNumber} = gui;
 
 

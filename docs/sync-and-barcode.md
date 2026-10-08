@@ -58,7 +58,9 @@ Three modes (`S.Sync.Mode`, `lum.SyncMode`), and every one of them drives the li
   high in every visit to `WaitForCentrePoke`, so a trial can have more than one rising edge: after
   an early withdrawal with *Restart stimulus*, and from 0.10.0 after a side poke before the
   response with *Delay* (the line is low in `SidePokeDelay` and rises as the wait resumes; it is
-  low in `SidePokeBeforeChoice` too, and the trial then ends). Count a trial's start as the first
+  low in `SidePokeBeforeChoice` too, and the trial then ends). The timeout restart states of
+  0.11.0 (`IncorrectChoiceRestartLeft`/`Right`, `EarlyWithdrawalRestartLeft`/`Right`) keep it low:
+  they lengthen a low and add no edge. Count a trial's start as the first
   rising edge after the trial before ended, or align by `Data.TrialStartTimestamp`; a delay under
   two frames may not reach the cameras.
 

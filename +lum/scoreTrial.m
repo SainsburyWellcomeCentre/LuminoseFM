@@ -35,6 +35,9 @@ function result = scoreTrial(trialEvents, spec, rig)
 %                  to RetryResponse); 0 when incorrect choices are punished
 %   .SidePokeDelays  Side pokes before the response window that delayed the trial
 %                  (visits to SidePokeDelay, S.GUI.SidePokeBeforeChoice 'Delay'); 0 otherwise
+%   .TimeoutRestarts  Side pokes that restarted a punishment's timeout (visits to the
+%                  IncorrectChoiceRestart and EarlyWithdrawalRestart states,
+%                  S.GUI.TimeoutSidePoke 'Restart the timeout'); 0 otherwise
 %   .CentreHoldTime  Seconds from the poke that began the trial's last hold (or
 %                  latency) to the animal first leaving the centre port after it;
 %                  NaN if the stimulus never started or the animal never left
@@ -55,7 +58,7 @@ result = struct('Outcome', lum.Outcome.NoResponse, 'Choice', NaN, ...
                 'Correct', NaN, 'Rewarded', 0, 'ReactionTime', NaN, 'HoldBreaks', 0, ...
                 'HoldAttempts', 0, 'EarlyWithdrawals', 0, 'CentreRewarded', 0, ...
                 'ResponseRetries', 0, 'CentreHoldTime', NaN, 'HoldCompleted', 0, ...
-                'HeldFirstAttempt', 0, 'SidePokeDelays', 0);
+                'HeldFirstAttempt', 0, 'SidePokeDelays', 0, 'TimeoutRestarts', 0);
 
 %% Which side was poked, and how quickly
 % Only a poke inside the response window is a choice: the one that ended its first visit.
@@ -87,6 +90,9 @@ result.HeldFirstAttempt = measures.FirstAttempt;
 result.CentreRewarded = double(visited(states, 'CentreReward'));
 result.ResponseRetries = nVisits(states, 'RetryResponse');
 result.SidePokeDelays = nVisits(states, 'SidePokeDelay');
+result.TimeoutRestarts = nVisits(states, 'IncorrectChoiceRestartLeft') ...
+    + nVisits(states, 'IncorrectChoiceRestartRight') ...
+    + nVisits(states, 'EarlyWithdrawalRestartLeft') + nVisits(states, 'EarlyWithdrawalRestartRight');
 result.CentreHoldTime = centreHoldTime(states, events, rig);
 
 %% Outcome, in the order the trial could have ended

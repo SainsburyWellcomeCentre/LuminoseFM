@@ -2,9 +2,10 @@ function text = describeStrategy(S)
 % lum.describeStrategy says in one line which strategy correction levers a session runs.
 %
 % Strategy correction (D23) is three levers against side-port habits, each a runtime
-% setting: what a side poke before the response window does (S.GUI.SidePokeBeforeChoice),
-% bias correction and what it corrects for (lum.BiasCorrection), and the trial order
-% (lum.Blocks). The console says it as a session starts, and the session log under Settings.
+% setting: what a side poke before the response window or in a punishment's timeout does
+% (S.GUI.SidePokeBeforeChoice, TimeoutSidePoke, SidePokeSound), bias correction and what it
+% corrects for (lum.BiasCorrection), and the trial order (lum.Blocks). The console says it
+% as a session starts, and the session log under Settings.
 %
 % Usage:
 %   text = lum.describeStrategy(S)
@@ -25,6 +26,12 @@ if isfield(S.GUI, 'SidePokeBeforeChoice')
         case 3
             sidePokes = 'a side poke before the response ends the trial';
     end
+end
+if isfield(S.GUI, 'TimeoutSidePoke') && S.GUI.TimeoutSidePoke == 2
+    sidePokes = sprintf('%s; a side poke in a timeout restarts it', sidePokes);
+end
+if isfield(S.GUI, 'SidePokeSound') && S.GUI.SidePokeSound
+    sidePokes = sprintf('%s; a sound on each side poke that costs time', sidePokes);
 end
 order = lum.Blocks.describe(S);
 if lum.Blocks.isOn(S)

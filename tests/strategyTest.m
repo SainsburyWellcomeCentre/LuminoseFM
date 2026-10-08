@@ -63,7 +63,7 @@ function testTheTargetIsTheShareOfLeftChoicesInTheContext(testCase)
 S = testCase.TestData.S;
 S.GUI.BiasCorrection = 0.5;
 S.GUI.BiasWindow = 10;
-S.GUI.PunishCondition = 3;   % Incorrect choices punished: context correction available
+S.GUI.IncorrectChoicePunishment = 4;   % Incorrect choices punished: context correction available
 stream = RandStream('mt19937ar', 'Seed', 2);
 history = lum.newHistory(200);
 for k = 1:120
@@ -99,7 +99,7 @@ function testFewChoicesInAContextFallBackToSideBias(testCase)
 S = testCase.TestData.S;
 S.GUI.BiasCorrection = 1;
 S.GUI.BiasCorrectFor = 2;
-S.GUI.PunishCondition = 3;
+S.GUI.IncorrectChoicePunishment = 4;
 history = lum.newHistory(20);
 history.choice(1:6) = [1 1 1 1 1 2];   % One trial after a right choice: none yet with a choice
 history.rewarded(1:6) = 1;
@@ -114,7 +114,7 @@ function testTheRunningTrialsChoiceGivesTheContext(testCase)
 S = testCase.TestData.S;
 S.GUI.BiasCorrection = 0.5;
 S.GUI.BiasCorrectFor = 3;
-S.GUI.PunishCondition = 3;
+S.GUI.IncorrectChoicePunishment = 4;
 history = lum.newHistory(20);
 history.choice(1:5) = [1 2 1 2 1];
 history.rewarded(1:5) = 1;
@@ -155,14 +155,15 @@ function testContextCorrectionNeedsAPunishedIncorrectChoice(testCase)
 S = testCase.TestData.S;
 S.GUI.BiasCorrection = 0.5;
 S.GUI.BiasCorrectFor = 3;
-for condition = [1 2]   % None, early withdrawal: an incorrect choice is retried
-    S.GUI.PunishCondition = condition;
+for withdrawal = [1 2]   % Incorrect choices not punished, early withdrawals either: retried
+    S.GUI.IncorrectChoicePunishment = 1;
+    S.GUI.EarlyWithdrawalPunishment = withdrawal;
     verifyFalse(testCase, lum.BiasCorrection.isAvailable(S));
     verifyEqual(testCase, lum.BiasCorrection.activeMode(S), 1, 'Side bias instead');
     verifyFalse(testCase, lum.BiasCorrection.readsRunningChoice(S));
 end
-for condition = [3 4]
-    S.GUI.PunishCondition = condition;
+for kind = 2:4
+    S.GUI.IncorrectChoicePunishment = kind;
     verifyEqual(testCase, lum.BiasCorrection.activeMode(S), 3);
     verifyTrue(testCase, lum.BiasCorrection.readsRunningChoice(S));
 end
@@ -178,9 +179,8 @@ function testAnIncorrectChoiceLastsLongEnoughToBeReadLive(testCase)
 % the trial manager reports it; otherwise it lasts the timeout, as before.
 ensureEmulator();
 S = testCase.TestData.S;
-S.GUI.PunishCondition = 3;
-S.GUI.PunishType = 1;
-S.GUI.PunishTimeout = 0;
+S.GUI.IncorrectChoicePunishment = 2;   % Timeout
+S.GUI.IncorrectChoiceTimeout = 0;
 S.GUI.BiasCorrection = 0.5;
 S.GUI.BiasCorrectFor = 3;
 [~, plan] = lum.buildTrialSM(makeTestContext('Settings', S));
@@ -189,7 +189,7 @@ S.GUI.BiasCorrectFor = 1;
 [~, plan] = lum.buildTrialSM(makeTestContext('Settings', S));
 verifyEqual(testCase, plan.incorrectChoiceTimer, 0, 'Side bias: the timeout as typed');
 S.GUI.BiasCorrectFor = 3;
-S.GUI.PunishTimeout = 1;
+S.GUI.IncorrectChoiceTimeout = 1;
 [~, plan] = lum.buildTrialSM(makeTestContext('Settings', S));
 verifyEqual(testCase, plan.incorrectChoiceTimer, 1, 'A longer timeout is kept');
 end
@@ -200,16 +200,15 @@ S = testCase.TestData.S;
 S.Session.MaxTrials = 50;
 S.GUI.BiasCorrection = 0.5;
 S.GUI.BiasCorrectFor = 2;
-S.GUI.PunishCondition = 1;
+S.GUI.IncorrectChoicePunishment = 1;
 [~, ~, notes] = lum.validateSettings(S, rig);
 verifyTrue(testCase, any(contains(notes, 'needs incorrect choices punished')), strjoin(notes, ' | '));
-S.GUI.PunishCondition = 3;
-S.GUI.PunishType = 1;
-S.GUI.PunishTimeout = 0;
+S.GUI.IncorrectChoicePunishment = 2;
+S.GUI.IncorrectChoiceTimeout = 0;
 S.GUI.ITI = 0.25;
 [~, ~, notes] = lum.validateSettings(S, rig);
 verifyTrue(testCase, any(contains(notes, 'prepares each trial after')), strjoin(notes, ' | '));
-S.GUI.PunishTimeout = 1;
+S.GUI.IncorrectChoiceTimeout = 1;
 [~, ~, notes] = lum.validateSettings(S, rig);
 verifyFalse(testCase, any(contains(notes, 'prepares each trial after')), 'A 1 s timeout covers it');
 S.GUI.BlockMin = 30;
@@ -451,7 +450,7 @@ function S = contextSettings(testCase, mode)
 S = testCase.TestData.S;
 S.GUI.BiasCorrection = 0.5;
 S.GUI.BiasCorrectFor = mode;
-S.GUI.PunishCondition = 3;   % Incorrect choices punished
+S.GUI.IncorrectChoicePunishment = 4;   % Incorrect choices punished
 end
 
 function S = blockSettings(testCase)

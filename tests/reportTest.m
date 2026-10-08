@@ -330,11 +330,14 @@ function testTheLogSaysTheHabits(testCase)
 [Data, dataFile] = habitSession(testCase, 'alternator', 200);
 Data.SidePokeDelays(:) = 0;
 Data.SidePokeDelays([3 7 9]) = [1 2 1];
+Data.TimeoutRestarts = zeros(size(Data.SidePokeDelays));
+Data.TimeoutRestarts([4 8]) = [1 3];
 [~, lines] = lum.report.sessionLog(Data, dataFile, 'Write', false);
 habit = lines(startsWith(lines, '- Habits:'));
 verifyNumElements(testCase, habit, 1);
 verifySubstring(testCase, habit{1}, 'chose opposite the last side poke on 100% of');
 verifySubstring(testCase, habit{1}, '3 trials delayed by a side poke (4 delays)');
+verifySubstring(testCase, habit{1}, 'a timeout restarted by a side poke on 2 trials (4 restarts)');
 strategy = lines(startsWith(lines, '- Strategy correction:'));
 verifyNumElements(testCase, strategy, 1);
 verifySubstring(testCase, strategy{1}, 'trial order random');
@@ -344,13 +347,28 @@ function testThePunishmentLineSaysWhatAWrongChoiceDoes(testCase)
 % 2026-10-06's log said 'an unpunished wrong choice ends the trial' of a punished one.
 [Data, dataFile] = habitSession(testCase, 'winStay', 20);
 [~, lines] = lum.report.sessionLog(Data, dataFile, 'Write', false);
-verifySubstring(testCase, punishmentLine(lines), 'a wrong choice may be retried');
-Data.Session.Settings.GUI.PunishCondition = 3;
+verifySubstring(testCase, punishmentLine(lines), 'incorrect choice none, may be retried');
+Data.Session.Settings.GUI.IncorrectChoicePunishment = 4;
 [~, lines] = lum.report.sessionLog(Data, dataFile, 'Write', false);
 line = punishmentLine(lines);
-verifySubstring(testCase, line, 'on incorrect choice');
-verifySubstring(testCase, line, 'a wrong choice ends the trial');
+verifySubstring(testCase, line, 'incorrect choice timeout 2 s + white noise, ends the trial');
+verifySubstring(testCase, line, 'early withdrawal none');
 verifyEmpty(testCase, strfind(line, 'unpunished'));
+end
+
+function testAnOldSessionsSharedPunishmentIsReadPerMistake(testCase)
+% Up to 0.10: PunishCondition, PunishType and PunishTimeout, shared by every mistake
+[Data, dataFile] = habitSession(testCase, 'winStay', 20);
+gui = rmfield(Data.Session.Settings.GUI, {'IncorrectChoicePunishment', 'IncorrectChoiceTimeout', ...
+                                          'EarlyWithdrawalPunishment', 'EarlyWithdrawalTimeout'});
+gui.PunishCondition = 3;   % Incorrect choice
+gui.PunishType = 1;        % Timeout
+gui.PunishTimeout = 3;
+Data.Session.Settings.GUI = gui;
+[~, lines] = lum.report.sessionLog(Data, dataFile, 'Write', false);
+line = punishmentLine(lines);
+verifySubstring(testCase, line, 'incorrect choice timeout 3 s, ends the trial');
+verifySubstring(testCase, line, 'early withdrawal none');
 end
 
 function testTheRunLimitSaysBiasCorrectionGoesFirst(testCase)
@@ -409,6 +427,10 @@ result = resultOf(lum.Outcome.Correct, 1, 1);
 result.SidePokeDelays = 2;
 lines = lum.trialStatus(4, spec, result, [], []);
 verifySubstring(testCase, lines{1}, 'delayed by 2 side poke(s)');
+result = resultOf(lum.Outcome.Incorrect, 2, 0);
+result.TimeoutRestarts = 3;
+lines = lum.trialStatus(4, spec, result, [], []);
+verifySubstring(testCase, lines{1}, 'timeout restarted by 3 side poke(s)');
 end
 
 
@@ -521,7 +543,7 @@ names = {'StimulusGroup', 'PatternIndex', 'CorrectSide', 'Choice', 'Correct', 'R
          'BiasTargetPLeft', 'TrainingStage', 'HoldDuration', 'HoldGrace', 'HoldBreaks', ...
          'HoldAttempts', 'EarlyWithdrawals', 'CameraTime', 'LEDCurrentA', 'LEDCurrentB', ...
          'CentreReward', 'ResponseRetries', 'CentreHoldTime', 'BiasContext', 'Block', ...
-          'BlockSide', 'SidePokeDelays'};
+          'BlockSide', 'SidePokeDelays', 'TimeoutRestarts'};
 for i = 1:numel(names)
     Data.(names{i}) = NaN(1, n);
 end

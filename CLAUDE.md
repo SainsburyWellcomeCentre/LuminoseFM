@@ -44,16 +44,18 @@ before changing the stimulus path, the state graph, sleep blocks or the GUI. The
 
 **Where things stand** is in the docs, not here: the last release's changes in
 `docs/naming-and-versions.md`, the checks waiting for someone at the rig in `docs/rig-checks.md`
-*Pending* (P4–P13, P16 and P17 now; all need someone at the rig or a desktop MATLAB, except P11
+*Pending* (P4–P13 and P16–P18 now; all need someone at the rig or a desktop MATLAB, except P11
 step 1, which can run headless with permission; P13 step 4's file checks passed on 2026-09-27, and
 0.9.11's upload and 0.25 s ITI on 2026-09-28; P15, strategy correction on the rig, passed on
-2026-10-05). The operator works remotely at times: run a pending check the next time they say they
+2026-10-05; 0.11.0's timeout restarts on the rig on 2026-10-08, P18 the part by eye and ear). The operator works remotely at times: run a pending check the next time they say they
 are at the rig.
 
 **Next work:** strategy correction (0.10.0, D23) is built, rig-checked and committed; LUMS0014
-began step 1 (*Delay* 1 s) on 2026-10-06. Its order of use for LUMS0014 and its open items are in
-`docs/plan-habit-levers.md`; audit each session that uses a lever from its log's *Habits* (and
-*Blocks*) line and record it in `docs/learning-time-literature.md`.
+began step 1 (*Delay* 1 s) on 2026-10-06, and ran *Delay* 3 s with a 3 s timeout on 2026-10-08.
+0.11.0 (side pokes in a timeout restart it, the side-poke sound, each mistake's punishment apart)
+is built and rig-checked, not yet used on an animal. The order of use for LUMS0014 and the open
+items are in `docs/plan-habit-levers.md`; audit each session that uses a lever from its log's
+*Habits* (and *Blocks*) line and record it in `docs/learning-time-literature.md`.
 
 **Working loop.** Read the relevant docs and code → change `+lum` (the protocol file stays thin) →
 add or update a test → bring the help text and comments of everything touched up to date
@@ -167,7 +169,7 @@ can be tested with no hardware. `docs/repository.md` has the full tree.
 | `+lum/triggerStates.m` | The state that opens the prepare window: `WaitForCentrePoke`, as every trial starts (0.9.11) |
 | `+lum/minimumITI.m` | The shortest ITI at which every trial starts on time (0.25 s with light, 0 without; the default ITI), and the warning for a shorter one |
 | `+lum/scoreTrial.m`, `Outcome.m` | Outcome classification from states and events; the outcome codes |
-| `+lum/punishmentFor.m` | Which mistakes are punished, and how; whether a wrong choice may be retried |
+| `+lum/punishmentFor.m` | What each mistake costs (incorrect choice, early withdrawal, each set apart); whether a wrong choice may be retried; whether a side poke restarts its timeout |
 | `+lum/valveTimes.m` | Valve open times for a volume from Bpod's liquid calibration: 0 µL opens nothing, a volume past the fit's peak is refused, one outside the measurements noted. Every valve time goes through it |
 | `+lum/SyncMode.m` | How trials drive the sync TTL; codes are part of the data format |
 | `+lum/SessionRunner.m` | TrialManager on the rig, blocking in the emulator (D3); `awaitChoice` waits for a state after the running trial's choice (context correction) |
@@ -235,6 +237,9 @@ the bias target). Use these, and fix any code, label or doc that does not. The f
 | strategy correction | the levers against habits, D23, all runtime and off by default: habit measures, side pokes before the response, context correction, blocks (Strategy tab) | habit training, anti-bias |
 | habit measures | a session's habits as the log's *Habits* line and `14_Habits` report them (`lum.report.habits`) | strategy score |
 | side poke before the response | a side poke while the trial waits for a centre poke (`S.GUI.SidePokeBeforeChoice`: *Ignore*, *Delay* in `SidePokeDelay`, *End trial* in `SidePokeBeforeChoice`, outcome 7; `Data.SidePokeDelays`) | premature response, free poke (in names) |
+| punishment (of a mistake) | what an incorrect choice or an early withdrawal costs, each set apart: *None*, *Timeout*, *White noise*, *Timeout + noise* (`S.GUI.IncorrectChoicePunishment`/`Timeout`, `EarlyWithdrawalPunishment`/`Timeout`, 0.11.0; `PunishCondition`, `PunishType`, `PunishTimeout` before, retired) | punish on, punish type |
+| timeout restart | a side poke at the other side port during a punishment's timeout starting it again (`S.GUI.TimeoutSidePoke`, states `IncorrectChoiceRestartLeft/Right`, `EarlyWithdrawalRestartLeft/Right`, `Data.TimeoutRestarts`) | timeout reset |
+| side-poke sound | a short noise burst on a side poke that costs time (`S.GUI.SidePokeSound`, `S.Sound.SidePokeSoundDuration`) | punishment noise (that is the mistake's) |
 | context correction, context | bias correction reading the lean in the trial's context, the trial before's choice or choice and reward (`S.GUI.BiasCorrectFor`, `Data.BiasContext` codes 0–7) | history correction |
 | reward floor | the reward share below which bias correction stops, full strength at 50% (`S.GUI.BiasRewardFloor`, `BiasRewardWindow`) | reward minimum |
 | block, block switch, first trial after a switch | a run of trials whose patterns lean to one side (`S.GUI.TrialOrder` *Blocks*, `Data.Block`, `Data.BlockSide`); a block after another; its first trial, the session's test of the light | block (for a sleep session's state machine run: that is a different block, `lum.sleep.nextBlock`) |
@@ -444,6 +449,8 @@ EarlyWithdrawal → WaitForCentrePoke (Restart stimulus) | WaitForLightEnd (End 
 WaitForCentrePoke → NoInitiation → WaitForLightEnd           (hold window over)
 WaitForCentrePoke → SidePokeDelay → WaitForCentrePoke        (side poke, Delay; D23)
 WaitForCentrePoke → SidePokeBeforeChoice → WaitForLightEnd   (side poke, End trial; D23)
+IncorrectChoice → IncorrectChoiceRestartLeft ⇄ ...Right → WaitForLightEnd     (side poke in its
+EarlyWithdrawal → EarlyWithdrawalRestartLeft ⇄ ...Right → as EarlyWithdrawal   timeout; 0.11.0)
 ```
 
 - **The cue lasts until the stimulus starts, `S.Stimulus.Latency` after the poke (D12).** Every cue
@@ -528,7 +535,7 @@ WaitForCentrePoke → SidePokeBeforeChoice → WaitForLightEnd   (side poke, End
   before `nextTrialSpec`; it unticks `S.GUI.CentreRewardAgain` when its trials are done, and the session
   syncs the runtime window again so the box shows it at once. A wrong side poke goes to
   `RetryResponse` (0 s, back to `WaitForResponse`, whose timer restarts) when
-  `lum.punishmentFor(S, 'IncorrectChoice').Retry` (the default, `PunishCondition` 1), and to
+  `lum.punishmentFor(S, 'IncorrectChoice').Retry` (the default, `IncorrectChoicePunishment` 1), and to
   `IncorrectChoice` (timeout, noise, no reward, ITI) when punished. A punishment that plays the noise
   lasts at least `S.Sound.NoiseDuration`, because the ITI sends the HiFi stop command.
 - **The HiFi module plays one sound at a time**; a new play command replaces the sound playing.
@@ -584,6 +591,15 @@ WaitForCentrePoke → SidePokeBeforeChoice → WaitForLightEnd   (side poke, End
 - **Side pokes before the response** are the two states `SidePokeDelay` and
   `SidePokeBeforeChoice`, in every trial, reached only from `WaitForCentrePoke` (their transitions
   only under *Delay* and *End trial*). They touch no timer: the light is not running there.
+- **Side pokes in a timeout (0.11.0)** restart it only from a poke at the side port other than the
+  one the animal was last in (LUMS0014 re-entered its chosen port within 50 ms of leaving it on 7
+  of 17 re-pokes: a nose or a flicker). Bpod treats a transition into the current state as none, so
+  each timeout has a Left and a Right restart state that hand over to each other; never rely on a
+  state re-entering itself. They last the timeout's first state's length, touch no timer, and are
+  unreachable unless `lum.punishmentFor(...).RestartOnSidePoke` (a timeout above 0 s). The
+  side-poke sound plays on entering `SidePokeDelay`, `SidePokeBeforeChoice` (unless the
+  punishment noise does) and each restart state, decided from the settings (as the noise), and a
+  state that ends the trial lasts at least the sound.
 - **Context correction prepares after the choice and needs a punished incorrect choice.** A retry
   hides the first choice (`RetryResponse` lasts no time), so while incorrect choices are retried
   *Correct for* is greyed out (setup dialog, both runtime windows) and side bias used
@@ -591,7 +607,7 @@ WaitForCentrePoke → SidePokeBeforeChoice → WaitForLightEnd   (side poke, End
   While choices are read, `IncorrectChoice` lasts at least `lum.BiasCorrection.ReadableState`
   (50 ms): at 0 s it passed unseen inside the trial manager's 10 ms batches (P15).
 - **Codes are data:** `Data.BiasContext` 0–7 (NaN when bias correction did not act), `Block` (0 in
-  a random order), `BlockSide`, outcome 7. Append, never renumber.
+  a random order), `BlockSide`, outcome 7, the punishment menus' 1–4. Append, never renumber.
 - **Analysis:** in a session with blocks the stimulus panels, the summary's psychometric and
   evidence plots and the log's *By group* read only `T.forStimulus` trials (outside blocks and each
   block's first trial); `15_BlockSwitches` is that session's measure of the light.
@@ -907,7 +923,7 @@ says. `docs/code-style.md` has the full convention; this is what every change mu
 - **Per-trial series** are listed once, in `trialSeriesNames` in `LuminoseFM.m`;
   `docs/data-format.md`, `emulatorSessionTest` and `reportTest` list them too: keep all four in
   step. From 0.10.0 they include `BiasContext`, `Block`, `BlockSide` and `SidePokeDelays`
-  (strategy correction); blocks and context correction make the side predictable from the trials
+  (strategy correction), and from 0.11.0 `TimeoutRestarts`; blocks and context correction make the side predictable from the trials
   before, so `docs/data-format.md` (*Sessions with strategy correction*) says which measures
   compare across sessions.
   `Choice`/`Correct`/`Outcome` are always the **first** side poke inside the first visit to
@@ -1100,6 +1116,11 @@ Each has already cost time and is guarded in code; don't undo them.
   **not** skip Flex lines, hence D4: never rely on a timer holding a Flex line. Every override is
   cleared when a state machine ends. Source: sanworks/Bpod_StateMachine_Firmware tag v23,
   `setStateOutputs`, `setGlobalTimerChannel`, `resetOutputs` and the `'O'` command.
+- **A state cannot restart itself.** `AddState` fills every event a state does not list with the
+  state's own index (`InputMatrix(state, :) = state`), which is how "no transition" is written, so
+  an explicit transition into the same state is no transition: its timer does not restart and its
+  output actions are not sent again. To restart a state's timer on an event, hand over between two
+  states (the timeout restarts, 0.11.0).
 - `AddState` rejects a repeated output channel in one state, so lists that switch something off and
   something else on go through `lum.mergeActions` first. Timer trigger and cancel masks from several
   components are built once by `buildTrialSM`, never merged: a second `GlobalTimerTrig` in one state
@@ -1256,7 +1277,11 @@ Each has already cost time and is guarded in code; don't undo them.
   the rerun. On 2026-10-04 the timeline and `testNoSessionWarnedOrFailed` failed together in a full
   run, and `testHabituationOutcomesFollowTheAnimal` once on the rerun of its file (the same
   scripted-mouse miss); each passed on the next run. The timeline failed once more on 2026-10-06
-  (a label read at x = -244 px) and passed on the rerun of its file.
+  (a label read at x = -244 px) and passed on the rerun of its file. On 2026-10-08
+  `stateMachineTest/testTheTrialWaitsForTheLightAfterAShortHold` failed on every run, the
+  committed code's too: the emulator played its scripted pokes ~0.45 s late, after the 1 s light
+  it checks they beat. Its light now lasts to 1.6 s; the property (the ITI waits for the light) is
+  unchanged. `testTrainingOutcomesFollowTheAnimal` missed its first trial once the same day.
 - The Chameleon3 quantizes `AcquisitionFrameRate`, and writing a read-back value lands one step higher
   (100.058 → 100.12). `CameraSetup` takes a frame rate back from SpinCam's viewer only when it differs
   by more than 0.2 Hz, rounded to 0.1 Hz.

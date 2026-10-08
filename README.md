@@ -203,14 +203,20 @@ Lengthen it for an animal that keeps coming back to the port; 0 ends the trial t
 animal leaves. `Data.Rewarded` is 1 for a rewarded trial; the drinking is in the trial's states
 (`DrinkingLeft`/`DrinkingRight`, `DrinkingGrace`).
 
-**An incorrect choice** is handled as the runtime window's *Punishment* settings say:
+**An incorrect choice** is handled as the runtime window's *Punishment* panel says, in
+`Incorrect choice` and `Incorrect choice timeout (s)`:
 
-| Punish on includes *Incorrect choice*? | Punishment | What happens |
-|---|---|---|
-| no (the default: *Punish on* is *None*) | — | no punishment: the animal may still go to the correct port within the response window, which starts again, and be rewarded there. It may try again after each wrong poke |
-| yes | *Timeout* | no reward; `PunishTimeout` seconds, then the inter-trial interval and the next trial |
-| yes | *White noise* | no reward; the noise burst plays to its end, then the inter-trial interval and the next trial |
-| yes | *Timeout + noise* | no reward; the noise and the timeout together (the timeout lasts at least as long as the noise), then the inter-trial interval and the next trial |
+| `Incorrect choice` | What happens |
+|---|---|
+| *None* (the default) | no punishment: the animal may still go to the correct port within the response window, which starts again, and be rewarded there. It may try again after each wrong poke |
+| *Timeout* | no reward; `Incorrect choice timeout` seconds, then the inter-trial interval and the next trial |
+| *White noise* | no reward; the noise burst plays to its end, then the inter-trial interval and the next trial |
+| *Timeout + noise* | no reward; the noise and the timeout together (the timeout lasts at least as long as the noise), then the inter-trial interval and the next trial |
+
+An early withdrawal has its own pair, `Early withdrawal` and `Early withdrawal timeout (s)`, with the
+same four choices (*None* by default), so either mistake can be punished without the other. With
+*Side poke in a timeout* set to *Restart the timeout* (Strategy tab, §3), a side poke during either
+timeout starts it again.
 
 Either way the trial is scored by the **first** side poked: a wrong choice followed by the correct
 one is *Incorrect*, with `Data.Rewarded` 1 and `Data.ResponseRetries` counting the wrong pokes
@@ -399,12 +405,26 @@ the habit's next side. `Side poke before the response`:
 | *End trial* | the trial ends unrewarded (outcome *side poke before the response*), with the early withdrawal's punishment if early withdrawals are punished | the trial |
 
 A trial ended by a side poke within half a second of its start can make the next one start a few
-ms late (one *dead time* warning in the console); a punishment timeout for early withdrawals
-avoids it. Start with *Delay*. Nothing in it makes the habit pay less, so % correct should stay near 50%; it
+ms late (one *dead time* warning in the console); a timeout for early withdrawals (`Early
+withdrawal`, *Punishment* panel), which *End trial* uses, avoids it. Start with *Delay*. Nothing in it makes the habit pay less, so % correct should stay near 50%; it
 has done its job when side pokes before the response fall from about 0.6 a trial to under 0.1 (the
 *Habits* line), after which the habit shows in the choices themselves. *End trial* is the harder
 version. If the animal is rewarded on fewer than 40% of trials, or runs far fewer, shorten the delay
 or go back.
+
+A punishment's timeout is a time when a side poke costs nothing either, and the habit's visit
+moves there: at a 3 s timeout LUMS0014 poked a side port during 32% of them and chose opposite that
+poke next (2026-10-08). `Side poke in a timeout`:
+
+| Setting | What a side poke during an incorrect choice's or early withdrawal's timeout does |
+|---|---|
+| *Ignore* (default) | nothing |
+| *Restart the timeout* | a poke at the side port **other than the one the animal was last in** starts the timeout again from its beginning; a poke back into the same port does not, so a nose moving in and out of a port, or a flickering beam, restarts nothing. After an incorrect choice the animal is in the port it chose, so going to the other port restarts it. Only a timeout above 0 s is restarted |
+
+`Sound on a side poke that costs time` plays a short noise burst (0.15 s, set and played on the Cue
+tab under *Sound output*) on each side poke that delays the trial, ends it or restarts a timeout,
+so the animal hears which poke cost it time. It replaces a punishment noise still playing, and
+needs *Play sounds*. The log's *Habits* line counts the restarts (`Data.TimeoutRestarts`).
 
 **2. Context correction** (*Bias* panel). Bias correction normally reads the animal's lean over all
 its recent choices. `Correct for` reads it in the trial's **context** instead:
@@ -425,7 +445,7 @@ strength set in `Bias correction`; at the floor or below, it stops; in between, 
 in a straight line towards none (floor 40%, strength 0.5, rewarded on 45%: 0.25). A strong habit
 then settles a little above the floor (LUMS0014's at 40%: about 43%). 0 is no floor: bias
 correction always acts at the set strength, the most it can push; a higher floor corrects less.
-Context correction needs incorrect choices **punished** (*Punish on* *Incorrect choice* or *Both*):
+Context correction needs incorrect choices **punished** (`Incorrect choice` not *None*):
 while they are retried, `Correct for` is greyed out and side bias is used, because the first choice
 of a retried trial cannot be read in time. It also prepares each trial once the trial before has
 chosen: with less than 0.75 s of timeout and ITI after an incorrect choice, a slow preparation can
@@ -453,8 +473,8 @@ of 15–25 last, if nothing else works. When the first trial after a switch is a
 with context correction. A random order with no lever is what an experiment runs, so record which
 sessions used which (the log's *Strategy correction* line says).
 
-**Every trial records what applied** (`BiasContext`, `Block`, `BlockSide`, `SidePokeDelays`, outcome
-7): see [`docs/data-format.md`](docs/data-format.md), *Sessions with strategy correction*, for which
+**Every trial records what applied** (`BiasContext`, `Block`, `BlockSide`, `SidePokeDelays`,
+`TimeoutRestarts`, outcome 7): see [`docs/data-format.md`](docs/data-format.md), *Sessions with strategy correction*, for which
 measures compare across such sessions.
 
 ---
@@ -641,10 +661,11 @@ relabelled. `Runtime window` on the Experiment tab can force either.
   is refused: at the start the session does not begin; during it the reward stays as it was and the
   window is put back. A volume outside the measured ones (1.2–13.5 µL on the rig) is extrapolated,
   and the console says so. The same goes for the centre reward on valve 2, which is dropped instead.
-- *Punishment* is two choices: which mistakes are punished (none / early withdrawal / incorrect
-  choice / both; *None* by default) and how (timeout / white noise / both). An incorrect choice
-  that is not punished lets the animal go on to the correct port (see *An incorrect choice* in §3).
-  A noise always plays to its end before the next trial or the next poke.
+- *Punishment*: what each mistake costs, set apart: `Incorrect choice` and `Early withdrawal`
+  (*None* / *Timeout* / *White noise* / *Timeout + noise*; *None* by default), each with its own
+  timeout (2 s). An incorrect choice that is not punished lets the animal go on to the correct port
+  (see *An incorrect choice* in §3). A noise always plays to its end before the next trial or the
+  next poke. A side poke that ends the trial (*End trial*) costs what an early withdrawal does.
 - *Centre reward*: `CentreRewardAmount` µL at the centre port for a completed hold. In habituation
   it is given on trials 1 to `CentreRewardTrials`. In any stage, tick **Centre reward again** to give
   it on the next `Again for trials` trials (10 by default), for an animal that has stopped coming to

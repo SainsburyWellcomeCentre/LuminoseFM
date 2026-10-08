@@ -251,12 +251,31 @@ verifyEqual(testCase, result.Outcome, lum.Outcome.Correct);
 verifyEqual(testCase, result.Choice, 1, 'The choice is the poke in the response window');
 end
 
+function testTimeoutRestartsAreCountedAndTheChoiceStandsAsMade(testCase)
+% Wrong at the right port; the left port twice and the right once during the timeout: three
+% restarts, and an early withdrawal's timeout restarted once before the hold.
+result = lum.scoreTrial(makeTrial('WaitForCentrePoke', [0.1 0.5; 2 2.2], 'CentreHold', [0.5 0.6; 2.2 2.5], ...
+                                  'EarlyWithdrawal', [0.6 1], 'EarlyWithdrawalRestartLeft', [1 2], ...
+                                  'WaitForCentreExit', [2.5 2.7], 'WaitForResponse', [2.7 3], ...
+                                  'IncorrectChoice', [3 4], 'IncorrectChoiceRestartLeft', [4 5; 6 7], ...
+                                  'IncorrectChoiceRestartRight', [5 6], 'Port3In', [3 5], ...
+                                  'Port1In', [1 4 6], 'Port2In', [0.5 2.2]), ...
+                        spec(1), testCase.TestData.rig);
+verifyEqual(testCase, result.TimeoutRestarts, 4);
+verifyEqual(testCase, result.Choice, 2, 'The choice is the poke in the response window');
+verifyEqual(testCase, result.Outcome, lum.Outcome.Incorrect);
+verifyEqual(testCase, result.EarlyWithdrawals, 1);
+end
+
 function testOldTrialsHaveNoSidePokeDelays(testCase)
 % A trial from before 0.10.0 has neither state; the scorer says none.
 trial = makeTrial('WaitForCentrePoke', [0.1 60.1], 'NoInitiation', [60.1 60.1]);
-trial.States = rmfield(trial.States, {'SidePokeDelay', 'SidePokeBeforeChoice'});
+trial.States = rmfield(trial.States, {'SidePokeDelay', 'SidePokeBeforeChoice', ...
+                                     'IncorrectChoiceRestartLeft', 'IncorrectChoiceRestartRight', ...
+                                     'EarlyWithdrawalRestartLeft', 'EarlyWithdrawalRestartRight'});
 result = lum.scoreTrial(trial, spec(1), testCase.TestData.rig);
 verifyEqual(testCase, result.SidePokeDelays, 0);
+verifyEqual(testCase, result.TimeoutRestarts, 0);
 verifyEqual(testCase, result.Outcome, lum.Outcome.NoInitiation);
 end
 
@@ -276,7 +295,9 @@ stateNames = {'TrialStart', 'WaitForCentrePoke', 'PreStimulusHold', 'CentreHold'
               'EarlyWithdrawal', 'LeftRewardDelay', 'RightRewardDelay', 'LeftReward', ...
               'RightReward', 'DrinkingLeft', 'DrinkingRight', 'DrinkingGrace', ...
               'WithdrewBeforeReward', 'IncorrectChoice', 'NoResponse', 'NoInitiation', 'ITI', ...
-              'CentreReward', 'RetryResponse', 'SidePokeDelay', 'SidePokeBeforeChoice'};
+              'CentreReward', 'RetryResponse', 'SidePokeDelay', 'SidePokeBeforeChoice', ...
+              'IncorrectChoiceRestartLeft', 'IncorrectChoiceRestartRight', ...
+              'EarlyWithdrawalRestartLeft', 'EarlyWithdrawalRestartRight'};
 trial = struct('States', struct(), 'Events', struct());
 for i = 1:numel(stateNames)
     trial.States.(stateNames{i}) = [NaN NaN];

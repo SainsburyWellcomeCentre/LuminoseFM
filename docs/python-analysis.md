@@ -73,7 +73,10 @@ sd = raw["SessionData"]          # nested dicts, numpy arrays and lists
   not act: decode with the table in `data-format.md`, *One value per trial*), `Block` (0 in a random
   order, else the block's number, from 1: not an index), `BlockSide` (1 left, 2 right, NaN) and
   `SidePokeDelays` (a count). A file without them is a random order with side pokes ignored: fill
-  `Block` 0, `BlockSide` NaN, `SidePokeDelays` 0, `BiasContext` NaN.
+  `Block` 0, `BlockSide` NaN, `SidePokeDelays` 0, `BiasContext` NaN. From 0.11.0 `TimeoutRestarts`
+  (a count; fill 0 before), and `TrialSettings` hold each mistake's punishment apart
+  (`IncorrectChoicePunishment`, `EarlyWithdrawalPunishment`, their timeouts) in place of
+  `PunishCondition`, `PunishType` and `PunishTimeout` (§7).
 - **NaN means absent** (no choice, no video, a trial with no reaction time). Logical values may
   arrive as `uint8` or `bool`.
 - **One field holds a MATLAB `string` object**, `Session.DoricLED.Device.Package.Stats.Command`,
@@ -374,6 +377,7 @@ full list.
 
 | Before | What to do |
 |---|---|
+| 0.11.0 | No `TimeoutRestarts` (fill 0) and no restart states. `TrialSettings` hold `PunishCondition` (1 none, 2 early withdrawal, 3 incorrect choice, 4 both), `PunishType` (1 timeout, 2 noise, 3 both) and `PunishTimeout`: a mistake named by `PunishCondition` had punishment `PunishType` + 1 in today's codes and timeout `PunishTimeout`, otherwise none (1) |
 | 0.10.0 | No `BiasContext`, `Block`, `BlockSide`, `SidePokeDelays`, outcome 7 or `Timing.sync`/`spec`/`build`/`awaitChoice`: fill as §2 says. Bias correction and the run limit swapped with the first later pattern that could pay the wanted side (from 0.10.0 a random one), so displaced patterns bunched just ahead: a stretch after the correction eased can lean to one side (LUMS0014 2026-10-01: 101 trials, 83% paying left) |
 | 0.9.11 | At most one unrecorded trial pulse after the last trial (two from 0.9.11, §4). No `Timing.devices`. From 0.9.8, a session with light has a 0.01–0.35 s gap between every trial's end and the next one's start (`TrialStartTimestamp(k+1) - TrialEndTimestamp(k)`) with no state machine running: pokes then are not in `RawEvents`. The ITI was 0 s by default (0.25 s from 0.9.11). Video from SpinCam engine 1.2.0 or earlier may have 128 s steps in `HardwareTimestamp_us` (§3) |
 | 0.9.8 | `Settings.Task.HoldLength` / `FixedHold` are `Settings.GUI.HoldLength` (index: 1 whole stimulus, 2 fixed) / `GUI.FixedHold` from 0.9.8, and per trial in `TrialSettings`. A session with light always reserves the light clock from 0.9.8. Same-side runs could reach `MaxSameSide` + 1. The version string has no commit on the rig |

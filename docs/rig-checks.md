@@ -52,6 +52,7 @@ once it has passed.
 | [P12](#p12-what-096-changed-in-a-desktop-session-096) | the mouse-drawn crop, crops per session type, the carried hold, the memory after a desktop behaviour session | 0.9.6 |
 | [P16](#p16-the-strategy-tab-in-a-desktop-session-0100) | the Strategy tab in the setup dialog and both runtime windows, *Correct for* greying out | 0.10.0 |
 | [P17](#p17-the-behaviour-setup-dialog-drawn-whole-on-every-launch-0101) | five launches of LUMS0014 in behaviour, each dialog drawn to its buttons | 0.10.1 |
+| [P18](#p18-the-side-poke-sound-and-the-per-mistake-punishment-seen-and-heard-0110) | the side-poke sound heard; the new punishment and side-poke rows in the windows | 0.11.0 |
 | [P13](#p13-the-hold-on-the-timing-panel-the-wrapped-header-and-the-summary-plots-098) | the runtime hold, the wrapped header, the teardown's plots on screen, the animal at the new timing (step 4's file checks passed 2026-09-27 and, for 0.9.11's upload, 2026-09-28) | 0.9.8, 0.9.11 |
 
 ### P4. Calibrate the 2-to-19 bundle (0.9.1)
@@ -79,10 +80,11 @@ those currents.
    the ports: water appears at the centre port as each of the first 10 holds is completed, and not on
    trial 11; raising *Centre reward for trials* in the runtime window gives it again from the next
    trial prepared. `Data.CentreReward` is 1.2 (µL) on those trials.
-3. A training session, with *Punish on* set to *Incorrect choice* and each *Punishment* in turn: with
-   *White noise* and *Timeout + noise* the whole burst (`S.Sound.NoiseDuration`, 0.5 s) is heard
-   before the next trial; before 0.8.0 the ITI cut it off at once. With *Punish on* *None*, a wrong
-   poke followed by the correct one opens the correct valve.
+3. A training session, with `Incorrect choice` (*Punishment* panel; *Punish on* and *Punishment*
+   before 0.11.0) set to each punishment in turn: with *White noise* and *Timeout + noise* the
+   whole burst (`S.Sound.NoiseDuration`, 0.5 s) is heard before the next trial; before 0.8.0 the
+   ITI cut it off at once. With *None*, a wrong poke followed by the correct one opens the correct
+   valve.
 
 ### P6. The End button with the camera and LED windows open (0.8.1)
 
@@ -212,9 +214,25 @@ In a desktop MATLAB (emulator or rig, no animal): the setup dialog's Runtime tab
 panels in three columns (Delivery under Task) with every label readable; choosing *Experiment* on
 the Task tab sets *Bias correction* 0, *Max same side in a row* 0, *Correct for* *Side bias*,
 *Reward floor* 0, *Trial order* *Random* and *Side poke before the response* *Ignore*; *Correct for*
-greys out when *Punish on* is *None* or *Early withdrawal* and comes back with *Incorrect choice*,
+greys out when `Incorrect choice` (*Punishment* panel) is *None* and comes back with any other,
 in the setup dialog, the tabbed runtime window (at once, on choosing) and Bpod's compact window
 (from the next trial). In a session: a side poke while the cue is on switches it off for the delay.
+
+### P18. The side-poke sound and the per-mistake punishment, seen and heard (0.11.0)
+
+At the rig, no animal. The state machine side was checked by an agent on 2026-10-08 (*Done*); what
+needs a person:
+1. The setup dialog's Cue tab, *Sound output*: *Side-poke sound (s)* 0.15 with its **Play** button
+   gives a short noise burst, shorter than the punishment noise's **Play**.
+2. The *Punishment* panel shows four rows (`Incorrect choice`, its timeout, `Early withdrawal`, its
+   timeout) and the *Side pokes* panel two more (`Side poke in a timeout`, `Sound on a side poke
+   that costs time`), labels readable, in the setup dialog's Runtime tab, the tabbed runtime
+   window and Bpod's compact window.
+3. In a session with `Incorrect choice` *Timeout* 2 s, *Restart the timeout* and the sound on,
+   playing the animal at the ports: a wrong choice, then a poke at the other side port within the
+   2 s, plays the burst and the next trial starts 2 s after that poke; a poke back into the port
+   just chosen plays nothing and restarts nothing. With *Side poke before the response* *Delay*, a
+   side poke before the centre poke plays the burst and switches the cue off.
 
 ### P17. The behaviour setup dialog drawn whole on every launch (0.10.1)
 
@@ -225,6 +243,20 @@ stops part way means the freeze of 2026-10-06 is still there. Note the launch, a
 had finished connecting.
 
 ## Done
+
+### 2026-10-08 — 0.11.0, side pokes in a timeout and each mistake's punishment, on the rig, no animal, fibers terminated, run by an agent with the operator's permission
+
+No other MATLAB running, COM3 free. Behaviour sessions headless in `-batch`, LUMS0014's settings
+file as the base (read, not written), files in `%TEMP%\LuminoseFM_rigcheck`, subject
+`FakeSubject`, virtual pokes from a timer watching `Status.CurrentStateName` (P15's way;
+`rigCheckRestart.m` and `rigCheckRestartReport.m` in that day's agent scratchpad). Hold window 6 s,
+response window 3 s, ITI 0.25 s, no video. Version `0.11.0+65de755` (uncommitted).
+
+| Check | Result |
+|-------|--------|
+| LUMS0014's settings file converted | `PunishCondition` 3, `PunishType` 1, `PunishTimeout` 3 became `Incorrect choice` *Timeout* 3 s and `Early withdrawal` *None*: its punishment as run on 10-08 |
+| `_162108` (16 trials): both mistakes a 1 s timeout, *Restart the timeout*, the side-poke sound on, *Delay* 1 s | After a wrong left choice, a poke back into the left port 0.3 s later restarted nothing (`IncorrectChoice` ran on); the right-port poke ended `IncorrectChoice` at that poke (to 0.1 ms) and started `IncorrectChoiceRestartRight`; a left poke 0.5 s later moved to `IncorrectChoiceRestartLeft`, which ran its full 1.000 s and ended the trial (trials 1, 5, 9). Early withdrawals likewise: `EarlyWithdrawal` cut at the right poke, `EarlyWithdrawalRestartRight`, then `...Left` for the full 1.000 s, then the next poke and a choice (trials 2, 6, 10, 14). Pokes during a rewarded trial's drinking grace restarted nothing (trial 13). Side pokes before the centre poke: 1.000 s delays. `TimeoutRestarts` 2 on each restarted trial; every trial rescored to what was saved; every gap between trials 0.1 ms, no dead time warning; `prepare` at most 0.19 s. The state machine took the HiFi play commands (HiFi on COM8); the sound itself not heard (P18). Log: *Punishment: incorrect choice timeout 1 s, ends the trial; early withdrawal timeout 1 s* |
+| `_162425` (8 trials): LUMS0014's settings as converted | `IncorrectChoice` 3.000 s, no restart, *Delay* 3 s; every gap 0.1 ms; rescored as saved; log *incorrect choice timeout 3 s, ends the trial; early withdrawal none* |
 
 ### 2026-10-06 — the behaviour setup dialog freezing part way (0.10.0 → 0.10.1), desktop MATLAB on the rig PC, no Bpod, run by an agent
 

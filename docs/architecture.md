@@ -1078,7 +1078,8 @@ again later in a session, below):
   looks up valve 2's time in the prepare window, and without a calibration drops the centre reward
   with one warning.
 - **`RetryResponse`**, after a wrong side poke that is not punished (`lum.punishmentFor(...).Retry`:
-  `PunishCondition` without *Incorrect choice*, now the default). It lasts 0 s and returns to
+  `PunishCondition` without *Incorrect choice*, now the default; `Incorrect choice` *None* from
+  0.11.0). It lasts 0 s and returns to
   `WaitForResponse`, whose timer starts again; the correct port still pays. A punished wrong poke
   goes to `IncorrectChoice`, which ends the trial unrewarded after the timeout, and lasts at least
   the noise (`S.Sound.NoiseDuration`) when the punishment plays one, because the ITI stops the sound
@@ -1106,7 +1107,8 @@ five cannot spare.
 - The state graph has two more names; analysis that lists states must include them.
 - `Outcome` stays the first choice's, so psychometrics are unchanged; a retried trial is `Incorrect`
   with `Rewarded` 1, and water totals must use `Rewarded`, not `Outcome`.
-- Settings files keep their `PunishCondition`; only new settings start with no punishment.
+- Settings files keep their `PunishCondition` (converted to the per-mistake settings from
+  0.11.0, D23); only new settings start with no punishment.
 - Valve 2 needs a liquid calibration before the centre reward can be used.
 
 **Centre reward again (0.9.0).** In any stage, ticking `S.GUI.CentreRewardAgain` in the runtime
@@ -1379,7 +1381,7 @@ examples and reasons: [`strategy-correction.md`](strategy-correction.md)):
 | Part | What it does | Acts on | Code |
 |---|---|---|---|
 | Habit measures | reports each session's habits in the log and `14_Habits` | nothing | `lum.report.habits` |
-| Side pokes before the response | a side poke while the trial waits for a centre poke delays or ends it | the state graph | `lum.buildTrialSM` |
+| Side pokes before the response | a side poke while the trial waits for a centre poke delays or ends it; one in a punishment's timeout restarts it (0.11.0) | the state graph | `lum.buildTrialSM` |
 | Context correction | bias correction reads the lean in the trial's context, with a reward floor | the trial order | `lum.BiasCorrection` |
 | Blocks | the paying side held for blocks of trials | the trial order | `lum.Blocks` |
 
@@ -1397,6 +1399,32 @@ grace and the ITI mean a side poke then is a new visit, not drinking that went o
 is chosen before its own free pokes happen, so no trial-order policy could react to them; this
 part comes first in the order of use because it makes them cost something, after which the habit
 shows in the choices, where context correction can see it.
+
+**Side pokes in a punishment's timeout (0.11.0).** The audit of 2026-10-08 (a 3 s delay and a 3 s
+timeout for LUMS0014) found the habit's visit had moved into the timeout of an incorrect choice,
+where a side poke cost nothing: one came during 32% of timeouts (6–11% at 1 s), the first at the
+other port on 64%, and the next choice went opposite the last of them on 83%, repeating the error.
+`S.GUI.TimeoutSidePoke` *Restart the timeout* makes such a poke start the timeout again, for an
+incorrect choice and for an early withdrawal (whose timeout is the same window between attempts);
+a side poke that ends the trial has nothing to restart. Only a poke at the side port other than
+the one the animal was last in restarts it: in that session's timeouts the mouse poked back into
+the port it had chosen 17 times, 7 within 50 ms of leaving it (a nose moving, or a flickering
+beam), and the other port 33 times, the first a median 2.6 s in. The habit is a change of port, so
+counting only changes catches every visit it makes and none of the flicker. Bpod takes a
+transition into the state it is in as none (unlisted events map to the state itself), so a timeout
+cannot restart its own state: each has two restart states, one per side port
+(`IncorrectChoiceRestartLeft/Right`, `EarlyWithdrawalRestartLeft/Right`), each lasting the
+timeout's first state's length and moving to the other on a poke at the other port, then on as the
+timeout would have gone. No timer is used: the light is over (an incorrect choice waits for it in
+`WaitForLightEnd` as before) or cancelled (an early withdrawal). `S.GUI.SidePokeSound` adds a noise
+burst (`S.Sound.SidePokeSoundDuration`, 0.15 s, loaded in every session with sound) on entering
+`SidePokeDelay`, `SidePokeBeforeChoice` (unless the punishment noise plays there) and each
+restart state, so the animal hears which poke cost it time; the states that end the trial last at
+least as long as the sound, which the ITI would stop. With it the operator asked for the
+punishment of an incorrect choice and of an early withdrawal to be set apart: each now has its own
+kind and timeout (`lum.punishmentFor`), converted from 0.10's shared `PunishCondition`,
+`PunishType` and `PunishTimeout` by `lum.mergeSettings`. `Data.TimeoutRestarts` counts the
+restarts per trial.
 
 **Context correction.** `S.GUI.BiasCorrectFor`: *Side bias* (today's: one context), *Last choice*
 (after a left, after a right), *Last choice and reward* (after a rewarded or an unrewarded left or
@@ -1430,7 +1458,8 @@ settings as before (`syncTrial`), then `lum.SessionRunner.awaitChoice`, which wa
 (`lum.BiasCorrection.PostChoiceStates`), and the build and upload (`buildNextTrial`). The state
 read gives the choice (`choiceFromState`): the reward states and the drinking states (a short
 state can pass inside one of `BpodTrialManager`'s 10 ms batches) say the side and the reward,
-`IncorrectChoice` the other side, `NoResponse`, `NoInitiation` and `SidePokeBeforeChoice` none, and
+`IncorrectChoice` and its restart states the other side, `NoResponse`, `NoInitiation` and
+`SidePokeBeforeChoice` none, and
 anything later no context. In the emulator the trial has already run, and the first such state in
 its raw events is read, exactly. On 2026-10-03 to 10-05 a rewarded choice left at least 0.6 s
 (median 2.5–3.4 s), an incorrect one the timeout and ITI, and preparation took 7–11 ms (median)
@@ -1444,8 +1473,8 @@ incorrect choice lasts at least 50 ms (`lum.BiasCorrection.ReadableState`, in `l
 paying side leads to them. After the fix every context read live equalled the file's, at 0 s and
 1 s timeouts, with every gap between trials 0.1 ms.
 
-**Retries hide the first choice.** With an unpunished incorrect choice (`PunishCondition` *None*
-or *Early withdrawal*) the wrong poke passes through `RetryResponse`, which lasts no time, and the
+**Retries hide the first choice.** With an unpunished incorrect choice (`Incorrect choice` *None*;
+`PunishCondition` *None* or *Early withdrawal* up to 0.10) the wrong poke passes through `RetryResponse`, which lasts no time, and the
 animal is then rewarded at the correct port: the live state says *rewarded*, the scored choice
 was wrong. Context correction is then unavailable: *Correct for* is greyed out in the setup
 dialog and both runtime windows, and side bias is used (`lum.BiasCorrection.activeMode`; the
@@ -1498,7 +1527,7 @@ correction more, blocks completely. So:
   already made), a mean over the floor's window, a few scalars of block state in the history, and
   four per-trial series of 8 bytes. `awaitChoice` waits; it does no work.
 - Outcome 7 `SidePokeBeforeChoice`, the series `SidePokeDelays`, `BiasContext`, `Block`,
-  `BlockSide`, and `Data.Timing.sync`, `.spec`, `.build`, `.awaitChoice` are new in the data format;
+  `BlockSide` (and `TimeoutRestarts` from 0.11.0), and `Data.Timing.sync`, `.spec`, `.build`, `.awaitChoice` are new in the data format;
   files without them read as before (`data-format.md`, *Reading older files*).
 - With task-event sync the line drops in the two new states and rises again as the wait resumes,
   as after an early withdrawal (`sync-and-barcode.md`).
@@ -1542,6 +1571,9 @@ PreStimulusHold   → EarlyWithdrawal            (left during the latency)
 CentreHold        → EarlyWithdrawal (no grace) | HoldBreak ⇄ CentreHoldResumed (grace)
 HoldBreak         → EarlyWithdrawal            (grace ran out)
 EarlyWithdrawal   → WaitForCentrePoke          (Restart stimulus) | WaitForLightEnd (End trial)
+EarlyWithdrawal   → EarlyWithdrawalRestartLeft/Right → as EarlyWithdrawal  (side poke in its
+                                                     timeout, Restart the timeout; 0.11.0)
+IncorrectChoice   → IncorrectChoiceRestartLeft/Right → WaitForLightEnd     (the same)
 WaitForCentrePoke → NoInitiation               → WaitForLightEnd   (hold window over)
 WaitForCentrePoke → SidePokeDelay              → WaitForCentrePoke (side poke, Delay; D23)
 WaitForCentrePoke → SidePokeBeforeChoice       → WaitForLightEnd   (side poke, End trial; D23)

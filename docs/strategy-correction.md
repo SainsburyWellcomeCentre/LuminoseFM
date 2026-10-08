@@ -243,17 +243,38 @@ the light.
 ## 7. Side pokes before the response (*Side pokes* panel)
 
 **Settings.** *Side poke before the response* (*Ignore* by default, *Delay*, *End trial*), *Side
-poke delay* (1 s; used by *Delay* only).
+poke delay* (1 s; used by *Delay* only), *Side poke in a timeout* (*Ignore* by default, *Restart
+the timeout*; 0.11.0), *Sound on a side poke that costs time* (off; 0.11.0).
 
-**When it acts.** Only while the trial waits for a centre poke (state `WaitForCentrePoke`): from
-the trial's start, and after an early withdrawal that restarts the stimulus. Side pokes during the
-drinking grace, a punishment timeout or the ITI are not affected.
+**When it acts.** *Side poke before the response* only while the trial waits for a centre poke
+(state `WaitForCentrePoke`): from the trial's start, and after an early withdrawal that restarts
+the stimulus. *Side poke in a timeout* during the timeout of a punished incorrect choice or early
+withdrawal. Side pokes during the drinking grace or the ITI are not affected.
 
 | Setting | What a side poke does | Cost |
 |---|---|---|
 | *Ignore* | nothing | none |
 | *Delay* | the cue goes off and centre pokes are ignored for the delay (state `SidePokeDelay`); further side pokes in the delay are ignored and do not restart it; then the trial waits for a centre poke again, cue on. The hold window keeps running: if it ends during the delay, the trial is *No initiation* | the delay, each time |
 | *End trial* | the trial ends unrewarded (state `SidePokeBeforeChoice`, outcome 7), with the early withdrawal's punishment if early withdrawals are punished | the trial; with early withdrawals unpunished no timeout, so the next trial starts after the ITI (less than a 1 s delay), and context correction uses side bias on it (no previous choice) |
+
+**In a timeout.** With *Restart the timeout*, a poke at the side port other than the one the
+animal was last in starts the timeout again, from its beginning (states
+`IncorrectChoiceRestartLeft`/`Right`, `EarlyWithdrawalRestartLeft`/`Right`); a poke back into the
+same port does not. After an incorrect choice the animal is in the port it chose, so the habit's
+visit to the other port restarts it; a nose moving in and out of the chosen port, or a beam
+flickering, does not. Only a timeout above 0 s is restarted (*Punishment* panel: each mistake's
+punishment and timeout are set apart). Counted per trial in `Data.TimeoutRestarts`.
+
+**Why the timeout too.** On 2026-10-08, at a 3 s delay and a 3 s timeout, LUMS0014's habit visit
+moved into the timeout, which cost nothing: a side poke came during 32% of timeouts (6% and 11% at
+1 s on 10-06 and 10-07), and the next choice went opposite the last of them on 83%, repeating the
+error on 73% of those trials.
+
+**The sound.** *Sound on a side poke that costs time* plays a 0.15 s noise burst
+(`S.Sound.SidePokeSoundDuration`, Cue tab, *Sound output*) as a side poke enters `SidePokeDelay`,
+`SidePokeBeforeChoice` (unless the punishment noise plays there) or a restart state, so the
+animal hears which poke cost it time. A punishment noise still playing stops. Off by default, and
+silent with *Play sounds* unticked.
 
 **Example: *Delay* 1 s on 2026-10-05's behaviour.** At 0.6 side pokes a trial, about 0.6 s a
 trial, against about 8 s a trial: a 7% slower session if nothing changes. Each delay is counted
@@ -281,6 +302,7 @@ trials (`lum.report.habits`). Judge each lever from these, not from % correct.
 | Repeat after a reward / after an error | share of choices repeating the last choice when it was rewarded (win-stay) / not rewarded (1 − lose-shift) | 49% / 50% |
 | Side pokes before the response | per trial, before the first centre poke or between hold attempts | 0.6 |
 | Delayed / ended by a side poke | trials delayed (*Delay*) / ended (*End trial*) | |
+| Timeouts restarted by a side poke | trials with one, and the restarts (*Restart the timeout*) | |
 | Blocks (with blocks only) | correct on each switch's first trial, second trial, trials 3 on; trials to the new side | |
 
 ---
@@ -292,7 +314,7 @@ trials (`lum.report.habits`). Judge each lever from these, not from % correct.
 | The wanted side, precedence, the swap | `lum.nextTrialSpec` |
 | The target, contexts, reward floor, reading the running choice | `lum.BiasCorrection` (`target`, `contextOf`, `floorScale`, `choiceFromState`) |
 | Blocks | `lum.Blocks` |
-| The side-poke states | `lum.buildTrialSM` (`SidePokeDelay`, `SidePokeBeforeChoice`) |
+| The side-poke states | `lum.buildTrialSM` (`SidePokeDelay`, `SidePokeBeforeChoice`, `IncorrectChoiceRestartLeft`/`Right`, `EarlyWithdrawalRestartLeft`/`Right`); each mistake's punishment, and whether its timeout restarts: `lum.punishmentFor` |
 | Habit measures | `lum.report.habits` |
 | The settings and their help | `lum.defaultSettings` (*Bias*, *Blocks*, *SidePokes* panels) |
 | Simulated animals under each lever | `tests/strategyTest.m` |

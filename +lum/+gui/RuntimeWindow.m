@@ -34,7 +34,7 @@ classdef RuntimeWindow < handle
     % dialog (Tag 'LuminoseShortITI') says what it does to the time between trials.
     %
     % Correct for (S.GUI.BiasCorrectFor) is greyed out while incorrect choices are retried
-    % (Punish on None or Early withdrawal), in both forms: context correction then corrects
+    % (Incorrect choice punishment None), in both forms: context correction then corrects
     % for side bias (lum.BiasCorrection.activeMode).
     %
     % See also lum.gui.runtimeFields, lum.defaultSettings, BpodParameterGUI
@@ -254,7 +254,7 @@ classdef RuntimeWindow < handle
                 return
             end
             gui = struct();
-            for name = {'PunishCondition', 'PunishType', 'PunishTimeout'}
+            for name = {'IncorrectChoicePunishment', 'IncorrectChoiceTimeout'}
                 i = find(strcmp({obj.fields.Name}, name{1}), 1);
                 if isempty(i)
                     return

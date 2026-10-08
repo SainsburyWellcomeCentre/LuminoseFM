@@ -21,11 +21,15 @@ function [sma, plan] = buildTrialSM(context)
 %     v
 %   EarlyWithdrawal -> WaitForCentrePoke   Restart stimulus: the next poke starts it again
 %                   -> WaitForLightEnd     End trial
+%   EarlyWithdrawal -> EarlyWithdrawalRestartLeft/Right -> (as EarlyWithdrawal)  (a side poke
+%                                                          in its timeout, 'Restart the timeout')
 %
 %   WaitForCentreExit -> WaitForResponse
 %                          -> LeftRewardDelay  -> LeftReward  -> DrinkingLeft  -+
 %                          -> RightRewardDelay -> RightReward -> DrinkingRight -+-> DrinkingGrace
 %                          -> IncorrectChoice  (punished)                        |
+%                               -> IncorrectChoiceRestartLeft/Right               | (a side poke
+%                                                    in its timeout, 'Restart the timeout')
 %                          -> RetryResponse    (not punished) -> WaitForResponse |
 %                          -> NoResponse                                        +-> WaitForLightEnd
 %   WaitForCentrePoke -> NoInitiation         -> WaitForLightEnd   (the hold window ran out)
@@ -112,6 +116,17 @@ function [sma, plan] = buildTrialSM(context)
 % those are punished). Both states exist in every trial and are unreachable under 'Ignore'.
 % A side poke then is a new visit, not drinking that went on: the drinking grace keeps a
 % rewarded trial going until the animal has been out of both side ports for a while.
+%
+% A side poke in the timeout of a punished incorrect choice or early withdrawal is ignored,
+% or, with S.GUI.TimeoutSidePoke 'Restart the timeout', starts the timeout again from its
+% beginning (lum.punishmentFor .RestartOnSidePoke). Bpod takes a transition into the state
+% it is in as no transition, so each timeout has two restart states, one for each side
+% port, and a poke at the side port other than the one the animal was last in moves to the
+% other's: a nose moving in and out of one port, or a beam flickering, restarts nothing.
+% After an incorrect choice the animal was last in the port it chose. All four states exist
+% in every trial and are unreachable without restarts. With S.GUI.SidePokeSound, every side
+% poke that costs time (a delay, the end of the trial, a restart) plays a short noise burst
+% as it enters its state, unless a punishment noise starts there.
 %
 % Arguments:
 %   context  Struct describing the trial:
@@ -338,6 +353,41 @@ if playsNoise(context, sidePokePunishment)
     sidePokeTimer = max(sidePokeTimer, S.Sound.NoiseDuration);
 end
 
+% A side poke that costs time can play a short noise burst (S.GUI.SidePokeSound). The ITI
+% stops the sound module, so a state that plays it and ends the trial lasts at least as
+% long as the sound. Decided from the settings, like the noise, so the emulator times it
+% the same.
+playsSidePokeSound = playsSidePokeSoundOn(context);
+sidePokeSound = {};
+soundDuration = 0;
+if playsSidePokeSound
+    sidePokeSound = context.devices.hifi.playAction(context.sounds('SidePoke'));
+    soundDuration = S.Sound.SidePokeSoundDuration;
+    if ~playsNoise(context, sidePokePunishment)
+        sidePokeTimer = max(sidePokeTimer, soundDuration);
+    end
+end
+
+% A side poke in a timeout: ignored, or the timeout again from its beginning, in the restart
+% state of the port poked. Each restart state lasts what its timeout's first state lasts.
+incorrectChoiceRestart = incorrectChoicePunishment.RestartOnSidePoke;
+earlyWithdrawalRestart = earlyWithdrawalPunishment.RestartOnSidePoke;
+incorrectChoiceRestartTimer = max(incorrectChoiceTimer, soundDuration);
+earlyWithdrawalRestartTimer = max(earlyWithdrawalTimer, soundDuration);
+incorrectChoicePokes = {};
+wrongSides = setdiff([1 2], spec.RewardedSides);
+if incorrectChoiceRestart && isscalar(wrongSides)
+    % The animal is in the port it chose; a poke at the other one restarts the timeout.
+    other = 3 - wrongSides;
+    incorrectChoicePokes = {rig.PokeIn.(rig.Sides{other}), ...
+                            ['IncorrectChoiceRestart' rig.Sides{other}]};
+end
+earlyWithdrawalPokes = {};
+if earlyWithdrawalRestart
+    earlyWithdrawalPokes = {rig.PokeIn.Left, 'EarlyWithdrawalRestartLeft', ...
+                            rig.PokeIn.Right, 'EarlyWithdrawalRestartRight'};
+end
+
 % A side poke while the trial waits for a centre poke: ignored, a delay, or the trial's end.
 sidePokeMode = 1;
 if isfield(S.GUI, 'SidePokeBeforeChoice')
@@ -484,7 +534,7 @@ sma = AddState(sma, 'Name', 'WaitForResponse', ...
 % any) runs here and the animal is then free to poke again; otherwise the trial ends.
 sma = AddState(sma, 'Name', 'EarlyWithdrawal', ...
     'Timer', earlyWithdrawalTimer, ...
-    'StateChangeConditions', {'Tup', afterEarlyWithdrawal}, ...
+    'StateChangeConditions', [{'Tup', afterEarlyWithdrawal}, earlyWithdrawalPokes], ...
     'OutputActions', lum.mergeActions(stimulusOff, centreOff, ...
                                       noiseActions(context, earlyWithdrawalPunishment)));
 
@@ -543,9 +593,28 @@ sma = AddState(sma, 'Name', 'WithdrewBeforeReward', ...
 % The ITI stops the sound module, so the state lasts at least as long as the noise.
 sma = AddState(sma, 'Name', 'IncorrectChoice', ...
     'Timer', incorrectChoiceTimer, ...
-    'StateChangeConditions', {'Tup', trialEnd}, ...
+    'StateChangeConditions', [{'Tup', trialEnd}, incorrectChoicePokes], ...
     'OutputActions', lum.mergeActions(guideOff, ...
                                       noiseActions(context, incorrectChoicePunishment)));
+
+% A side poke in a punishment's timeout, 'Restart the timeout': the timeout again from its
+% beginning, the animal now in the port named, then on as the timeout would have gone. A
+% poke at the other side port moves to that port's state and starts it again; one at the
+% same port is ignored (Bpod does not re-enter the state it is in). Unreachable otherwise.
+for side = [1 2]
+    here = rig.Sides{side};
+    there = rig.Sides{3 - side};
+    sma = AddState(sma, 'Name', ['IncorrectChoiceRestart' here], ...
+        'Timer', incorrectChoiceRestartTimer, ...
+        'StateChangeConditions', {'Tup', trialEnd, rig.PokeIn.(there), ...
+                                  ['IncorrectChoiceRestart' there]}, ...
+        'OutputActions', lum.mergeActions(guideOff, sidePokeSound));
+    sma = AddState(sma, 'Name', ['EarlyWithdrawalRestart' here], ...
+        'Timer', earlyWithdrawalRestartTimer, ...
+        'StateChangeConditions', {'Tup', afterEarlyWithdrawal, rig.PokeIn.(there), ...
+                                  ['EarlyWithdrawalRestart' there]}, ...
+        'OutputActions', lum.mergeActions(centreOff, sidePokeSound));
+end
 
 % An incorrect choice that is not punished: back to the response window, where the
 % correct port still pays. Zero length; it marks the wrong choice in the trial record.
@@ -570,24 +639,25 @@ sma = AddState(sma, 'Name', 'NoInitiation', ...
     'StateChangeConditions', {'Tup', trialEnd}, ...
     'OutputActions', lum.mergeActions(cueOff, centreOff, pokeSync));
 
-% A side poke before the response window, 'Delay': the cue goes off (the cue tone stops)
-% and centre pokes are ignored for S.GUI.SidePokeDelay, then the trial waits for a centre
-% poke again, which puts the cue back on; the hold window runs on, and ending in it lapses
-% the trial. Further side pokes are ignored. With task-event sync the line drops here and
-% rises again as the wait resumes, as after an early withdrawal.
+% A side poke before the response window, 'Delay': the cue goes off (the cue tone stops, or
+% gives way to the side-poke sound) and centre pokes are ignored for S.GUI.SidePokeDelay,
+% then the trial waits for a centre poke again, which puts the cue back on; the hold window
+% runs on, and ending in it lapses the trial. Further side pokes are ignored. With
+% task-event sync the line drops here and rises again as the wait resumes, as after an
+% early withdrawal.
 sma = AddState(sma, 'Name', 'SidePokeDelay', ...
     'Timer', sidePokeDelay, ...
     'StateChangeConditions', {'Tup', 'WaitForCentrePoke', holdWindowEnded, 'NoInitiation', ...
                               'Condition4', 'NoInitiation'}, ...
-    'OutputActions', lum.mergeActions(cueOff, centreOff, pokeSync));
+    'OutputActions', lum.mergeActions(cueOff, centreOff, pokeSync, sidePokeSound));
 
 % A side poke before the response window, 'End trial': unrewarded, the cue off, with an early
 % withdrawal's punishment when those are punished (at least the noise, which the ITI would
-% cut off), then the trial ends.
+% cut off; the punishment noise takes the side-poke sound's place), then the trial ends.
 sma = AddState(sma, 'Name', 'SidePokeBeforeChoice', ...
     'Timer', sidePokeTimer, ...
     'StateChangeConditions', {'Tup', trialEnd}, ...
-    'OutputActions', lum.mergeActions(cueOff, centreOff, pokeSync, ...
+    'OutputActions', lum.mergeActions(cueOff, centreOff, pokeSync, sidePokeSound, ...
                                       noiseActions(context, sidePokePunishment)));
 
 % The light may still be playing after a hold shorter than it (D21), and ending the
@@ -628,6 +698,11 @@ plan = struct('timers', {timerGrants}, 'cueTimers', {cueGrants}, 'holdClock', ho
               'incorrectChoiceTimer', incorrectChoiceTimer, ...
               'sidePokeMode', sidePokeMode, 'sidePokeDelay', sidePokeDelay, ...
               'sidePokeTimer', sidePokeTimer, 'sidePokePunishment', sidePokePunishment, ...
+              'sidePokeSound', playsSidePokeSound, ...
+              'incorrectChoiceRestart', incorrectChoiceRestart, ...
+              'incorrectChoiceRestartTimer', incorrectChoiceRestartTimer, ...
+              'earlyWithdrawalRestart', earlyWithdrawalRestart, ...
+              'earlyWithdrawalRestartTimer', earlyWithdrawalRestartTimer, ...
               'centreReward', strcmp(holdDone, 'CentreReward'), ...
               'centreValveTime', centreValveTime, ...
               'earlyWithdrawalPunishment', earlyWithdrawalPunishment, ...
@@ -720,6 +795,13 @@ if ~playsNoise(context, punishment)
     return
 end
 actions = context.devices.hifi.playAction(context.sounds('Noise'));
+
+
+function tf = playsSidePokeSoundOn(context)
+% Whether a side poke that costs time plays the side-poke sound on this trial.
+S = context.S;
+tf = isfield(S.GUI, 'SidePokeSound') && S.GUI.SidePokeSound && context.spec.SoundOn ...
+     && isKey(context.sounds, 'SidePoke');
 
 
 function tf = playsNoise(context, punishment)

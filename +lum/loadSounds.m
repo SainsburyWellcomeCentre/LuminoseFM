@@ -7,6 +7,8 @@ function sounds = loadSounds(S, devices, stimulusSet)
 %
 % Only the sounds the session can play are loaded:
 %   Noise       the white noise burst used as punishment (always)
+%   SidePoke    a short white noise burst for a side poke that costs time (always, since
+%               S.GUI.SidePokeSound can be ticked during the session)
 %   Cue         the cue tone, if the cue has a tone: a seamless loop, repeated for as
 %               long as the longest hold window allows, because the cue lasts until
 %               the stimulus starts
@@ -47,9 +49,10 @@ end
 rate = S.Sound.SamplingRate;
 amplitude = S.Sound.Amplitude;
 
-names = {'Noise'};
-waves = {GenerateWhiteNoise(rate, S.Sound.NoiseDuration, amplitude, 1)};
-loops = 0;   % Seconds each sound repeats for once played; 0 plays it once
+names = {'Noise', 'SidePoke'};
+waves = {GenerateWhiteNoise(rate, S.Sound.NoiseDuration, amplitude, 1), ...
+         GenerateWhiteNoise(rate, S.Sound.SidePokeSoundDuration, amplitude, 1)};
+loops = [0 0];   % Seconds each sound repeats for once played; 0 plays it once
 
 cue = lum.cueTiming(S);
 cueTone = cue(strcmp({cue.Type}, 'Tone'));

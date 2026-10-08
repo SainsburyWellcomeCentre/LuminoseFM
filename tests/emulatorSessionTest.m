@@ -60,7 +60,7 @@ series = {'StimulusGroup', 'PatternIndex', 'CorrectSide', 'Choice', 'Correct', '
           'BiasTargetPLeft', 'TrainingStage', 'HoldDuration', 'HoldGrace', 'HoldBreaks', ...
           'HoldAttempts', 'EarlyWithdrawals', 'CameraTime', 'LEDCurrentA', 'LEDCurrentB', ...
           'CentreReward', 'ResponseRetries', 'CentreHoldTime', 'BiasContext', 'Block', ...
-          'BlockSide', 'SidePokeDelays'};
+          'BlockSide', 'SidePokeDelays', 'TimeoutRestarts'};
 for i = 1:numel(series)
     verifyTrue(testCase, isfield(sessionData, series{i}), sprintf('Data.%s is missing', series{i}));
     verifyLength(testCase, sessionData.(series{i}), sessionData.nTrials, ...
@@ -272,7 +272,8 @@ S = withCue(S, {'CentreLight'});
 S.GUI.HoldWindow = 0.2;
 S.GUI.ResponseWindow = 0.2;
 S.GUI.DrinkingGrace = 0.05;
-S.GUI.PunishTimeout = 0.05;
+S.GUI.IncorrectChoiceTimeout = 0.05;
+S.GUI.EarlyWithdrawalTimeout = 0.05;
 S.GUI.ITI = 0.05;
 S.GUI.RewardAmount = 1;
 S.Session.HouseLight = true;  % And clicked off part way through (startHouseLightClicker)

@@ -272,7 +272,8 @@ verifyEqual(testCase, fields(byName('RewardAmount')).Tab, 'Trial');
 verifyEqual(testCase, fields(byName('HoldStart')).Tab, 'Task');
 verifyEqual(testCase, fields(byName('OptoOn')).Tab, 'Delivery');
 verifyEqual(testCase, fields(byName('OptoOn')).Style, 'checkbox');
-verifyEqual(testCase, fields(byName('PunishType')).Items, S.GUIMeta.PunishType.String);
+verifyEqual(testCase, fields(byName('IncorrectChoicePunishment')).Items, ...
+            S.GUIMeta.IncorrectChoicePunishment.String);
 end
 
 function testAnUnpanelledParameterStillAppears(testCase)
@@ -750,7 +751,8 @@ function testStrategyCorrectionIsOffByDefaultOnItsOwnTab(testCase)
 % Strategy tab with the parts' panels.
 S = lum.defaultSettings;
 verifyEqual(testCase, [S.GUI.SidePokeBeforeChoice, S.GUI.BiasCorrectFor, S.GUI.BiasRewardFloor, ...
-                       S.GUI.TrialOrder], [1 1 0 1]);
+                       S.GUI.TrialOrder, S.GUI.TimeoutSidePoke, double(S.GUI.SidePokeSound)], ...
+            [1 1 0 1 1 0]);
 verifyEqual(testCase, S.GUITabs.Strategy, {'Bias', 'Blocks', 'SidePokes'});
 verifyEqual(testCase, S.GUITabs.Task, {'Punishment', 'Shaping'});
 verifyEqual(testCase, S.GUIPanels.Bias(1:2), {'BiasCorrection', 'BiasWindow'}, 'Names kept');
@@ -758,7 +760,8 @@ fields = lum.gui.runtimeFields(S);
 strategy = fields(strcmp({fields.Tab}, 'Strategy'));
 verifyEqual(testCase, sort({strategy.Name}), sort({'BiasCorrection', 'BiasWindow', ...
     'BiasCorrectFor', 'BiasRewardFloor', 'BiasRewardWindow', 'TrialOrder', 'BlockMin', ...
-    'BlockMax', 'BlockSwitchAfterCorrect', 'SidePokeBeforeChoice', 'SidePokeDelay'}));
+    'BlockMax', 'BlockSwitchAfterCorrect', 'SidePokeBeforeChoice', 'SidePokeDelay', ...
+    'TimeoutSidePoke', 'SidePokeSound'}));
 verifyTrue(testCase, all(~cellfun(@isempty, {strategy.Help})), 'Every setting has its help');
 verifyEqual(testCase, S.GUIMeta.BiasRewardFloor.Limits, [0 50]);
 end
@@ -779,4 +782,8 @@ for asRun = [false true]
     verifyEqual(testCase, S.GUITabs, lum.defaultSettings().GUITabs);
 end
 verifySubstring(testCase, lum.describeStrategy(S), 'side pokes before the response ignored');
+S.GUI.TimeoutSidePoke = 2;
+S.GUI.SidePokeSound = true;
+verifySubstring(testCase, lum.describeStrategy(S), 'a side poke in a timeout restarts it');
+verifySubstring(testCase, lum.describeStrategy(S), 'a sound on each side poke that costs time');
 end

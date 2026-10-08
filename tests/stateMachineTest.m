@@ -409,9 +409,8 @@ end
 
 function testAPunishmentNoiseFinishesBeforeTheCueToneReturns(testCase)
 S = withCue(lum.defaultSettings, {'CentreLight', 'Tone'});
-S.GUI.PunishCondition = 4;   % Both mistakes
-S.GUI.PunishType = 2;        % White noise only
-S.GUI.PunishTimeout = 0;
+S.GUI.EarlyWithdrawalPunishment = 3;   % White noise only
+S.GUI.IncorrectChoicePunishment = 3;
 S.Sound.NoiseDuration = 0.5;
 [sma, plan] = lum.buildTrialSM(makeTestContext('Settings', S));
 verifyEqual(testCase, stateTimer(sma, 'EarlyWithdrawal'), 0.5, 'AbsTol', 1e-9);
@@ -555,9 +554,11 @@ end
 end
 
 function testTheTrialWaitsForTheLightAfterAShortHold(testCase)
-% Played as the animal: a 0.1 s hold, a quick correct choice, and B lit from 0.6 to 1.0 s
-% after stimulus onset. The late segment still plays, and the ITI waits for it.
-S = withFixedHold(withPulses(lum.defaultSettings, [1 1 0 0.2; 1 2 0.6 1.0]), 0.1);
+% Played as the animal: a 0.1 s hold, a quick correct choice, and B lit from 0.6 to 1.6 s
+% after stimulus onset. The late segment still plays, and the ITI waits for it. The light
+% ends well after the scripted pokes, which the emulator plays up to ~0.5 s late (2026-10-08).
+S = withFixedHold(withPulses(lum.defaultSettings, [1 1 0 0.2; 1 2 0.6 1.6]), 0.1);
+S.Stimulus.Duration = 2;
 S.GUI.HoldWindow = 5;
 S.GUI.ITI = 0.05;
 S.GUI.DrinkingGrace = 0.05;
@@ -566,12 +567,12 @@ trial = runPoked(context, {0.3, 'Port2', 1; 0.6, 'Port2', 0; 0.9, 'Port1', 1; 1.
 result = lum.scoreTrial(trial, context.spec, context.rig);
 verifyEqual(testCase, result.Outcome, lum.Outcome.Correct);
 onset = trial.States.CentreHold(1, 1);
-verifyLessThan(testCase, trial.States.WaitForLightEnd(1, 1), onset + 1.0, ...
+verifyLessThan(testCase, trial.States.WaitForLightEnd(1, 1), onset + 1.6, ...
                'The animal was done before the light');
-verifyGreaterThanOrEqual(testCase, trial.States.ITI(1, 1), onset + 1.0 - 1e-3, ...
+verifyGreaterThanOrEqual(testCase, trial.States.ITI(1, 1), onset + 1.6 - 1e-3, ...
                          'The ITI starts once the light is over');
 verifyTrue(testCase, isfield(trial.Events, 'GlobalTimer2_Start'), 'B came on after the hold');
-verifyGreaterThanOrEqual(testCase, trial.Events.GlobalTimer2_End(1), onset + 1.0 - 1e-3);
+verifyGreaterThanOrEqual(testCase, trial.Events.GlobalTimer2_End(1), onset + 1.6 - 1e-3);
 end
 
 function testABrokenHoldEndsTheWaitForTheLightAtOnce(testCase)
@@ -653,7 +654,7 @@ end
 
 function testTheWrongSideIsAnIncorrectChoiceOnceTrainingStarts(testCase)
 S = lum.defaultSettings;
-S.GUI.PunishCondition = 3;  % Incorrect choice
+S.GUI.IncorrectChoicePunishment = 2;  % Timeout
 sma = lum.buildTrialSM(makeTestContext('Settings', S));
 verifyEqual(testCase, targetOf(sma, 'WaitForResponse', 'Port1In'), 'LeftRewardDelay');
 verifyEqual(testCase, targetOf(sma, 'WaitForResponse', 'Port3In'), 'IncorrectChoice');
@@ -721,15 +722,16 @@ end
 
 function testPunishmentSettingsChangeTimersNotStates(testCase)
 S = lum.defaultSettings;
-S.GUI.PunishTimeout = 3;
-S.GUI.PunishCondition = 1;  % None
+S.GUI.IncorrectChoiceTimeout = 3;
+S.GUI.EarlyWithdrawalTimeout = 3;
 [unpunished, unpunishedPlan] = lum.buildTrialSM(makeTestContext('Settings', S));
 verifyEqual(testCase, stateTimer(unpunished, 'IncorrectChoice'), 0);
 verifyEqual(testCase, stateTimer(unpunished, 'EarlyWithdrawal'), 0);
 verifyFalse(testCase, unpunishedPlan.incorrectChoicePunishment.Applies);
 
-S.GUI.PunishCondition = 4;  % Both mistakes
-S.GUI.PunishType = 1;       % Timeout only
+S.GUI.IncorrectChoicePunishment = 2;  % Timeout only
+S.GUI.EarlyWithdrawalPunishment = 2;
+S.GUI.TimeoutSidePoke = 2;            % Restart the timeout
 punished = lum.buildTrialSM(makeTestContext('Settings', S));
 verifyEqual(testCase, stateTimer(punished, 'IncorrectChoice'), 3);
 verifyEqual(testCase, stateTimer(punished, 'EarlyWithdrawal'), 3);
@@ -740,14 +742,14 @@ function testNoPunishmentLetsTheAnimalGoOnToTheCorrectPort(testCase)
 % The default: a wrong choice goes back to the response window through RetryResponse,
 % and the correct port still pays.
 S = lum.defaultSettings;
-verifyEqual(testCase, S.GUI.PunishCondition, 1, 'No punishment is the default');
+verifyEqual(testCase, S.GUI.IncorrectChoicePunishment, 1, 'No punishment is the default');
 [sma, plan] = lum.buildTrialSM(makeTestContext('Settings', S));
 verifyTrue(testCase, plan.incorrectChoicePunishment.Retry);
 verifyEqual(testCase, targetOf(sma, 'WaitForResponse', 'Port3In'), 'RetryResponse');
 verifyEqual(testCase, targetOf(sma, 'WaitForResponse', 'Port1In'), 'LeftRewardDelay');
 verifyEqual(testCase, tupTargetOf(sma, 'RetryResponse'), 'WaitForResponse');
 verifyEqual(testCase, stateTimer(sma, 'RetryResponse'), 0);
-S.GUI.PunishCondition = 2;  % Early withdrawal only: choices are still not punished
+S.GUI.EarlyWithdrawalPunishment = 2;  % Early withdrawal only: choices are still not punished
 sma = lum.buildTrialSM(makeTestContext('Settings', S));
 verifyEqual(testCase, targetOf(sma, 'WaitForResponse', 'Port3In'), 'RetryResponse');
 end
@@ -755,11 +757,10 @@ end
 function testEachPunishmentEndsTheTrialUnrewarded(testCase)
 % Timeout, noise, or both: IncorrectChoice, then the ITI; never back to a port that pays.
 S = lum.defaultSettings;
-S.GUI.PunishCondition = 3;  % Incorrect choice
-S.GUI.PunishTimeout = 3;
+S.GUI.IncorrectChoiceTimeout = 3;
 timers = [3, S.Sound.NoiseDuration, 3];
 for type = 1:3
-    S.GUI.PunishType = type;
+    S.GUI.IncorrectChoicePunishment = type + 1;
     [sma, plan] = lum.buildTrialSM(makeTestContext('Settings', S));
     verifyFalse(testCase, plan.incorrectChoicePunishment.Retry);
     verifyEqual(testCase, targetOf(sma, 'WaitForResponse', 'Port3In'), 'IncorrectChoice');
@@ -774,20 +775,19 @@ function testANoisePunishmentPlaysToItsEndBeforeTheITIStopsIt(testCase)
 % The ITI stops the sound module, so a noise-only punishment lasts as long as the noise,
 % and so does a timeout shorter than it.
 S = lum.defaultSettings;
-S.GUI.PunishCondition = 4;
-S.GUI.PunishType = 2;  % White noise only
-S.GUI.PunishTimeout = 3;
+S.GUI.IncorrectChoicePunishment = 3;  % White noise only
+S.GUI.EarlyWithdrawalPunishment = 3;
+S.GUI.IncorrectChoiceTimeout = 3;
 [sma, plan] = lum.buildTrialSM(makeTestContext('Settings', S));
 verifyEqual(testCase, plan.incorrectChoicePunishment.Timeout, 0, 'Noise alone adds no timeout');
 verifyEqual(testCase, stateTimer(sma, 'IncorrectChoice'), S.Sound.NoiseDuration, 'AbsTol', 1e-9);
-S.GUI.PunishType = 3;
-S.GUI.PunishTimeout = S.Sound.NoiseDuration / 2;
+S.GUI.IncorrectChoicePunishment = 4;
+S.GUI.IncorrectChoiceTimeout = S.Sound.NoiseDuration / 2;
 sma = lum.buildTrialSM(makeTestContext('Settings', S));
 verifyEqual(testCase, stateTimer(sma, 'IncorrectChoice'), S.Sound.NoiseDuration, 'AbsTol', 1e-9);
 
 % An early withdrawal that ends the trial likewise.
 S = endingTrial(S);
-S.GUI.PunishType = 2;
 sma = lum.buildTrialSM(makeTestContext('Settings', S));
 verifyEqual(testCase, tupTargetOf(sma, 'EarlyWithdrawal'), 'WaitForLightEnd');
 verifyEqual(testCase, stateTimer(sma, 'WaitForLightEnd'), 0, 'Nothing lies between it and the ITI');
@@ -1080,12 +1080,13 @@ S = withSidePokes(lum.defaultSettings, 3);
 verifyEqual(testCase, targetOf(sma, 'WaitForCentrePoke', 'Port1In'), 'SidePokeBeforeChoice');
 verifyEqual(testCase, tupTargetOf(sma, 'SidePokeBeforeChoice'), 'WaitForLightEnd');
 verifyEqual(testCase, plan.sidePokeTimer, 0, 'Early withdrawals not punished: no timeout');
-S.GUI.PunishCondition = 2;   % Early withdrawal
-S.GUI.PunishType = 1;        % Timeout
-S.GUI.PunishTimeout = 1.5;
+S.GUI.EarlyWithdrawalPunishment = 2;   % Timeout
+S.GUI.EarlyWithdrawalTimeout = 1.5;
 sma = lum.buildTrialSM(makeTestContext('Settings', S));
 verifyEqual(testCase, stateTimer(sma, 'SidePokeBeforeChoice'), 1.5);
-S.GUI.PunishCondition = 3;   % Incorrect choice only
+S.GUI.EarlyWithdrawalPunishment = 1;   % Incorrect choice only
+S.GUI.IncorrectChoicePunishment = 2;
+S.GUI.IncorrectChoiceTimeout = 1.5;
 sma = lum.buildTrialSM(makeTestContext('Settings', S));
 verifyEqual(testCase, stateTimer(sma, 'SidePokeBeforeChoice'), 0);
 end
@@ -1131,6 +1132,126 @@ result = lum.scoreTrial(trial, context.spec, context.rig);
 verifyEqual(testCase, result.Outcome, lum.Outcome.SidePokeBeforeChoice);
 verifyEqual(testCase, result.Rewarded, 0);
 verifyFalse(testCase, isnan(trial.States.WaitForLightEnd(1)));
+end
+
+function testSidePokesInATimeoutAreIgnoredByDefault(testCase)
+S = lum.defaultSettings;
+S.GUI.IncorrectChoicePunishment = 2;
+S.GUI.EarlyWithdrawalPunishment = 2;
+sma = lum.buildTrialSM(makeTestContext('Settings', S));
+verifyEqual(testCase, targetOf(sma, 'IncorrectChoice', 'Port1In'), 'IncorrectChoice');
+verifyEqual(testCase, targetOf(sma, 'EarlyWithdrawal', 'Port3In'), 'EarlyWithdrawal');
+for name = {'IncorrectChoiceRestartLeft', 'IncorrectChoiceRestartRight', ...
+            'EarlyWithdrawalRestartLeft', 'EarlyWithdrawalRestartRight'}
+    verifyEqual(testCase, setdiff(sourcesOf(sma, name{1}), ...
+                                  {'IncorrectChoiceRestartLeft', 'IncorrectChoiceRestartRight', ...
+                                   'EarlyWithdrawalRestartLeft', 'EarlyWithdrawalRestartRight'}), ...
+                cell(1, 0), [name{1} ' is unreachable under Ignore']);
+end
+end
+
+function testAPokeAtTheOtherSidePortRestartsATimeout(testCase)
+% Left pays, so the wrong choice is the right port: a poke at the left one restarts the
+% timeout; another at the right one (a nose in and out, a flicker) does not.
+S = lum.defaultSettings;
+S.GUI.IncorrectChoicePunishment = 2;
+S.GUI.IncorrectChoiceTimeout = 3;
+S.GUI.EarlyWithdrawalPunishment = 2;
+S.GUI.EarlyWithdrawalTimeout = 1.5;
+S.GUI.TimeoutSidePoke = 2;
+[sma, plan] = lum.buildTrialSM(makeTestContext('Settings', S));
+verifyTrue(testCase, plan.incorrectChoiceRestart);
+verifyTrue(testCase, plan.earlyWithdrawalRestart);
+verifyEqual(testCase, targetOf(sma, 'IncorrectChoice', 'Port1In'), 'IncorrectChoiceRestartLeft');
+verifyEqual(testCase, targetOf(sma, 'IncorrectChoice', 'Port3In'), 'IncorrectChoice');
+verifyEqual(testCase, targetOf(sma, 'IncorrectChoiceRestartLeft', 'Port3In'), ...
+            'IncorrectChoiceRestartRight');
+verifyEqual(testCase, targetOf(sma, 'IncorrectChoiceRestartLeft', 'Port1In'), ...
+            'IncorrectChoiceRestartLeft');
+verifyEqual(testCase, targetOf(sma, 'IncorrectChoiceRestartRight', 'Port1In'), ...
+            'IncorrectChoiceRestartLeft');
+verifyEqual(testCase, targetOf(sma, 'IncorrectChoiceRestartLeft', 'Port2In'), ...
+            'IncorrectChoiceRestartLeft', 'A centre poke restarts nothing');
+for side = {'Left', 'Right'}
+    verifyEqual(testCase, stateTimer(sma, ['IncorrectChoiceRestart' side{1}]), 3);
+    verifyEqual(testCase, tupTargetOf(sma, ['IncorrectChoiceRestart' side{1}]), 'WaitForLightEnd');
+    verifyEqual(testCase, stateTimer(sma, ['EarlyWithdrawalRestart' side{1}]), 1.5);
+    verifyEqual(testCase, tupTargetOf(sma, ['EarlyWithdrawalRestart' side{1}]), 'WaitForCentrePoke');
+end
+verifyEqual(testCase, targetOf(sma, 'EarlyWithdrawal', 'Port1In'), 'EarlyWithdrawalRestartLeft');
+verifyEqual(testCase, targetOf(sma, 'EarlyWithdrawal', 'Port3In'), 'EarlyWithdrawalRestartRight');
+verifyEqual(testCase, targetOf(sma, 'EarlyWithdrawalRestartRight', 'Port1In'), ...
+            'EarlyWithdrawalRestartLeft');
+
+% Right pays: the other port is the left one's mirror
+sma = lum.buildTrialSM(makeTestContext('Settings', S, 'Side', 2));
+verifyEqual(testCase, targetOf(sma, 'IncorrectChoice', 'Port3In'), 'IncorrectChoiceRestartRight');
+verifyEqual(testCase, targetOf(sma, 'IncorrectChoice', 'Port1In'), 'IncorrectChoice');
+
+% An early withdrawal that ends the trial ends it after its restarts too
+sma = lum.buildTrialSM(makeTestContext('Settings', endingTrial(S)));
+verifyEqual(testCase, tupTargetOf(sma, 'EarlyWithdrawalRestartLeft'), 'WaitForLightEnd');
+end
+
+function testOnlyATimeoutThatExistsIsRestarted(testCase)
+S = lum.defaultSettings;
+S.GUI.TimeoutSidePoke = 2;
+S.GUI.IncorrectChoicePunishment = 3;   % Noise only
+S.GUI.EarlyWithdrawalPunishment = 1;
+[sma, plan] = lum.buildTrialSM(makeTestContext('Settings', S));
+verifyFalse(testCase, plan.incorrectChoiceRestart);
+verifyFalse(testCase, plan.earlyWithdrawalRestart);
+verifyEqual(testCase, targetOf(sma, 'IncorrectChoice', 'Port1In'), 'IncorrectChoice');
+verifyEqual(testCase, targetOf(sma, 'EarlyWithdrawal', 'Port1In'), 'EarlyWithdrawal');
+end
+
+function testTheSidePokeSoundIsLetPlayBeforeTheITIStopsIt(testCase)
+S = withSidePokes(lum.defaultSettings, 3);   % End trial, early withdrawals not punished
+S.GUI.SidePokeSound = true;
+S.Sound.SidePokeSoundDuration = 0.15;
+[sma, plan] = lum.buildTrialSM(makeTestContext('Settings', S));
+verifyTrue(testCase, plan.sidePokeSound);
+verifyEqual(testCase, stateTimer(sma, 'SidePokeBeforeChoice'), 0.15, 'AbsTol', 1e-9);
+S.GUI.IncorrectChoicePunishment = 2;
+S.GUI.IncorrectChoiceTimeout = 0.05;
+S.GUI.TimeoutSidePoke = 2;
+[sma, plan] = lum.buildTrialSM(makeTestContext('Settings', S));
+verifyEqual(testCase, plan.incorrectChoiceRestartTimer, 0.15, 'AbsTol', 1e-9);
+verifyEqual(testCase, stateTimer(sma, 'IncorrectChoiceRestartLeft'), 0.15, 'AbsTol', 1e-9);
+verifyEqual(testCase, stateTimer(sma, 'IncorrectChoice'), 0.05, 'AbsTol', 1e-9, ...
+            'The first entry plays no side-poke sound');
+context = makeTestContext('Settings', S);
+context.spec.SoundOn = false;
+[~, plan] = lum.buildTrialSM(context);
+verifyFalse(testCase, plan.sidePokeSound, 'Play sounds unticked: silent');
+S.GUI.SidePokeSound = false;
+[sma, plan] = lum.buildTrialSM(makeTestContext('Settings', S));
+verifyFalse(testCase, plan.sidePokeSound);
+verifyEqual(testCase, stateTimer(sma, 'SidePokeBeforeChoice'), 0);
+end
+
+function testAPokeAtTheOtherPortRestartsTheTimeoutInTheEmulator(testCase)
+% Wrong at the right port; back into it (ignored); then the left port: the timeout again.
+S = lum.defaultSettings;
+S.GUI.HoldWindow = 5;
+S.GUI.ITI = 0.05;
+S.GUI.IncorrectChoicePunishment = 2;
+S.GUI.IncorrectChoiceTimeout = 1;
+S.GUI.TimeoutSidePoke = 2;
+S = withFixedHold(S, 0.1);
+context = makeTestContext('Settings', S);
+trial = runPoked(context, {0.3, 'Port2', 1; 0.9, 'Port2', 0; 1.3, 'Port3', 1; 1.4, 'Port3', 0; ...
+                           1.5, 'Port3', 1; 1.55, 'Port3', 0; 1.7, 'Port1', 1; 1.8, 'Port1', 0});
+result = lum.scoreTrial(trial, context.spec, context.rig);
+verifyEqual(testCase, result.Outcome, lum.Outcome.Incorrect);
+verifyEqual(testCase, result.Choice, 2);
+verifyEqual(testCase, result.TimeoutRestarts, 1);
+verifyEqual(testCase, size(trial.States.IncorrectChoiceRestartLeft, 1), 1);
+verifyTrue(testCase, isnan(trial.States.IncorrectChoiceRestartRight(1)));
+verifyGreaterThan(testCase, trial.States.IncorrectChoice(1, 2) - trial.States.IncorrectChoice(1, 1), ...
+                  0.25, 'The poke back into the chosen port did not restart it');
+verifyGreaterThanOrEqual(testCase, diff(trial.States.IncorrectChoiceRestartLeft(1, :)), 1 - 1e-3);
+verifyEqual(testCase, result.Rewarded, 0);
 end
 
 function testATrialRunsToCompletionInTheEmulator(testCase)
@@ -1179,9 +1300,8 @@ function testAPunishedWrongChoiceEndsTheTrialInTheEmulator(testCase)
 S = lum.defaultSettings;
 S.GUI.HoldWindow = 5;
 S.GUI.ITI = 0.05;
-S.GUI.PunishCondition = 3;
-S.GUI.PunishType = 1;
-S.GUI.PunishTimeout = 0.2;
+S.GUI.IncorrectChoicePunishment = 2;
+S.GUI.IncorrectChoiceTimeout = 0.2;
 S = withFixedHold(S, 0.1);
 context = makeTestContext('Settings', S);
 trial = runPoked(context, {0.3, 'Port2', 1; 0.9, 'Port2', 0; 1.3, 'Port3', 1; ...
@@ -1212,7 +1332,8 @@ names = {'TrialStart', 'WaitForCentrePoke', 'PreStimulusHold', 'CentreHold', ...
          'RightReward', 'DrinkingLeft', 'DrinkingRight', 'DrinkingGrace', ...
          'WithdrewBeforeReward', 'IncorrectChoice', 'NoResponse', 'NoInitiation', 'ITI', ...
          'CentreReward', 'RetryResponse', 'WaitForLightEnd', 'SidePokeDelay', ...
-         'SidePokeBeforeChoice'};
+         'SidePokeBeforeChoice', 'IncorrectChoiceRestartLeft', 'IncorrectChoiceRestartRight', ...
+         'EarlyWithdrawalRestartLeft', 'EarlyWithdrawalRestartRight'};
 end
 
 function S = withSidePokes(S, mode)

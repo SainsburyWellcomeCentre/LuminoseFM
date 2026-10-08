@@ -9,7 +9,7 @@ function plays = testSounds(S, which, nGroups)
 %
 % Arguments:
 %   S        Settings struct, as the dialog has it
-%   which    'Cue', 'Noise', 'Stimulus', 'Left' or 'Right'
+%   which    'Cue', 'Noise', 'SidePoke', 'Stimulus', 'Left' or 'Right'
 %   nGroups  Number of stimulus groups, for 'Stimulus' (one tone per group)
 %
 % Returns a cell array with one element per sound to play, in order; each is the
@@ -30,6 +30,8 @@ switch which
         plays = {[{'Waveform', 'tone', 'Frequency', S.Cue.ToneFrequency, 'Duration', 0.5}, common]};
     case 'Noise'
         plays = {[{'Waveform', 'noise', 'Duration', S.Sound.NoiseDuration}, common]};
+    case 'SidePoke'
+        plays = {[{'Waveform', 'noise', 'Duration', S.Sound.SidePokeSoundDuration}, common]};
     case 'Stimulus'
         tone = S.Stimulus.Components(strcmp({S.Stimulus.Components.Type}, 'Tone'));
         frequencies = lum.toneFrequencies(S.Stimulus.ToneFrequencyRange, max(1, nGroups));
@@ -42,5 +44,5 @@ switch which
                    max(side.Duration, 0.01)}, common]};
     otherwise
         error('lum:testSounds:unknownSound', ...
-              'Unknown sound ''%s''; use Cue, Noise, Stimulus, Left or Right.', which);
+              'Unknown sound ''%s''; use Cue, Noise, SidePoke, Stimulus, Left or Right.', which);
 end

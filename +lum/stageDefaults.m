@@ -12,12 +12,13 @@ function [S, changed] = stageDefaults(S, stage)
 % is.
 %
 % Strategy correction (D23) follows it as well: Habituation and Experiment switch every part
-% off - side pokes before the response ignored, bias correction for side bias without a
-% reward floor, a random trial order - since habituation pays both sides and an experiment
-% asks every animal for the same trial; Experiment also switches bias correction (strength
-% 0) and the run limit (S.Task.MaxSameSide 0) off, which make the side predictable from the
-% trials before. Training leaves them as they are. An Experiment session may still switch
-% any of them on: nothing refuses it, and each trial records what applied.
+% off - side pokes before the response and in a timeout ignored, no side-poke sound, bias
+% correction for side bias without a reward floor, a random trial order - since habituation
+% pays both sides and an experiment asks every animal for the same trial; Experiment also
+% switches bias correction (strength 0) and the run limit (S.Task.MaxSameSide 0) off, which
+% make the side predictable from the trials before. Training leaves them as they are. An
+% Experiment session may still switch any of them on: nothing refuses it, and each trial
+% records what applied.
 %
 % Automatic shaping follows the stage too: Habituation and Training switch it on, so the
 % centre hold is grown from S.GUI.HoldStart as the animal learns (lum.HoldShaping) - in
@@ -112,7 +113,8 @@ function [S, changed] = strategyOff(S, changed, experiment)
 if ~isfield(S, 'GUI')
     return
 end
-off = {'SidePokeBeforeChoice', 1; 'BiasCorrectFor', 1; 'BiasRewardFloor', 0; 'TrialOrder', 1};
+off = {'SidePokeBeforeChoice', 1; 'TimeoutSidePoke', 1; 'SidePokeSound', 0; 'BiasCorrectFor', 1; ...
+       'BiasRewardFloor', 0; 'TrialOrder', 1};
 wasOn = false;
 for i = 1:size(off, 1)
     if isfield(S.GUI, off{i, 1}) && ~isequal(S.GUI.(off{i, 1}), off{i, 2})

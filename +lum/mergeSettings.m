@@ -309,6 +309,43 @@ if hasPath(loaded, 'Task.FixedHold')
     migrated{end+1} = 'GUI.FixedHold (was Task.FixedHold)';
 end
 
+%% Reshaped (version 0.11.0): each mistake has its own punishment
+% GUI.PunishCondition (which mistakes: none, early withdrawal, incorrect choice, both),
+% GUI.PunishType (timeout, noise, both) and GUI.PunishTimeout were shared by every mistake.
+% Each mistake now has its own punishment (none, timeout, noise, both: the old type's code
+% plus one) and timeout, so a punished mistake keeps its punishment, an unpunished one
+% gets none, and both keep the one timeout. The old codes stay in data files.
+if hasPath(loaded, 'GUI.PunishCondition') || hasPath(loaded, 'GUI.PunishType') ...
+        || hasPath(loaded, 'GUI.PunishTimeout')
+    condition = valueOr(loaded, 'GUI.PunishCondition', 1);
+    type = valueOr(loaded, 'GUI.PunishType', 3);
+    timeout = valueOr(loaded, 'GUI.PunishTimeout', defaults.GUI.IncorrectChoiceTimeout);
+    events = {'IncorrectChoice', [3 4]; 'EarlyWithdrawal', [2 4]};
+    for i = 1:size(events, 1)
+        kind = 1;
+        if ismember(condition, events{i, 2})
+            kind = type + 1;
+        end
+        if ~hasPath(loaded, ['GUI.' events{i, 1} 'Punishment'])
+            loaded.GUI.([events{i, 1} 'Punishment']) = kind;
+        end
+        if ~hasPath(loaded, ['GUI.' events{i, 1} 'Timeout'])
+            loaded.GUI.([events{i, 1} 'Timeout']) = timeout;
+        end
+    end
+    for name = {'PunishCondition', 'PunishType', 'PunishTimeout'}
+        if hasPath(loaded, ['GUI.' name{1}])
+            loaded = removePath(loaded, ['GUI.' name{1}]);
+        end
+    end
+    kinds = defaults.GUIMeta.IncorrectChoicePunishment.String;
+    migrated{end+1} = sprintf(['GUI.IncorrectChoicePunishment (%s), GUI.EarlyWithdrawalPunishment '...
+                               '(%s) and their timeouts (%g s) (were GUI.PunishCondition, '...
+                               'PunishType and PunishTimeout)'], ...
+                              lower(kinds{loaded.GUI.IncorrectChoicePunishment}), ...
+                              lower(kinds{loaded.GUI.EarlyWithdrawalPunishment}), timeout);
+end
+
 %% Retired (version 0.2, and 0.4)
 % The hand-written stimulus table was replaced by the stimulus generator; its rows
 % cannot be converted into generator parameters, so the defaults are used instead.
@@ -587,6 +624,14 @@ parts = strsplit(path, '.');
 value = s;
 for i = 1:numel(parts)
     value = value.(parts{i});
+end
+
+
+function value = valueOr(s, path, default)
+% The value at path, or default when s has none there.
+value = default;
+if hasPath(s, path)
+    value = getPath(s, path);
 end
 
 

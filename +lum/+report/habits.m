@@ -31,6 +31,8 @@ function H = habits(T)
 %   .sidePokeDelays        Trials delayed by a side poke (S.GUI.SidePokeBeforeChoice 'Delay'),
 %                          and .sidePokeDelayCount the delays (a trial can have several)
 %   .endedBySidePoke       Trials ended by one ('End trial')
+%   .timeoutRestarts       Trials with a timeout restarted by a side poke
+%                          (S.GUI.TimeoutSidePoke), and .timeoutRestartCount the restarts
 %   .Bins                  The same measures in blocks of 100 trials (.Trials, first and last
 %                          of each), for the summary plot 14_Habits
 %   .Blocks                In a session with blocks (T.ranBlocks), else empty:
@@ -53,6 +55,8 @@ H.sidePokesPerTrial = mean(T.sidePokesBeforeCentre + T.sidePokesBetween);
 H.sidePokeDelays = sum(T.sidePokeDelays > 0);
 H.sidePokeDelayCount = sum(T.sidePokeDelays, 'omitnan');
 H.endedBySidePoke = sum(T.outcome == lum.Outcome.SidePokeBeforeChoice);
+H.timeoutRestarts = sum(T.timeoutRestarts > 0);
+H.timeoutRestartCount = sum(T.timeoutRestarts, 'omitnan');
 
 % In blocks of 100 trials, for the plot
 starts = 1:100:max(1, T.n);

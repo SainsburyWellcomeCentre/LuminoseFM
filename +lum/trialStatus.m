@@ -13,9 +13,9 @@ function lines = trialStatus(trialNumber, spec, result, nextSpec, stimulusSet)
 % pay'. In training and experiment it is correct or incorrect, as the contingency scores
 % it. A trial without a choice says why (no poke, early withdrawal, hold not completed, no
 % side poke in time, ended by a side poke before the response window) in every stage. Side
-% pokes that delayed the trial are counted, and a trial in a block says which (lum.Blocks). A
-% trial that took more than one hold attempt says so: 'held on attempt 3' when the hold was
-% completed, '14 hold attempts' when it was not.
+% pokes that delayed the trial or restarted a timeout are counted, and a trial in a block
+% says which (lum.Blocks). A trial that took more than one hold attempt says so: 'held on
+% attempt 3' when the hold was completed, '14 hold attempts' when it was not.
 %
 % Arguments:
 %   trialNumber  The trial that just ended
@@ -79,6 +79,9 @@ elseif ~result.HoldCompleted && attempts > 1
 end
 if isfield(result, 'SidePokeDelays') && result.SidePokeDelays > 0
     last = sprintf('%s; delayed by %d side poke(s)', last, result.SidePokeDelays);
+end
+if isfield(result, 'TimeoutRestarts') && result.TimeoutRestarts > 0
+    last = sprintf('%s; timeout restarted by %d side poke(s)', last, result.TimeoutRestarts);
 end
 lines = {last};
 if ~isempty(nextSpec)

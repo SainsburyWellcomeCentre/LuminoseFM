@@ -78,6 +78,9 @@ right — D8 in [`architecture.md`](architecture.md).
 | strategy correction | The levers against habits such as alternating between the side ports, all runtime settings on the Strategy tab and off by default (D23): habit measures, side pokes before the response, context correction, blocks |
 | habit measures | What a session's log line and `14_Habits` report of its habits: choices opposite the last side poke, the next side poke at the other side after a centre poke, alternation against the side bias's, repeating after a reward and after an error, side pokes before the response (`lum.report.habits`) |
 | side poke before the response | A side poke while the trial waits for a centre poke, at its start or after an early withdrawal (`S.GUI.SidePokeBeforeChoice`: *Ignore*, *Delay* in state `SidePokeDelay` for `S.GUI.SidePokeDelay`, *End trial* in state `SidePokeBeforeChoice`, outcome 7; `Data.SidePokeDelays`). Not "premature response" |
+| punishment (of a mistake) | What one mistake costs, set for each on its own: an incorrect choice (`S.GUI.IncorrectChoicePunishment`, `IncorrectChoiceTimeout`) and an early withdrawal (`S.GUI.EarlyWithdrawalPunishment`, `EarlyWithdrawalTimeout`), each *None*, *Timeout*, *White noise* or *Timeout + noise* (`lum.punishmentFor`; from 0.11.0) |
+| timeout restart | A side poke during a punished incorrect choice's or early withdrawal's timeout starting it again (`S.GUI.TimeoutSidePoke` *Restart the timeout*): only a poke at the side port other than the one the animal was last in, in states `IncorrectChoiceRestartLeft/Right`, `EarlyWithdrawalRestartLeft/Right`; `Data.TimeoutRestarts` |
+| side-poke sound | A short noise burst on each side poke that costs time: a delay, an ended trial, a timeout restart (`S.GUI.SidePokeSound`, `S.Sound.SidePokeSoundDuration` 0.15 s). Not the punishment noise |
 | context correction | Bias correction reading the animal's lean in the trial's context rather than over all its recent choices (`S.GUI.BiasCorrectFor`: *Side bias*, *Last choice*, *Last choice and reward*; `lum.BiasCorrection`) |
 | context | What the trial before did, as context correction reads it: its choice, or its choice and reward (`Data.BiasContext`, codes 0–7) |
 | reward floor | The share of rewarded choices below which bias correction stops acting, rising in a straight line to full strength at 50% (`S.GUI.BiasRewardFloor`, over `S.GUI.BiasRewardWindow` choices) |
@@ -93,6 +96,27 @@ Settings files are converted when loaded. Analysis code reading older **data** f
 names.
 
 Newest first. Each table puts the old behaviour or name on the left and the new on the right.
+
+### 0.10.2 → 0.11.0 — each mistake punished on its own; side pokes in a timeout restart it, with a sound
+
+The audit of LUMS0014's session of 2026-10-08 (a 3 s side-poke delay and a 3 s timeout) found the
+habit's side-port visit moved into the timeout of an incorrect choice, where a side poke cost
+nothing: one came during 32% of timeouts, and the next choice went opposite it on 83%. The
+operator asked (2026-10-08) for a side poke in a timeout to restart it, an optional sound for a
+side poke that costs time, and the punishment of an incorrect choice and of an early withdrawal
+set apart. All are runtime settings, off by default.
+
+| 0.10.2 | 0.11.0 |
+|---|---|
+| `S.GUI.PunishCondition` (none, early withdrawal, incorrect choice, both), `PunishType` (timeout, noise, both), `PunishTimeout`: one punishment and timeout for every mistake | `S.GUI.IncorrectChoicePunishment` and `S.GUI.EarlyWithdrawalPunishment` (*None*, *Timeout*, *White noise*, *Timeout + noise*: codes 1–4), `S.GUI.IncorrectChoiceTimeout` and `S.GUI.EarlyWithdrawalTimeout` (2 s), on the *Punishment* panel. A settings file is converted by `lum.mergeSettings`: a punished mistake gets the old type's code plus one, an unpunished one *None*, and both the old timeout; so is a data file's `Session.Settings` for the report. A side poke that ends the trial (*End trial*) still costs what an early withdrawal does |
+| A side poke in a punishment's timeout does nothing | `S.GUI.TimeoutSidePoke` *Ignore* (default) or *Restart the timeout*: a poke at the side port other than the one the animal was last in starts the timeout again, in `IncorrectChoiceRestartLeft/Right` or `EarlyWithdrawalRestartLeft/Right` (four new states, in every trial, unreachable otherwise); `Data.TimeoutRestarts` per trial; the log's *Habits* line counts them |
+| No sound for a side poke | `S.GUI.SidePokeSound` (off): a noise burst of `S.Sound.SidePokeSoundDuration` (0.15 s, Cue tab *Sound output*, with a *Play* button) as a side poke enters `SidePokeDelay`, `SidePokeBeforeChoice` (unless the punishment noise plays there) or a restart state. Always loaded (`lum.loadSounds`, slot `SidePoke`) |
+| *Punishment* log line: "on incorrect choice, timeout, timeout 3 s; a wrong choice ends the trial" | "incorrect choice timeout 3 s, ends the trial; early withdrawal none" |
+| Choosing Habituation or Experiment: every strategy part off | Also `TimeoutSidePoke` *Ignore* and `SidePokeSound` off |
+
+Data: `TimeoutRestarts` is a new per-trial series; `TrialSettings{k}` holds the four new
+punishment settings in place of the three old ones, whose codes in older files keep their meaning
+(`data-format.md`, *Reading older files*).
 
 ### 0.10.1 → 0.10.2 — two lines of the session log say what happened
 

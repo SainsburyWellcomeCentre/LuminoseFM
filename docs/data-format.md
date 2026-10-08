@@ -183,7 +183,8 @@ The `.mat` holds one variable, `SessionData` (= `BpodSystem.Data`).
 `ReactionTime`, `OptoOn`, `SoundOn`, `HouseLight`, `SyncMode`, `SyncPulseWidth`, `BiasTargetPLeft`,
 `TrainingStage`, `HoldDuration`, `HoldGrace`, `HoldBreaks`, `HoldAttempts`, `EarlyWithdrawals`,
 `CameraTime`, `LEDCurrentA`, `LEDCurrentB`, `CentreReward`, `ResponseRetries`, `CentreHoldTime`,
-`BiasContext`, `Block`, `BlockSide` and `SidePokeDelays` (the last four from 0.10.0), plus
+`BiasContext`, `Block`, `BlockSide` and `SidePokeDelays` (these four from 0.10.0) and
+`TimeoutRestarts` (from 0.11.0), plus
 `TrialSettings` (the runtime parameters only, `S.GUI` as trial *k* was prepared: the values it
 ran with) and `OutcomeNames` for decoding `Outcome`.
 
@@ -206,11 +207,17 @@ next trial prepared after it.
 first visit to `WaitForResponse`); a side poke after it ran out, in the ITI, is not a choice, and
 the trial is `NoResponse`. `ReactionTime` is therefore never longer than the response window. When
 an incorrect choice is not
-punished (`TrialSettings{k}.PunishCondition` without *Incorrect choice*, the default from 0.8.0), the
+punished (`TrialSettings{k}.IncorrectChoicePunishment` 1, *None*, from 0.11.0; before it
+`PunishCondition` without *Incorrect choice*; the default from 0.8.0), the
 trial goes on: state `RetryResponse`, then `WaitForResponse` again, and the correct port still pays.
 Such a trial is `Incorrect` with `Rewarded` 1; `ResponseRetries` counts the wrong pokes forgiven
 (visits to `RetryResponse`), 0 when choices are punished. A punished incorrect choice visits
-`IncorrectChoice` and ends the trial with `Rewarded` 0. `CentreReward` is the water, in µL, given at
+`IncorrectChoice` and ends the trial with `Rewarded` 0.
+
+**Punishments (0.11.0).** Each mistake has its own: `TrialSettings{k}.IncorrectChoicePunishment` and
+`.EarlyWithdrawalPunishment` (1 none, 2 timeout, 3 white noise, 4 timeout and noise) with
+`.IncorrectChoiceTimeout` and `.EarlyWithdrawalTimeout` (s). A side poke that ended the trial
+(outcome 7) cost what an early withdrawal did. Codes are never renumbered. `CentreReward` is the water, in µL, given at
 the centre port for a completed hold (state `CentreReward`; habituation's first
 `CentreRewardTrials` trials), 0 otherwise; side water is `Rewarded .* RewardAmount` from
 `TrialSettings`, so the session's total is
@@ -247,13 +254,16 @@ within it goes back to drinking and starts it again).
 | `Block` | The block the trial was in, numbered from 1 (`TrialSettings{k}.TrialOrder` *Blocks*); 0 in a random order. A trial's place in its block is the count since `Block` last changed |
 | `BlockSide` | That block's side, 1 left or 2 right; NaN in a random order. With patterns of P(left) between 0 and 1 a trial in a block can still pay the other side (`CorrectSide`): its side is drawn from its own P(left) |
 | `SidePokeDelays` | Side pokes that delayed the trial while it waited for a centre poke (visits to `SidePokeDelay`, *Side poke before the response* *Delay*) |
+| `TimeoutRestarts` | Side pokes that restarted a punishment's timeout (visits to `IncorrectChoiceRestartLeft`/`Right` and `EarlyWithdrawalRestartLeft`/`Right`, `TrialSettings{k}.TimeoutSidePoke` 2, *Restart the timeout*; 0.11.0). A restart state's row is the restarted timeout, the animal in the port it names. A trial with an incorrect choice ended at the end of the last such row, so its timeout lasted from `IncorrectChoice`'s start to there |
 
 Outcome 7, `SidePokeBeforeChoice`, is a trial ended by a side poke while it waited for a centre
 poke (*End trial*): no choice, `Rewarded` 0, state `SidePokeBeforeChoice` then `WaitForLightEnd`.
 With a context mode the next trial was prepared after the running one's choice: `BiasContext`
 above 1, and `Timing.awaitChoice` the seconds the loop waited for it; a punished incorrect choice
-then lasted at least 50 ms (`IncorrectChoice`), whatever `TrialSettings{k}.PunishTimeout` says, so
-the loop could see it. In a session that ran blocks
+then lasted at least 50 ms (`IncorrectChoice`), whatever `TrialSettings{k}.IncorrectChoiceTimeout`
+(`PunishTimeout` before 0.11.0) says, so the loop could see it. `TrialSettings{k}.SidePokeSound`
+says whether a side poke that cost time played the side-poke sound (0.11.0; the sound's length is
+`Session.Settings.Sound.SidePokeSoundDuration`). In a session that ran blocks
 the side a trial paid inside a block was set by the block, not drawn: measure the light from each
 block's first trial and the trials outside blocks (*Sessions with strategy correction* below).
 
@@ -563,6 +573,12 @@ the null device shims swallowed is recorded in `Data.Session.DeviceLog`. See
 
 ## Reading older files
 
+- **Sessions before 0.11.0** have no `TimeoutRestarts` (read as 0) and none of the restart states:
+  a side poke in a timeout did nothing. Their `TrialSettings{k}` hold one punishment for every
+  mistake: `PunishCondition` (1 none, 2 early withdrawal, 3 incorrect choice, 4 both), `PunishType`
+  (1 timeout, 2 white noise, 3 both) and `PunishTimeout` (s). A mistake was punished when
+  `PunishCondition` named it, with `PunishType` (code + 1 in today's per-mistake menus) and
+  `PunishTimeout`. `lum.mergeSettings` converts `Session.Settings` that way for the report (`'AsRun'`).
 - **Sessions before 0.10.0** have no `BiasContext`, `Block`, `BlockSide` or `SidePokeDelays`, no
   outcome 7, no `Timing.sync`, `.spec`, `.build` or `.awaitChoice`, and none of the strategy
   settings in `TrialSettings`: they ran a random order, ignored side pokes before the response and

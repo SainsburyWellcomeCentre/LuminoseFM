@@ -20,7 +20,9 @@ function tests = animalSessionTest
 %                choices while the light plays on (D21), a retry, a broken hold then a
 %                completed one, no poke
 %   strategy     strategy correction: side pokes delay the trial (before the first centre
-%                poke and between attempts), then end it once the runtime window says so;
+%                poke and between attempts), restart an incorrect choice's timeout (a poke
+%                at the other port; one back into the chosen port does not), then end the
+%                trial once the runtime window says so;
 %                context correction for last choice and reward, so every trial is prepared
 %                after the one before has chosen (lum.SessionRunner.awaitChoice)
 %   blocks       blocks of three trials, every one played correct
@@ -130,7 +132,7 @@ end
 function testPunishmentsLastTheTimeoutAndTheNoise(testCase)
 data = testCase.TestData.punished;
 S = data.Session.Settings;
-atLeast = max(S.GUI.PunishTimeout, S.Sound.NoiseDuration);
+atLeast = max([S.GUI.EarlyWithdrawalTimeout, S.GUI.IncorrectChoiceTimeout, S.Sound.NoiseDuration]);
 for k = [3 4]
     span = data.RawEvents.Trial{k}.States.EarlyWithdrawal(1, :);
     verifyGreaterThanOrEqual(testCase, diff(span), atLeast - 1e-3, sprintf('Trial %d', k));
@@ -242,6 +244,12 @@ verifyEqual(testCase, data.Outcome, [O('Correct'), O('Correct'), O('Correct'), O
 verifyEqual(testCase, data.SidePokeDelays, [0 1 1 0 0 0 0], ...
             'Before the first centre poke on trial 2, between attempts on trial 3');
 verifyEqual(testCase, data.Rewarded, [1 1 1 0 1 0 1]);
+verifyEqual(testCase, data.TimeoutRestarts, [0 0 0 1 0 0 0], ...
+            'Trial 4: the other port restarted the timeout, the chosen port again did not');
+restart = data.RawEvents.Trial{4}.States;
+restartName = sprintf('IncorrectChoiceRestart%s', ternaryText(data.CorrectSide(4) == 1, 'Left', 'Right'));
+verifyGreaterThanOrEqual(testCase, diff(restart.(restartName)(1, :)), ...
+                         data.Session.Settings.GUI.IncorrectChoiceTimeout - 1e-3);
 modes = cellfun(@(s) s.SidePokeBeforeChoice, data.TrialSettings);
 verifyEqual(testCase, modes, [2 2 2 2 2 3 3], 'End trial typed during trial 5');
 S = data.Session.Settings;
@@ -372,9 +380,10 @@ S.Stimulus.Latency = 0.3;
 S.GUI.HoldWindow = 3;
 S.GUI.ResponseWindow = 1.2;
 S.GUI.RewardDelay = 0.4;
-S.GUI.PunishCondition = 4;   % Both
-S.GUI.PunishType = 3;        % Timeout + noise
-S.GUI.PunishTimeout = 0.3;
+S.GUI.IncorrectChoicePunishment = 4;   % Timeout + noise
+S.GUI.IncorrectChoiceTimeout = 0.3;
+S.GUI.EarlyWithdrawalPunishment = 4;
+S.GUI.EarlyWithdrawalTimeout = 0.3;
 S.Sound.NoiseDuration = 0.5;
 end
 
@@ -450,11 +459,12 @@ S = baseSettings();
 S.Session.MaxTrials = 7;
 S.GUI.HoldWindow = 4;
 S.GUI.ResponseWindow = 1.2;
-S.GUI.PunishCondition = 3;        % Incorrect choices punished, so context correction applies
-S.GUI.PunishType = 1;             % Timeout
-S.GUI.PunishTimeout = 0.6;
+S.GUI.IncorrectChoicePunishment = 2;   % A timeout, so context correction applies
+S.GUI.IncorrectChoiceTimeout = 1.5;    % Long enough for trial 4's pokes in it
 S.GUI.SidePokeBeforeChoice = 2;   % Delay
 S.GUI.SidePokeDelay = 0.5;
+S.GUI.TimeoutSidePoke = 2;        % Restart the timeout
+S.GUI.SidePokeSound = true;       % Silent in the emulator; the states still time it
 S.GUI.BiasCorrection = 0.5;
 S.GUI.BiasCorrectFor = 3;         % Last choice and reward
 end
@@ -465,7 +475,8 @@ sidePokeFirst = {0.2, 'Port1', 1; 0.35, 'Port1', 0; 1.0, 'Centre', 1; 2.0, 'Cent
                  2.4, 'Correct', 1; 2.8, 'Correct', 0};
 sidePokeBetween = {0.3, 'Centre', 1; 0.45, 'Centre', 0; 0.7, 'Port3', 1; 0.85, 'Port3', 0; ...
                    1.5, 'Centre', 1; 2.5, 'Centre', 0; 2.9, 'Correct', 1; 3.3, 'Correct', 0};
-wrong = {0.3, 'Centre', 1; 1.3, 'Centre', 0; 1.7, 'Wrong', 1; 2.0, 'Wrong', 0};
+wrong = {0.3, 'Centre', 1; 1.3, 'Centre', 0; 1.7, 'Wrong', 1; 1.9, 'Wrong', 0; ...
+         2.1, 'Wrong', 1; 2.2, 'Wrong', 0; 2.4, 'Correct', 1; 2.6, 'Correct', 0};
 typesEndTrial = [correct; {2.4, 'Set:SidePokeBeforeChoice', 3}];
 endsTrial = {0.2, 'Port3', 1; 0.35, 'Port3', 0};
 behaviours = {correct, sidePokeFirst, sidePokeBetween, wrong, typesEndTrial, endsTrial, correct};
@@ -614,5 +625,15 @@ for k = 1:n
             count = count + earlyWithdrawals(done);
         end
     end
+end
+end
+
+
+function text = ternaryText(condition, whenTrue, whenFalse)
+% whenTrue if condition, else whenFalse.
+if condition
+    text = whenTrue;
+else
+    text = whenFalse;
 end
 end
