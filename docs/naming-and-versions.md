@@ -97,6 +97,17 @@ names.
 
 Newest first. Each table puts the old behaviour or name on the left and the new on the right.
 
+### 0.11.0 → 0.11.1 — the session log says the light's carrier and irradiance
+
+Found in the audit of LUMS0014's session of 2026-10-09, its first with constant light: its log's
+*Light* line read as 10-08's, which had 20 Hz × 20 ms pulses, because the line gave neither the
+carrier nor the irradiance. Logs only: the data and the settings are unchanged
+(`lum.report.fromFile` writes an earlier session's log again with the new line).
+
+| 0.11.0 | 0.11.1 |
+|---|---|
+| *Light*: "on 344 of 344 trials; bundle 4-to-19; A 409 mA (orange cable), B 893 mA (blue cable)" | "on 344 of 344 trials, constant light; bundle 4-to-19; A 409 mA, 12.0 mW/mm2 (orange cable), B 893 mA, 12.0 mW/mm2 (blue cable)": the carrier (`S.Light.Carrier`, "20 Hz x 20 ms pulses", one phrase per channel when they differ), and each channel's irradiance from its calibration in `Session.DoricLED` (none on a channel without one) |
+
 ### 0.10.2 → 0.11.0 — each mistake punished on its own; side pokes in a timeout restart it, with a sound
 
 The audit of LUMS0014's session of 2026-10-08 (a 3 s side-poke delay and a 3 s timeout) found the

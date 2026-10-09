@@ -1219,7 +1219,8 @@ few trials.
   is drawn against the pulses it would have had.
 - **Session Logs** (0.9.8, behaviour sessions) holds `<data file name>_log.md`, a plain-text
   summary for the lab notebook: when and how the session ran, the animal, the settings
-  that shape a trial, how the animal did (score, choices, water, the hold, early withdrawals
+  that shape a trial (the light with its carrier, LED currents and irradiance, 0.11.1), how the
+  animal did (score, choices, water, the hold, early withdrawals
   against the light's pulses (the locking beyond their shape, where it points and its p, then R and
   its p), reaction time, side bias, the habits and, with blocks, the first trial after a switch,
   50-trial blocks), what was changed during the session, and the recordings.

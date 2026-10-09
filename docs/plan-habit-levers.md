@@ -98,7 +98,14 @@ Blocks are also the most direct test of whether the mouse can use the light at a
   poke 88–96% of each 50, delays 0.48–0.68 a trial); after trial 200 the mouse disengaged (a median
   20 s a trial, 11 holds lapsed) and was stopped at 308 trials, rewarded on 50%. The plan's rule
   above (far fewer trials: shorten the delay or go back) applies if the next session ends the same
-  way; with two settings changed at once, put the timeout back to 1 s first.
+  way; with two settings changed at once, put the timeout back to 1 s first. On 2026-10-09 the
+  timeout went back to 1 s, the delay to 2 s, and the light became constant (300 ms) together. The
+  habit was as before (opposite the last side poke 94%, delays 0.98 a trial), the 1 s timeout left
+  no free visit (no side poke at the other port in any of 168 timeouts), and the mouse worked to
+  trial 300 (41 minutes) before slowing; 344 trials, rewarded on 49%. *Delay* has now run at 1, 2
+  and 3 s without making side pokes before the response rarer. Suggested on 2026-10-09, not yet
+  decided by the operator: the next session as this one, so that constant light gets a second
+  session with nothing else changed; then the side-poke sound once P18 has passed.
   Record each in `learning-time-literature.md` (the LUMS0014 table: which levers, the *Habits*
   line, for blocks the first trial after a switch rather than % correct).
 - **Step 2 sees only part of the habit while side pokes before the response continue** (found

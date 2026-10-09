@@ -371,6 +371,38 @@ verifySubstring(testCase, line, 'incorrect choice timeout 3 s, ends the trial');
 verifySubstring(testCase, line, 'early withdrawal none');
 end
 
+function testTheLightLineSaysTheCarrierAndIrradiance(testCase)
+% 2026-10-09's log read as 10-08's, though the light went from 20 Hz x 20 ms pulses to
+% constant light.
+[Data, dataFile] = habitSession(testCase, 'winStay', 20);
+Data.Session.Settings.Session.UseOpto = true;
+Data.OptoOn(:) = 1;
+Data.LEDCurrentA(:) = 400;
+Data.LEDCurrentB(:) = 900;
+Data.Session.DoricLED.Calibrations = {struct('CurrentmA', [0 1000], 'IrradiancemWmm2', [0 30]), ...
+                                      struct('CurrentmA', [0 1000], 'IrradiancemWmm2', [0 13])};
+for c = 1:2
+    Data.Session.Settings.Light.Carrier(c).Frequency = 20;
+    Data.Session.Settings.Light.Carrier(c).PulseWidth = 0.02;
+end
+line = lightLine(Data, dataFile);
+verifySubstring(testCase, line, '20 Hz x 20 ms pulses');
+verifySubstring(testCase, line, 'A 400 mA, 12.0 mW/mm2');
+verifySubstring(testCase, line, 'B 900 mA, 11.7 mW/mm2');
+Data.Session.Settings.Light.Carrier(1).Frequency = 0;
+verifySubstring(testCase, lightLine(Data, dataFile), 'A constant light, B 20 Hz x 20 ms pulses');
+Data.Session.Settings.Light.Carrier(2).Frequency = 0;
+Data.Session.DoricLED.Calibrations = {[], []};
+line = lightLine(Data, dataFile);
+verifySubstring(testCase, line, 'trials, constant light;');
+verifySubstring(testCase, line, 'A 400 mA (');
+end
+
+function line = lightLine(Data, dataFile)
+[~, lines] = lum.report.sessionLog(Data, dataFile, 'Write', false);
+line = lines{startsWith(lines, '- Light:')};
+end
+
 function testTheRunLimitSaysBiasCorrectionGoesFirst(testCase)
 % 2026-10-06's log said 'at most 3 the same side in a row' of a session with runs of 7, which
 % bias correction, taking precedence over the run limit, drew.

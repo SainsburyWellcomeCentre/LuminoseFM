@@ -83,6 +83,7 @@ choosing left or right with a wheel.
 | 2026-10-06 | As 10-05, and a side poke before the response delays the trial 1 s | on, window 0.3 s, 12 mW/mm², 20 Hz × 20 ms | 514 | 53% | 53% / 48% |
 | 2026-10-07 | As 10-06 | on, window 0.3 s, 12 mW/mm², 20 Hz × 20 ms | 462 | 47% | 46% / 52% |
 | 2026-10-08 | As 10-07, but the side-poke delay 3 s and the timeout 3 s | on, window 0.3 s, 12 mW/mm², 20 Hz × 20 ms | 308 | 52% | 51% / 47% |
+| 2026-10-09 | As 10-07, but the side-poke delay 2 s | on, window 0.3 s, 12 mW/mm², constant | 344 | 50% | 58% / 56% |
 
 The procedure took 3 days, in line with the 2–7 days of pretraining above. LUMS0014 now does 350
 to 730 trials a session and completes nearly every hold. There is no sign yet that the light
@@ -216,6 +217,34 @@ response a trial includes pokes made during a delay, which the delay ignores; a 
 more time for them, so compare delays a trial (1.15; 0.80 on 10-07) instead. 4,611 punished trials
 so far, 2,342 of them with 20 ms pulses at 12 mW/mm².
 
+On 2026-10-09 (day 10) the light was constant (`S.Light.Carrier` *Frequency* 0) instead of
+20 Hz × 20 ms pulses, at the same 12 mW/mm² on each channel (A 409 mA, B 893 mA, both reaching
+12.0 mW/mm²): a completed hold now gets 0.3 s of light instead of 0.12 s, 3.0 times Chong's light
+a trial (*What activates OSN terminals*). Two other settings changed with it, at the operator's
+choice: the timeout went back from 3 s to 1 s, and the side-poke delay from 3 s to 2 s (1 s on
+10-06 and 10-07). No sound: the incorrect choice's punishment was the timeout alone, the side-poke
+sound and the timeout restart off. On the rig the light ran as set: PulsePal was programmed with
+one 0.4 s pulse in gated mode on each channel, and on all 694 hold attempts the light's timer ran
+for the time spent in `CentreHold` to 0.1 ms, the full 0.3 s on every completed hold. No split:
+P(left | A) 58%, P(left | B) 56% (p 0.76), the stimulus weight −0.11 ± 0.24 with the last side poke
+and the last choice × its reward in the fit. The habit was as strong as on 10-04 to 10-07: the
+choice opposite the last side poke on 94% (88–98% of each 50 up to trial 300), the last side poke's
+weight −3.07 ± 0.33 (−1.59 on 10-08), and the last choice × its reward +0.13 ± 0.24 (−0.64 on
+10-08). The 1 s timeout closed 10-08's free visit: 13 of 168 timeouts had a side poke (8%; 32% at
+3 s), each at the port just chosen, none at the other. Delays came 0.98 a trial (0.72 and 0.80 at
+1 s, 1.15 at 3 s): at no length has the delay made side pokes before the response rarer. The
+mouse worked more slowly than at 1 s (7.7 trials a minute over the first 200, against 9–11 on 10-05
+to 10-07; the 2 s delays add 1–2 s a trial), rewarded on 49%, and after trial 300 (41 minutes)
+slowed as at the end of the sessions before (3.1 trials a minute, 7 trials of 60 s or more, 2.3
+delays a trial); it was stopped at 344 trials, with 340 µL of water. In the port, early
+withdrawals ended 51% of attempts (42% on 10-07, 49% on 10-08) and were more frequent at the
+start: 1.00 a trial in the first 50 trials, against 0.32–0.66 at the start of the four sessions
+before. That was seen once before, on 10-04, the last time the light changed (1.28 a trial in its
+first 50); with the timeout and the delay changed too, it cannot be put on the light. The
+withdrawals' times kept their shape (a median 227 ms after stimulus onset, quartiles 102–270 ms,
+38% in the window's last 50 ms). 4,955 punished trials so far; 344 with constant light, counted as
+a new start for a first split.
+
 ### Side-port alternation
 
 Found 2026-10-05. LUMS0014 alternates between the side ports on every visit, scored or not: its
@@ -236,6 +265,7 @@ term a weight of −3.2 ± 0.23 and the stimulus −0.08 ± 0.22.
 | 2026-10-06 (side pokes delay 1 s) | 96% | 96% |
 | 2026-10-07 (side pokes delay 1 s) | 92% | 93% |
 | 2026-10-08 (side pokes delay 3 s, timeout 3 s) | 83% (88–96% in trials 1–200) | 80% |
+| 2026-10-09 (side pokes delay 2 s, timeout 1 s, constant light) | 94% | 93% |
 
 So the choice is set by which side port the mouse visited last, and the stimulus has little room
 to show. The habit pays half the time, because which side pays is random: the visit before the
@@ -404,6 +434,12 @@ B 0.109 (p 0.18). Each trial's median early-withdrawal time went the other way f
 (p 0.035): no consistent direction, so read as variation from session to session. 210 of the 289
 withdrawals came after trial 200, when the mouse had disengaged (above).
 
+**2026-10-09, constant light.** No pulses to lock to (the log says so). The test decided on 10-06:
+each trial's median early-withdrawal time, A 237 ms (60 trials) against B 227 ms (92 trials),
+p 0.57. Holds completed on the first attempt differed (A 61% of 158 trials, B 51% of 186, p 0.043,
+one test of several), in the direction of 10-08 (62% against 54%) and against 10-04's (51% against
+60%): no consistent direction yet.
+
 Every behaviour session now reports it: a line in the log's *Behaviour* section and the summary plot
 `13_PulseLocking`, leading (from 0.9.14) with the locking beyond the shape, the time it points to
 and its p, then R with its own p. Watch both from session to session, and pool sessions before
@@ -498,7 +534,9 @@ and less reaches the tissue than leaves the tips. None of this changes the order
 
 The part working hardest is the LED, not the brain. At 12 mW/mm², B runs close to the LED's
 1000 mA rating (`S.Doric.MaxCurrentmA`), which is fine at a 10% duty cycle; Doric's 700 mA
-recommendation is for light held on.
+recommendation is for light held on. With constant light (from 2026-10-09) B is held at 893 mA for
+up to 0.3 s a hold attempt, about two attempts a trial, a trial every 6–10 s: under the rating,
+and far from light held on.
 
 ### The light path to the bulb
 
@@ -646,7 +684,8 @@ measured in every session. If R rises with four times the light per pulse, the s
 reached the mouse, and that shows within a session or two rather than the week or more a first
 split takes. Constant light and the single pulse leave nothing to lock to; they come after: constant
 light if the 20 ms pulses still give no split, the single pulse to match Chong's time course. 20 ms
-is preferred to 25 ms for its longer gaps. Whichever is chosen,
+is preferred to 25 ms for its longer gaps. Constant light was run from 2026-10-09 (*LUMS0014 so far*), after five
+sessions of 20 ms pulses without a split. Whichever is chosen,
 change nothing else in the same session, so that a change in behaviour can be put down to the
 light, and count that session as a new start for a first split. Note the irradiance and carrier in
 the *Light* column of the table above. If the stronger light changes nothing, a session of light

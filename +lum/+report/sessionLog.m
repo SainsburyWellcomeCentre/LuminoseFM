@@ -288,7 +288,8 @@ end
 
 
 function text = lightText(Data, S, T)
-% Whether light was delivered, at what LED current and irradiance, through which cables.
+% Whether light was delivered, with what carrier, at what LED current and irradiance (on a
+% calibrated light path), through which cables.
 if ~S.Session.UseOpto
     text = 'off (no light pattern this session)';
     return
@@ -298,6 +299,10 @@ if isfield(S, 'Light') && isfield(S.Light, 'Cables') && numel(S.Light.Cables) ==
     cables = S.Light.Cables;
 end
 channels = {'A', 'B'};
+calibrations = {[], []};
+if isfield(Data.Session, 'DoricLED') && isfield(Data.Session.DoricLED, 'Calibrations')
+    calibrations = Data.Session.DoricLED.Calibrations;
+end
 parts = cell(1, 2);
 for k = 1:2
     series = sprintf('LEDCurrent%s', channels{k});
@@ -319,13 +324,42 @@ for k = 1:2
     else
         amount = sprintf('%g-%g mA', current(1), current(2));
     end
+    reached = NaN;
+    if ~all(isnan(current)) && numel(calibrations) >= k
+        reached = lum.led.irradiance(calibrations{k}, current);
+    end
+    if all(~isnan(reached))
+        amount = sprintf('%s, %s mW/mm2', amount, strjoin(compose('%.1f', reached), '-'));
+    end
     parts{k} = sprintf('%s %s (%s cable)', channels{k}, amount, orDash(cables{k}));
 end
-text = sprintf('on %d of %d trials; bundle %s; %s', sum(T.optoOn == 1), T.n, ...
-               orDash(fieldOr(S.Light, 'Bundle', '')), strjoin(parts, ', '));
+text = sprintf('on %d of %d trials, %s; bundle %s; %s', sum(T.optoOn == 1), T.n, ...
+               carrierText(S), orDash(fieldOr(S.Light, 'Bundle', '')), strjoin(parts, ', '));
 if isfield(Data.Session, 'DoricLED') && isfield(Data.Session.DoricLED, 'Intensity') ...
         && isfield(Data.Session.DoricLED.Intensity, 'Notes') && ~isempty(Data.Session.DoricLED.Intensity.Notes)
     text = sprintf('%s; %s', text, strjoin(cellstr(Data.Session.DoricLED.Intensity.Notes), ' '));
+end
+end
+
+
+function text = carrierText(S)
+% How PulsePal filled the light's gates: constant light, or pulses (one phrase per channel
+% when the channels differ).
+carrier = S.Light.Carrier;
+phrases = cell(1, numel(carrier));
+for k = 1:numel(carrier)
+    if carrier(k).Frequency == 0
+        phrases{k} = 'constant light';
+    else
+        phrases{k} = sprintf('%g Hz x %g ms pulses', carrier(k).Frequency, ...
+                             1000 * carrier(k).PulseWidth);
+    end
+end
+if all(strcmp(phrases, phrases{1}))
+    text = phrases{1};
+else
+    labels = {'A', 'B'};
+    text = strjoin(strcat(labels(1:numel(phrases)), {' '}, phrases), ', ');
 end
 end
 

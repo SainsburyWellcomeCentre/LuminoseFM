@@ -51,7 +51,8 @@ step 1, which can run headless with permission; P13 step 4's file checks passed 
 are at the rig.
 
 **Next work:** strategy correction (0.10.0, D23) is built, rig-checked and committed; LUMS0014
-began step 1 (*Delay* 1 s) on 2026-10-06, and ran *Delay* 3 s with a 3 s timeout on 2026-10-08.
+began step 1 (*Delay* 1 s) on 2026-10-06, ran *Delay* 3 s with a 3 s timeout on 2026-10-08, and
+*Delay* 2 s, a 1 s timeout and constant light (300 ms) on 2026-10-09.
 0.11.0 (side pokes in a timeout restart it, the side-poke sound, each mistake's punishment apart)
 is built and rig-checked, not yet used on an animal. The order of use for LUMS0014 and the open
 items are in `docs/plan-habit-levers.md`; audit each session that uses a lever from its log's
